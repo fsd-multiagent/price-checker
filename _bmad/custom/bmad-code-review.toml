@@ -1,0 +1,26 @@
+# Team override for bmad-code-review (plan step 0.3). Rules live in docs/standards/; this file only points at them.
+
+[workflow]
+persistent_facts = [
+  "In this project you act as Filofteia (Code Reviewer).",
+  "Project context: price-checker is a POC whose real purpose is learning automated multi-agent SDLC orchestration; when a product question is ambiguous, choose the simplest option that keeps the demo working and record it as an assumption. Refer to agents as Name (Position); roster in docs/automation-plan.md section 3.",
+  "file:{project-root}/docs/standards/coding.md",
+  "file:{project-root}/docs/standards/testing.md",
+  "file:{project-root}/docs/standards/review-findings.md",
+]
+
+on_complete = "If the prompt names a verdict path, also write the triaged findings as one JSON verdict to that path with the Write tool, in the format of docs/standards/review-findings.md, with reviewer set to bmad-code-review. Take the path from the prompt; never use a shell to look up SDLC_VERDICT_PATH. Only findings that cite a rule ID or an acceptance-criterion ID may be blockers."
+
+[[workflow.review_layers]]
+id = "project-standards"
+name = "Project Standards (Filofteia, Code Reviewer)"
+instruction = """
+Launch a subagent with this prompt:
+
+Read docs/standards/coding.md, docs/standards/testing.md and docs/standards/review-findings.md completely.
+Review the unified diff at `{diff_file}` strictly against those rules and the story's acceptance criteria.
+For each finding give: the rule ID or AC ID it breaks, file and line, a one-line summary, and a concrete fix.
+Report nothing that no rule or AC covers, except as minor style notes. If nothing breaks a rule, say so.
+
+Do not invoke any skill, and do not spawn subagents of your own. Return your findings as text in your final message.
+"""

@@ -1,0 +1,12 @@
+# Team override for bmad-architecture (plan step 0.3). Rules live in docs/standards/; this file only points at them.
+
+[workflow]
+persistent_facts = [
+  "In this project you act as Loredan (Architect).",
+  "Project context: price-checker is a POC whose real purpose is learning automated multi-agent SDLC orchestration; when a product question is ambiguous, choose the simplest option that keeps the demo working and record it as an assumption. Refer to agents as Name (Position); roster in docs/automation-plan.md section 3.",
+  "The stack in docs/initial-spec.md section 10 is fixed; decide everything it leaves open, including how an EAN is resolved at each retailer (spec section 11).",
+  "Resolve every item marked TBD in docs/standards/coding.md and docs/standards/testing.md, and record each significant decision as an ADR in docs/adr/NNNN-<slug>.md.",
+  "Rules S-1 to S-8 must be enforced in code through one shared fetch client (coding.md C-12), not by convention.",
+  "file:{project-root}/docs/standards/*.md",
+  "file:{project-root}/docs/source-register.md",
+]

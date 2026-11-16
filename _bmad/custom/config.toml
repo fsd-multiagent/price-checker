@@ -1,0 +1,27 @@
+# Team / enterprise overrides for _bmad/config.toml.
+# Committed to the repo — applies to every developer on the project.
+# Tables deep-merge over base config; keyed entries merge by key.
+# Example: override an agent descriptor, or add a new agent.
+#
+# [agents.bmad-agent-pm]
+# description = "Prefers short, bulleted PRDs over narrative drafts."
+
+# Project persona names (owner decision 2026-11-12). Refer to agents as Name (Position).
+
+[agents.bmad-agent-analyst]
+name = "Pompiliu"
+
+[agents.bmad-agent-pm]
+name = "Onofrei"
+
+[agents.bmad-agent-ux-designer]
+name = "Safta"
+
+[agents.bmad-agent-architect]
+name = "Loredan"
+
+[agents.bmad-agent-dev]
+name = "Marghioala"
+
+[agents.bmad-tea]
+name = "Eufrosina"
