@@ -16,3 +16,4 @@
 | [0001](0001-orchestrator-functional-core.md) | Build Zamolxe (Orchestrator) as a functional-core Python CLI that drives headless `claude -p` | Accepted | 2026-11-16 |
 | [0002](0002-orchestrator-run-state-and-resume.md) | Keep run state in a single-writer `state.json`, and resume by resetting to the scope's last passed head | Accepted | 2026-11-16 |
 | [0003](0003-orchestrator-git-integration.md) | Integrate only through merged PRs, and let the orchestrator own the shared bookkeeping files | Accepted | 2026-11-16 |
+| [0004](0004-gate-commands-in-agents-md.md) | Declare gate commands in an `sdlc-commands` block in `AGENTS.md`, trusted only as it is on `origin/main` | Accepted | 2026-11-16 |

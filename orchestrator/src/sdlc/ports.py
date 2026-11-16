@@ -1,7 +1,7 @@
 """The ports: every external system sits behind one Protocol (AD-1).
 
-Real adapters for `claude`, `git`, `gh` and the notifier are deferred (deferred-work.md); the
-dry-run and the tests use `sdlc.adapters.fake`.
+Real runs use `sdlc.adapters.real.real_ports`; the dry-run and the app tests use
+`sdlc.adapters.fake`. The `key` arguments exist for the fakes only.
 """
 
 from __future__ import annotations
@@ -92,6 +92,9 @@ class Clock(Protocol):
 
 class Notifier(Protocol):
     def notify(self, title: str, message: str) -> None: ...
+    async def drain(self) -> None:
+        """Wait for notifications still being sent."""
+        ...
 
 
 @dataclass(frozen=True)

@@ -33,3 +33,12 @@
 - source_spec: none
   summary: Add `sdlc run --until <stage-id>` so a run can stop after a chosen stage (for example planning only, stages 1–5), mirroring `--from`; the stopped run is resumable and can be continued with `--from`.
   evidence: Requested by the owner on 2026-11-16 while reviewing docs/automation-plan.md §4.6; today a run can only start partway, not stop partway.
+- source_spec: `_bmad-output/implementation-artifacts/spec-orchestrator-real-adapters.md`
+  summary: Preflight should check the repo's auto-merge setting and required checks on `main` through the GitHub API, and whether `claude` is logged in, before a paid step runs.
+  evidence: Blind Hunter, triage row 15; today these fail only after the first paid `claude -p` call.
+- source_spec: `_bmad-output/implementation-artifacts/spec-orchestrator-real-adapters.md`
+  summary: Cap captured stdout/stderr in `run_proc` by bytes while reading, instead of clipping after capture.
+  evidence: Edge Case Hunter, triage row 23; agent output is small today.
+- source_spec: `_bmad-output/implementation-artifacts/spec-orchestrator-real-adapters.md`
+  summary: Resolved by this spec, to be closed by Aglaia (Knowledge Keeper): real adapters (entry 1), the desktop notifier (entry 3), the comment on a reused escalation issue (adapter side only; the core still skips a second escalation), and moving a re-passed tag (triage row 38 of the dry-run spec).
+  evidence: Delivered on `feat/orchestrator-real-adapters`; existing entries are not edited by Build.

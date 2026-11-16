@@ -1,6 +1,7 @@
 """`sdlc run [--from <stage>] [--dry-run]`, `sdlc status [<run-id>]`, `sdlc resume <run-id>`.
 
-Exit codes: 0 passed, 2 escalated or blocked, 1 internal error. The repo lock, the trigger
+Exit codes: 0 passed, 2 escalated or blocked, 1 internal error. A real run checks its tools
+first (preflight) and keeps its state in `_bmad-output/sdlc/runs`. The repo lock, the trigger
 queue and `sdlc story|fix` are deferred (deferred-work.md, AD-22).
 """
 
@@ -12,16 +13,16 @@ import hashlib
 import json
 import sys
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Awaitable, Sequence
 from pathlib import Path
 
 from sdlc.adapters.fake import FixtureBook, fake_ports
+from sdlc.adapters.real import preflight, real_ports
 from sdlc.app.loop import LoopError, Orchestrator, format_status
 from sdlc.core.models import CoreError, Pipeline, RunKind, Status
 from sdlc.core.pipeline import PipelineError, load_pipeline
+from sdlc.ports import Ports
 from sdlc.store import RunStore, list_runs
-
-NOT_IMPLEMENTED = "real adapters not implemented yet (see deferred-work.md)"
 
 
 def find_repo_root(start: Path | None = None) -> Path:
@@ -107,8 +108,7 @@ def _run(args: argparse.Namespace, repo: Path) -> int:
     if args.from_stage:
         pipeline.stage(args.from_stage)
     if not args.dry_run:
-        print(f"sdlc: {NOT_IMPLEMENTED}", file=sys.stderr)
-        return 1
+        return _run_real(args, repo, pipeline, pipeline_path, digest)
     runs_dir = args.runs_dir or Path(tempfile.mkdtemp(prefix="sdlc-dryrun-"))
     fixtures = _fixtures(repo)
     book = FixtureBook.from_scenario(fixtures, args.scenario)
@@ -134,6 +134,48 @@ def _run(args: argparse.Namespace, repo: Path) -> int:
     return code
 
 
+def _preflight(repo: Path) -> bool:
+    problems = asyncio.run(preflight(repo))
+    for problem in problems:
+        print(f"sdlc: preflight: {problem}", file=sys.stderr)
+    return not problems
+
+
+async def _drive(ports: Ports, run: Awaitable[int]) -> int:
+    """Await the run, then any notification still in flight."""
+    try:
+        return await run
+    finally:
+        await ports.notifier.drain()
+
+
+def _run_real(
+    args: argparse.Namespace, repo: Path, pipeline: Pipeline, pipeline_path: Path, digest: str
+) -> int:
+    if not _preflight(repo):  # before the run dir exists
+        return 1
+    runs_dir = _runs_dir(args, repo)
+    ports = real_ports(repo)
+    orch = Orchestrator(pipeline, ports, runs_dir, repo, repo / "sdlc" / "prompts")
+    code = asyncio.run(
+        _drive(
+            ports,
+            orch.start(
+                RunKind.FULL,
+                dry_run=False,
+                from_stage=args.from_stage,
+                pipeline_path=str(pipeline_path),
+                pipeline_sha256=digest,
+            ),
+        )
+    )
+    assert orch.state is not None
+    print()
+    print(format_status(orch.state))
+    print(f"\nstatus: sdlc status {orch.state.run_id}")
+    return code
+
+
 def _status(args: argparse.Namespace, repo: Path) -> int:
     runs_dir = _runs_dir(args, repo)
     run_id = args.run_id or next(reversed(list_runs(runs_dir)), None)
@@ -148,9 +190,6 @@ def _status(args: argparse.Namespace, repo: Path) -> int:
 def _resume(args: argparse.Namespace, repo: Path) -> int:
     runs_dir = _runs_dir(args, repo)
     state = RunStore(runs_dir / args.run_id).load()
-    if not state.dry_run:
-        print(f"sdlc: {NOT_IMPLEMENTED}", file=sys.stderr)
-        return 1
     if state.status is Status.PASSED:
         print(f"sdlc: run {state.run_id} already passed; nothing to resume", file=sys.stderr)
         return 1
@@ -172,11 +211,15 @@ def _resume(args: argparse.Namespace, repo: Path) -> int:
             file=sys.stderr,
         )
         return 2
-    book = FixtureBook.from_scenario(state.fixtures or _fixtures(repo), state.scenario)
-    orch = Orchestrator(
-        pipeline, fake_ports(book, str(runs_dir)), runs_dir, repo, repo / "sdlc" / "prompts"
-    )
-    code = asyncio.run(orch.resume(args.run_id))
+    if state.dry_run:
+        book = FixtureBook.from_scenario(state.fixtures or _fixtures(repo), state.scenario)
+        ports = fake_ports(book, str(runs_dir))
+    else:
+        if not _preflight(repo):
+            return 1
+        ports = real_ports(repo)
+    orch = Orchestrator(pipeline, ports, runs_dir, repo, repo / "sdlc" / "prompts")
+    code = asyncio.run(_drive(ports, orch.resume(args.run_id)))
     assert orch.state is not None
     print()
     print(format_status(orch.state))

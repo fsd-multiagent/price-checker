@@ -306,10 +306,14 @@ def test_ac1_cli_dry_run_exits_0_and_prints_argv(tmp_path, capsys):
     assert "--bare" not in out
 
 
-def test_non_dry_run_exits_1(tmp_path, capsys):
+def test_non_dry_run_stops_at_preflight(tmp_path, capsys, monkeypatch):
+    """A real run with no tools on PATH exits 1 before its run dir exists (no paid call)."""
+    empty = tmp_path / "empty-bin"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
     code = cli.main(["--repo", str(REPO), "--runs-dir", str(tmp_path / "runs"), "run"])
     assert code == 1
-    assert "real adapters not implemented yet (see deferred-work.md)" in capsys.readouterr().err
+    assert "preflight: claude not found on PATH" in capsys.readouterr().err
     assert not (tmp_path / "runs").exists()
 
 

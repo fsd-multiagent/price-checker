@@ -30,8 +30,17 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
   - Tests: `cd orchestrator && uv run pytest -q`
   - Lint and format: `cd orchestrator && uv run ruff check && uv run ruff format --check`
   - Dry-run of the whole stage table with fake adapters: `cd orchestrator && uv run sdlc run --dry-run` (exit 0; prints every `claude -p` it would start and a temporary run dir)
-  - `uv run sdlc status [<run-id>]` and `uv run sdlc resume <run-id>`; pass `--runs-dir <dir>` for a dry-run's temporary dir. A non-dry `sdlc run` exits 1 until the real adapters exist (`_bmad-output/implementation-artifacts/deferred-work.md`).
+  - Real run: `cd orchestrator && uv run sdlc run` runs real `claude -p`, `git` and `gh` (paid). A preflight first checks that `claude`, `git` and `gh` are on PATH, `gh auth status` passes, `origin` exists and the main checkout is clean; it exits 1 naming what is missing. State goes to `_bmad-output/sdlc/runs`; worktrees go to `../price-checker-worktrees/`.
+  - `uv run sdlc status [<run-id>]` and `uv run sdlc resume <run-id>`; pass `--runs-dir <dir>` for a dry-run's temporary dir.
+  - Opt-in live test of one real `claude -p` call (about $0.05): `cd orchestrator && SDLC_LIVE=1 uv run pytest -q -m live`.
   - The stage table is `sdlc/pipeline.yaml`; prompts are `sdlc/prompts/*.md`; dry-run fixtures are `orchestrator/tests/fixtures/dryrun/`.
+- Commands the orchestrator's `tests` and `terraform_plan` gates run, from the worktree root (T-8). Each is split like a shell word list and run without a shell, so no `cd`, `&&`, pipes or redirections, and nothing the guard hook denies; a missing name fails the gate. The gate reads this block from `origin/main` and fails when a worktree changes it.
+
+  ```yaml sdlc-commands
+  tests:
+    - uv run --directory orchestrator pytest -q
+  ```
+
 - TODO (stage 4): backend (Java) and web (React) build, test and lint commands. Zamolxe (Orchestrator) runs exactly these at the "tests pass" gate (T-8).
 
 ## Conventions that differ from defaults

@@ -77,6 +77,9 @@ class FakeNotifier:
     def notify(self, title: str, message: str) -> None:
         self.sent.append((title, message))
 
+    async def drain(self) -> None:
+        return None
+
 
 class FakeClaude:
     """Returns canned results in the real `claude -p` JSON shape, parsed by the real parser."""

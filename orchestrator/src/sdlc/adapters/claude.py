@@ -1,7 +1,7 @@
-"""The one way to start an agent (AD-8): build the `claude -p` argument list, parse its output.
+"""The one way to start an agent (AD-8): build the `claude -p` argument list, run it, parse it.
 
-The process runner itself is deferred (deferred-work.md). The fake adapter uses the same
-builder and parser, so the dry-run prints exactly what a real run would invoke.
+The fake adapter uses the same builder and parser, so the dry-run prints exactly what a real
+run invokes.
 """
 
 from __future__ import annotations
@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from sdlc.adapters.proc import run_proc
 from sdlc.core.models import Denial, StepResult
-from sdlc.ports import AdapterError
+from sdlc.ports import AdapterError, Invocation
 
 FORBIDDEN_FLAGS = frozenset(
     {
@@ -81,3 +82,34 @@ def parse_result(stdout: str) -> StepResult:
         result=data.get("result") if isinstance(data.get("result"), str) else None,
         errors=tuple(str(e) for e in errors) if isinstance(errors, list) else (str(errors),),
     )
+
+
+class ClaudeCli:
+    """Runs `Invocation.argv` as a headless `claude -p` process (AD-3, AD-8)."""
+
+    async def run(self, inv: Invocation) -> StepResult:
+        proc = await run_proc(
+            inv.argv, cwd=inv.cwd, env=inv.env, stdin=inv.stdin, timeout_s=inv.timeout_s
+        )
+        if proc.timed_out:
+            return StepResult(
+                subtype="error_timeout",
+                is_error=True,
+                total_cost_usd=_budget(inv.argv),  # the call may have spent up to its cap
+                errors=(f"claude -p timed out after {inv.timeout_s:g}s; process group killed",),
+            )
+        try:
+            return parse_result(proc.stdout)
+        except AdapterError as exc:
+            raise AdapterError(f"claude exited {proc.returncode}: {exc}: {proc.tail(500)}") from exc
+
+
+def _budget(argv: tuple[str, ...]) -> float:
+    """The `--max-budget-usd` cap of an argument list, or 0 when it has none."""
+    for i, arg in enumerate(argv[:-1]):
+        if arg == "--max-budget-usd":
+            try:
+                return float(argv[i + 1])
+            except ValueError:
+                return 0.0
+    return 0.0
