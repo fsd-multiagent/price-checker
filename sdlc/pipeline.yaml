@@ -13,8 +13,8 @@ settings:
   timeout_min: 30
   ci_timeout_min: 30
   serial_paths: [api/openapi.yaml]
-  # Owner: confirm or change this ceiling (plan §6). There is no default; removing it is a load error.
-  run_budget_usd: 100
+  # Set by the owner, 2026-11-16 (plan §6). There is no default; removing it is a load error.
+  run_budget_usd: 50
 
 stages:
   - id: analysis

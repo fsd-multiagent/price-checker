@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from conftest import (
     FIXTURES,
@@ -198,8 +200,15 @@ async def test_matrix_crash_and_resume(tmp_path):
     assert orch.state.budget.reserved == 0
 
 
+def with_budget(text: str, usd: int) -> str:
+    """The pipeline text with `run_budget_usd` set to `usd`, whatever the owner chose."""
+    out, n = re.subn(r"(?m)^(\s*run_budget_usd:\s*)\S+", rf"\g<1>{usd}", text)
+    assert n == 1
+    return out
+
+
 async def test_matrix_budget_cap(tmp_path):
-    text = pipeline_text().replace("run_budget_usd: 100", "run_budget_usd: 9")
+    text = with_budget(pipeline_text(), 9)
     pipeline = load_pipeline(text)
     dr = make_dry_run(tmp_path, pipeline=pipeline)
     assert await run_dry(dr) == 2
@@ -359,7 +368,7 @@ def test_cli_resume_refuses_a_renamed_stage(tmp_path, capsys):
 def test_cli_resume_refuses_an_exhausted_budget(tmp_path, capsys):
     runs = tmp_path / "runs"
     pipe = tmp_path / "pipeline.yaml"
-    pipe.write_text(pipeline_text().replace("run_budget_usd: 100", "run_budget_usd: 9"), "utf-8")
+    pipe.write_text(with_budget(pipeline_text(), 9), "utf-8")
     base = ["--repo", str(REPO), "--runs-dir", str(runs)]
     assert cli.main([*base, "run", "--dry-run", "--pipeline", str(pipe)]) == 2
     run_id = next(p.name for p in runs.iterdir())
@@ -373,12 +382,13 @@ def test_cli_resume_refuses_an_exhausted_budget(tmp_path, capsys):
 def test_cli_resume_after_raising_the_budget_proceeds(tmp_path, capsys):
     runs = tmp_path / "runs"
     pipe = tmp_path / "pipeline.yaml"
-    pipe.write_text(pipeline_text().replace("run_budget_usd: 100", "run_budget_usd: 9"), "utf-8")
+    pipe.write_text(with_budget(pipeline_text(), 9), "utf-8")
     base = ["--repo", str(REPO), "--runs-dir", str(runs)]
     assert cli.main([*base, "run", "--dry-run", "--pipeline", str(pipe)]) == 2
     run_id = next(p.name for p in runs.iterdir())
     # The owner raises the ceiling and a per-stage limit; the stage table is unchanged.
-    raised = pipeline_text().replace("    timeout_min: 60\n", "    timeout_min: 90\n")
+    raised = with_budget(pipeline_text(), 100)
+    raised = raised.replace("    timeout_min: 60\n", "    timeout_min: 90\n")
     pipe.write_text(raised, "utf-8")
     capsys.readouterr()
     assert cli.main([*base, "resume", run_id]) == 0
