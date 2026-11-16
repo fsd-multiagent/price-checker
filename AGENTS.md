@@ -26,6 +26,12 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
 
 - Guard tests: `python3 .claude/hooks/test_guard.py`; run them after any change to `guard.py`.
 - After every BMAD install or update, run `python3 scripts/apply-persona-names.py` (`--check` reports only); the update restores the default persona names.
+- Zamolxe (Orchestrator), in `orchestrator/` (Python ≥ 3.12, uv):
+  - Tests: `cd orchestrator && uv run pytest -q`
+  - Lint and format: `cd orchestrator && uv run ruff check && uv run ruff format --check`
+  - Dry-run of the whole stage table with fake adapters: `cd orchestrator && uv run sdlc run --dry-run` (exit 0; prints every `claude -p` it would start and a temporary run dir)
+  - `uv run sdlc status [<run-id>]` and `uv run sdlc resume <run-id>`; pass `--runs-dir <dir>` for a dry-run's temporary dir. A non-dry `sdlc run` exits 1 until the real adapters exist (`_bmad-output/implementation-artifacts/deferred-work.md`).
+  - The stage table is `sdlc/pipeline.yaml`; prompts are `sdlc/prompts/*.md`; dry-run fixtures are `orchestrator/tests/fixtures/dryrun/`.
 - TODO (stage 4): backend (Java) and web (React) build, test and lint commands. Zamolxe (Orchestrator) runs exactly these at the "tests pass" gate (T-8).
 
 ## Conventions that differ from defaults

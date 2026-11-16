@@ -1,0 +1,3 @@
+# CI is red on story 1-1 in every round: integrate rewinds build once, then escalates.
+steps:
+  "story:1-1-ean-input/ci_green": {exit_code: 1}

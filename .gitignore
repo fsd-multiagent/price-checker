@@ -33,6 +33,9 @@ replay_pid*
 # OS and Python caches
 .DS_Store
 __pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
 
 # Orchestrator run state and per-worktree scratch (spine AD-9)
 .sdlc/

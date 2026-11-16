@@ -1,0 +1,479 @@
+"""`apply(pipeline, state, event) -> state`: the only way state changes (AD-4, AD-5).
+
+The state is dumped to plain data, changed, and rebuilt with `model_validate`.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from sdlc.core.gates import last_verdict_block, parse_verdict_text
+from sdlc.core.models import (
+    BudgetExhausted,
+    CoreError,
+    EscalationOpened,
+    Event,
+    GateEvaluated,
+    Merged,
+    Outcome,
+    Pipeline,
+    PrOpened,
+    RunFinished,
+    RunKind,
+    RunResumed,
+    RunStarted,
+    RunState,
+    RunStopped,
+    ScopeReset,
+    Stage,
+    Status,
+    StepFinished,
+    StepInterrupted,
+    StepStarted,
+    StoriesLoaded,
+    Story,
+    Tagged,
+    UnitBlocked,
+    UnitStarted,
+    UnitUnblocked,
+    VerdictSource,
+    WorktreeReady,
+)
+from sdlc.core.outcome import derive_outcome
+from sdlc.core.pipeline import ancestors
+
+S = Status
+TRANSITIONS: dict[Status, frozenset[Status]] = {
+    S.PENDING: frozenset({S.RUNNING, S.BLOCKED, S.SKIPPED}),
+    S.BLOCKED: frozenset({S.PENDING}),
+    S.RUNNING: frozenset({S.PASSED, S.FAILED, S.BLOCKED, S.ESCALATED}),
+    S.PASSED: frozenset({S.PENDING}),
+    S.FAILED: frozenset({S.PENDING, S.ESCALATED}),
+    S.ESCALATED: frozenset({S.PENDING}),
+    S.SKIPPED: frozenset(),
+}
+
+
+def legal(old: Status, new: Status) -> bool:
+    return new in TRANSITIONS[old]
+
+
+def _move(node: dict[str, Any], new: Status, what: str) -> None:
+    old = Status(node["status"])
+    if not legal(old, new):
+        raise CoreError(f"illegal transition {old} -> {new} for {what}")
+    node["status"] = new
+
+
+# --------------------------------------------------------------------------- scopes
+
+
+def unit_scope(stage: Stage, subject: str | None) -> str:
+    if stage.family == "run":
+        return f"stage:{stage.id}"
+    if stage.family == "story":
+        return f"story:{subject}"
+    return f"learn:{subject}"
+
+
+def epic_subject(epic: int) -> str:
+    return f"epic-{epic}"
+
+
+def initial_state(
+    pipeline: Pipeline,
+    *,
+    run_id: str,
+    kind: RunKind,
+    at: str,
+    dry_run: bool,
+    from_stage: str | None = None,
+    fixtures: str | None = None,
+) -> RunState:
+    if from_stage is not None:
+        pipeline.stage(from_stage)  # raises KeyError on an unknown stage
+    start = pipeline.index(from_stage) if from_stage else 0
+    units = []
+    for i, stage in enumerate(pipeline.stages):
+        if kind not in stage.entry or stage.family != "run":
+            continue
+        units.append(
+            {
+                "scope": unit_scope(stage, None),
+                "stage": stage.id,
+                "status": S.SKIPPED if i < start else S.PENDING,
+                "reason": f"run starts at '{from_stage}'" if i < start else None,
+            }
+        )
+    return RunState.model_validate(
+        {
+            "run_id": run_id,
+            "kind": kind,
+            "dry_run": dry_run,
+            "created_at": at,
+            "from_stage": from_stage,
+            "budget": {"limit": pipeline.settings.run_budget_usd},
+            "units": units,
+            "fixtures": fixtures,
+        }
+    )
+
+
+# --------------------------------------------------------------------------- apply
+
+
+def apply(pipeline: Pipeline, state: RunState, event: Event) -> RunState:
+    d = state.model_dump(mode="json")
+    handler = _HANDLERS.get(type(event))
+    if handler is None:
+        raise CoreError(f"no handler for event {type(event).__name__}")
+    handler(pipeline, d, event)
+    return RunState.model_validate(d)
+
+
+def _unit(d: dict[str, Any], scope: str, stage: str) -> dict[str, Any]:
+    for u in d["units"]:
+        if u["scope"] == scope and u["stage"] == stage:
+            return u
+    raise CoreError(f"no unit {scope}/{stage}")
+
+
+def _scope(d: dict[str, Any], scope: str) -> dict[str, Any]:
+    for s in d["scopes"]:
+        if s["id"] == scope:
+            return s
+    raise CoreError(f"no scope {scope}")
+
+
+def _record(d: dict[str, Any], seq: int) -> dict[str, Any]:
+    for r in d["steps"]:
+        if r["seq"] == seq:
+            return r
+    raise CoreError(f"no step record {seq}")
+
+
+def _escalate_record(d: dict[str, Any], scope: str, reason: str) -> None:
+    for e in d["escalations"]:
+        if e["scope"] == scope:
+            e["reason"] = reason
+            return
+    d["escalations"].append({"scope": scope, "reason": reason, "issue": None})
+
+
+def _run_started(p: Pipeline, d: dict[str, Any], e: RunStarted) -> None:
+    _move(d, S.RUNNING, "run")
+
+
+def _run_resumed(p: Pipeline, d: dict[str, Any], e: RunResumed) -> None:
+    status = Status(d["status"])
+    if status is S.PASSED:
+        raise CoreError("run already passed; nothing to resume")
+    if status in (S.ESCALATED, S.BLOCKED):
+        _move(d, S.PENDING, "run")
+    if Status(d["status"]) is S.PENDING:  # also a crash before RunStarted was saved
+        _move(d, S.RUNNING, "run")
+    d["exit_code"] = None
+    d["budget"]["exhausted"] = False
+    if e.budget_limit is not None:
+        d["budget"]["limit"] = e.budget_limit
+    for u in d["units"]:
+        if u["status"] == S.ESCALATED:
+            _move(u, S.PENDING, f"unit {u['scope']}/{u['stage']}")
+            gate = u.get("escalated_gate")
+            if gate:  # AD-6: only the escalated (scope, gate) counter is reset
+                for c in d["counters"]:
+                    if c["scope"] == u["scope"] and c["gate"] == gate:
+                        c["fails"] = 0
+            u["escalated_gate"] = None
+            u["reason"] = "resumed"
+
+
+def _stories_loaded(p: Pipeline, d: dict[str, Any], e: StoriesLoaded) -> None:
+    _load_stories(p, d, e.stories)
+
+
+def _load_stories(p: Pipeline, d: dict[str, Any], stories: tuple[Story, ...]) -> None:
+    if d["stories_loaded"]:  # the breakdown passed again: its stories replace the old ones
+        d["units"] = [u for u in d["units"] if p.stage(u["stage"]).family == "run"]
+    d["stories"] = [s.model_dump() for s in stories]
+    d["stories_loaded"] = True
+    kind = RunKind(d["kind"])
+    start = p.index(d["from_stage"]) if d["from_stage"] else 0
+    epics = sorted({s.epic for s in stories})
+    for i, stage in enumerate(p.stages):
+        if kind not in stage.entry or stage.family == "run":
+            continue
+        subjects = (
+            [epic_subject(n) for n in epics]
+            if stage.learn_queue is not None and stage.learn_queue.value == "epic"
+            else [s.key for s in stories]
+        )
+        for subject in subjects:
+            skipped = i < start
+            d["units"].append(
+                {
+                    "scope": unit_scope(stage, subject),
+                    "stage": stage.id,
+                    "subject": subject,
+                    "status": S.SKIPPED if skipped else S.PENDING,
+                    "reason": f"run starts at '{d['from_stage']}'" if skipped else None,
+                }
+            )
+
+
+def _worktree_ready(p: Pipeline, d: dict[str, Any], e: WorktreeReady) -> None:
+    for s in d["scopes"]:
+        if s["id"] == e.scope:
+            s["worktree"] = e.worktree
+            if s["head_sha"] is None:
+                s["head_sha"] = e.head_sha
+            return
+    d["scopes"].append(
+        {"id": e.scope, "branch": e.branch, "worktree": e.worktree, "head_sha": e.head_sha}
+    )
+
+
+def _unit_started(p: Pipeline, d: dict[str, Any], e: UnitStarted) -> None:
+    u = _unit(d, e.scope, e.stage)
+    _move(u, S.RUNNING, f"unit {e.scope}/{e.stage}")
+    u["round"] += 1
+    u["reason"] = None
+    u["invalidated_by"] = None
+
+
+def _unit_blocked(p: Pipeline, d: dict[str, Any], e: UnitBlocked) -> None:
+    u = _unit(d, e.scope, e.stage)
+    _move(u, S.BLOCKED, f"unit {e.scope}/{e.stage}")
+    u["reason"] = e.reason
+
+
+def _unit_unblocked(p: Pipeline, d: dict[str, Any], e: UnitUnblocked) -> None:
+    u = _unit(d, e.scope, e.stage)
+    _move(u, S.PENDING, f"unit {e.scope}/{e.stage}")
+    u["reason"] = None
+
+
+def _step_started(p: Pipeline, d: dict[str, Any], e: StepStarted) -> None:
+    if e.seq != d["next_seq"]:
+        raise CoreError(f"step seq {e.seq} does not match next_seq {d['next_seq']}")
+    u = _unit(d, e.scope, e.stage)
+    if u["status"] != S.RUNNING or u["round"] != e.round:
+        raise CoreError(f"unit {e.scope}/{e.stage} is not running round {e.round}")
+    p.stage(e.stage).step(e.step)
+    d["steps"].append(
+        {
+            "seq": e.seq,
+            "scope": e.scope,
+            "stage": e.stage,
+            "step": e.step,
+            "round": e.round,
+            "status": S.RUNNING,
+            "cap": e.cap,
+            "base_sha": _scope(d, e.scope)["head_sha"],
+            "started_at": e.at,
+        }
+    )
+    d["next_seq"] += 1
+    d["budget"]["reserved"] += e.cap
+
+
+def _step_finished(p: Pipeline, d: dict[str, Any], e: StepFinished) -> None:
+    r = _record(d, e.seq)
+    if r["status"] != S.RUNNING:
+        raise CoreError(f"step {e.seq} is not running")
+    step = p.stage(r["stage"]).step(r["step"])
+    verdict = None
+    if step.verdict_source is VerdictSource.RESULT_BLOCK:
+        verdict = last_verdict_block(e.result.result)
+    elif step.verdict_source is VerdictSource.FILE:
+        verdict = parse_verdict_text(e.verdict_text)
+    readiness = p.stage(r["stage"]).gate_of_step(step.id).kind == "readiness"
+    derived = derive_outcome(step, e.result, verdict, readiness=readiness)
+    r.update(
+        finished_at=e.at,
+        outcome=derived.outcome,
+        cost=e.result.total_cost_usd,
+        reason=derived.reason,
+        status_value=derived.status_value,
+        verdict=verdict.model_dump() if verdict else None,
+    )
+    d["budget"]["reserved"] = max(0.0, d["budget"]["reserved"] - r["cap"])
+    d["budget"]["spent"] += e.result.total_cost_usd
+    what = f"step {e.seq} ({r['scope']}/{r['step']})"
+    if derived.outcome is Outcome.DONE:
+        _move(r, S.PASSED, what)
+        if e.head_sha:
+            _scope(d, r["scope"])["head_sha"] = e.head_sha
+    elif derived.outcome is Outcome.AMBIGUOUS:
+        _move(r, S.ESCALATED, what)
+        u = _unit(d, r["scope"], r["stage"])
+        if u["status"] == S.RUNNING:  # AD-18: a blocking question escalates at once
+            _move(u, S.ESCALATED, f"unit {r['scope']}/{r['stage']}")
+            u["reason"] = f"step '{r['step']}': {derived.reason}"
+            _scope(d, r["scope"])["needs_reset"] = True
+            _escalate_record(d, r["scope"], u["reason"])
+    else:
+        _move(r, S.FAILED, what)
+
+
+def _step_interrupted(p: Pipeline, d: dict[str, Any], e: StepInterrupted) -> None:
+    r = _record(d, e.seq)
+    _move(r, S.FAILED, f"step {e.seq}")
+    r["interrupted"] = True
+    r["reason"] = "interrupted; rerun in the same round"
+    r["finished_at"] = e.at
+    # The real cost of a killed process is unknown: charge its whole cap (AD-11).
+    d["budget"]["reserved"] = max(0.0, d["budget"]["reserved"] - r["cap"])
+    d["budget"]["spent"] += r["cap"]
+    r["cost"] = r["cap"]
+
+
+def _gate_evaluated(p: Pipeline, d: dict[str, Any], e: GateEvaluated) -> None:
+    u = _unit(d, e.scope, e.stage)
+    what = f"unit {e.scope}/{e.stage}"
+    if u["status"] != S.RUNNING or u["round"] != e.round:
+        raise CoreError(f"{what} is not running round {e.round}")
+    stage = p.stage(e.stage)
+    if e.failed_gate is None:
+        _move(u, S.PASSED, what)
+        u["feedback"] = ()
+        if e.stories is not None:
+            _load_stories(p, d, e.stories)
+        return
+
+    counter = next(
+        (c for c in d["counters"] if c["scope"] == e.scope and c["gate"] == e.failed_gate), None
+    )
+    if counter is None:
+        counter = {"scope": e.scope, "gate": e.failed_gate, "fails": 0}
+        d["counters"].append(counter)
+    counter["fails"] += 1  # AD-11: the round is charged to the gate that failed
+    _scope(d, e.scope)["needs_reset"] = True
+    _move(u, S.FAILED, what)
+    max_rounds = stage.max_rounds or p.settings.max_rounds
+    if counter["fails"] >= max_rounds:
+        _move(u, S.ESCALATED, what)
+        u["escalated_gate"] = e.failed_gate
+        u["reason"] = f"gate '{e.failed_gate}' failed {counter['fails']} times"
+        u["feedback"] = e.feedback
+        _escalate_record(d, e.scope, u["reason"])
+        return
+
+    _move(u, S.PENDING, what)
+    u["reason"] = f"gate '{e.failed_gate}' failed in round {e.round}"
+    u["feedback"] = e.feedback
+    target = stage.on_fail or stage.id
+    if target == stage.id:
+        return
+    chain = ancestors(p, stage.id)
+    marker = f"{stage.id}:{e.failed_gate}"
+    for s in p.stages:
+        if s.id == stage.id or s.id not in chain:
+            continue
+        if s.id != target and target not in ancestors(p, s.id):
+            continue
+        other = next(
+            (
+                x
+                for x in d["units"]
+                if x["stage"] == s.id and x["scope"] == unit_scope(s, u.get("subject"))
+            ),
+            None,
+        )
+        if other is not None and other["status"] == S.PASSED:
+            _move(other, S.PENDING, f"unit {other['scope']}/{s.id}")
+            other["invalidated_by"] = marker
+            other["tagged"] = None
+            if s.id == target:
+                other["feedback"] = e.feedback
+
+
+def _scope_reset(p: Pipeline, d: dict[str, Any], e: ScopeReset) -> None:
+    sc = _scope(d, e.scope)
+    sc["needs_reset"] = False
+    if e.patch:
+        for u in d["units"]:
+            if u["scope"] == e.scope and u["status"] in (S.PENDING, S.RUNNING):
+                u["feedback"] = (*u["feedback"], e.patch)
+
+
+def _pr_opened(p: Pipeline, d: dict[str, Any], e: PrOpened) -> None:
+    _scope(d, e.scope)["pr"] = e.number
+
+
+def _merged(p: Pipeline, d: dict[str, Any], e: Merged) -> None:
+    sc = _scope(d, e.scope)
+    if sc["merged_sha"]:
+        return
+    sc["merged_sha"] = e.sha
+    if not e.scope.startswith("story:"):
+        return
+    key = e.scope.split(":", 1)[1]
+    _enqueue(d, f"learn:{key}")
+    epic = Story.model_validate(next(s for s in d["stories"] if s["key"] == key)).epic
+    keys = [s["key"] for s in d["stories"] if s["key"].split("-", 1)[0] == str(epic)]
+    merged = {s["id"] for s in d["scopes"] if s["merged_sha"]}
+    if all(f"story:{k}" in merged for k in keys):
+        _enqueue(d, f"learn:{epic_subject(epic)}")
+
+
+def _enqueue(d: dict[str, Any], scope: str) -> None:
+    for u in d["units"]:
+        if u["scope"] == scope and u["queued"] is None:
+            u["queued"] = d["next_learn_seq"]
+            d["next_learn_seq"] += 1
+
+
+def _tagged(p: Pipeline, d: dict[str, Any], e: Tagged) -> None:
+    _unit(d, e.scope, e.stage)["tagged"] = e.tag
+
+
+def _escalation_opened(p: Pipeline, d: dict[str, Any], e: EscalationOpened) -> None:
+    for x in d["escalations"]:
+        if x["scope"] == e.scope:
+            x["issue"] = e.issue
+            return
+    raise CoreError(f"no escalation for {e.scope}")
+
+
+def _budget_exhausted(p: Pipeline, d: dict[str, Any], e: BudgetExhausted) -> None:
+    d["budget"]["exhausted"] = True
+    _escalate_record(d, "run", e.reason)
+
+
+def _run_finished(p: Pipeline, d: dict[str, Any], e: RunFinished) -> None:
+    if e.exit_code == 0:
+        new = S.PASSED
+    elif d["budget"]["exhausted"] or any(u["status"] == S.ESCALATED for u in d["units"]):
+        new = S.ESCALATED
+    else:
+        new = S.BLOCKED
+    _move(d, new, "run")
+    d["exit_code"] = e.exit_code
+
+
+def _run_stopped(p: Pipeline, d: dict[str, Any], e: RunStopped) -> None:
+    """Audit only: a resume picks the run up from the state as it is."""
+
+
+_HANDLERS: dict[type, Any] = {
+    RunStarted: _run_started,
+    RunResumed: _run_resumed,
+    StoriesLoaded: _stories_loaded,
+    WorktreeReady: _worktree_ready,
+    UnitStarted: _unit_started,
+    UnitBlocked: _unit_blocked,
+    UnitUnblocked: _unit_unblocked,
+    StepStarted: _step_started,
+    StepFinished: _step_finished,
+    StepInterrupted: _step_interrupted,
+    GateEvaluated: _gate_evaluated,
+    ScopeReset: _scope_reset,
+    PrOpened: _pr_opened,
+    Merged: _merged,
+    Tagged: _tagged,
+    EscalationOpened: _escalation_opened,
+    BudgetExhausted: _budget_exhausted,
+    RunStopped: _run_stopped,
+    RunFinished: _run_finished,
+}

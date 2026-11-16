@@ -1,0 +1,8 @@
+{
+  "reviewer": "dry-run-fixture",
+  "target": "dry-run",
+  "verdict": "fail",
+  "findings": [
+    {"id": "CR-2", "severity": "blocker", "summary": "This might break something"}
+  ]
+}

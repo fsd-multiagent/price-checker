@@ -1,0 +1,8 @@
+{
+  "reviewer": "dry-run-fixture",
+  "target": "dry-run",
+  "verdict": "pass",
+  "findings": [
+    {"id": "F-1", "severity": "minor", "summary": "Naming could be clearer", "fix": "Rename the helper"}
+  ]
+}

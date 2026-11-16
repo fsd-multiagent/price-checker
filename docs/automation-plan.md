@@ -134,6 +134,43 @@ The orchestrator runs on a **self-hosted runner**: your Mac or a small separate 
 
 Before Actions and the runner exist, `sdlc run` works the same way from a local terminal.
 
+### 4.6 Running it
+
+All commands run from `orchestrator/` (`uv run sdlc …`). The design is in the orchestrator spine, `_bmad-output/planning-artifacts/architecture/architecture-orchestrator-2026-11-16/ARCHITECTURE-SPINE.md`.
+
+**What works today (2026-11-16).** Only `sdlc run --dry-run`, `sdlc status` and `sdlc resume` on a dry run. A dry run drives the whole stage table with fake agents, git and GitHub, and costs nothing. A real `sdlc run` refuses to start until the real adapters exist (see "Order of the remaining work" below).
+
+**One-time setup per project**
+
+1. Copy the agent team into the repo: `.claude/`, `_bmad/`, `orchestrator/` and `sdlc/` (§10 has the plan for a reusable module).
+2. Write `docs/initial-spec.md`, plus the project's rules in `docs/standards/` and its registers.
+3. Set `run_budget_usd`, `max_rounds` and `max_parallel` in `sdlc/pipeline.yaml` (§6).
+4. Prepare the GitHub repo:
+   - Turn on auto-merge, and make CI a required check on `main`. The orchestrator refuses to auto-merge without required checks.
+   - Store `CLAUDE_CODE_OAUTH_TOKEN` on the runner, from `claude setup-token`.
+5. Check the wiring with `sdlc run --dry-run`.
+
+**Running the SDLC, in whole or in part**
+
+| You want | Command or trigger | What runs |
+|---|---|---|
+| The whole SDLC | `sdlc run`, or push a change to `docs/initial-spec.md` | Stages 1–9. You act only at the three points in §6 |
+| To start partway | `sdlc run --from <stage-id>`, for example `--from build` | Earlier stages are skipped. Their outputs must already exist, for example `epics.md` for `--from build` |
+| To stop partway, for example planning only | `sdlc run --until <stage-id>` | **Not built yet** (deferred work) |
+| One story | An issue labelled `story` containing a story `yaml` block, or `sdlc story <issue>` | Stages 7–9 for that story. **Not built yet** |
+| A fix for a broken adapter | The health check opens an `adapter-broken` issue, or `sdlc fix <issue>` | Stages 7–9 for one generated story. **Not built yet** |
+| To check a run | `sdlc status [<run-id>]` | Prints every scope with its status, round and reason |
+| To continue after an escalation or a block | Fix the input (spec, story, config or register approval), then `sdlc resume <run-id>` | The paused scope continues; the rest of the run is unchanged |
+
+Exit codes: 0 means everything passed, 2 means something escalated or is blocked, 1 means an internal error.
+
+**Order of the remaining work**
+
+1. Finish step 0.8: the core and the dry-run (in review on `feat/orchestrator-dry-run`).
+2. Build the real `claude`, `git` and `gh` adapters, then the lock, the queue, issue-started runs and `--until` (see `_bmad-output/implementation-artifacts/deferred-work.md`).
+3. Step 0.9: push the repo, add the Actions workflows, register the runner.
+4. Phase 1: run `sdlc run --until breakdown` on Price Checker, then the rest.
+
 ## 5. Guardrails
 
 - **Per-role tool allowlists** in the agent definitions and `.claude/settings.json`:
@@ -233,3 +270,7 @@ Phase 0 builds the team, so the team cannot run it. Claude (the main session) do
 - [ ] Verify Altex and PC Garage. Both refused or stalled plain non-browser requests during research.
 - [ ] Check whether cel.ro search allows lookup by EAN under its robots.txt.
 - [ ] Choose how to look up an EAN at each retailer (Architect, stage 4).
+- [ ] After phase 1 has run end to end, extract the agent team as a reusable BMAD module with `bmad-module-builder` (Loredan (Architect), with the owner).
+  - **Reusable core:** the four custom agents, `_bmad/custom/*.toml`, Zamolxe (Orchestrator) and `sdlc/pipeline.yaml`, `review-findings.md`, the ADR template, the standards layout, and guard rules G1–G3.
+  - **Supplied per project at install:** the spec, the registers, the project rules (S-1–S-8, C-5–C-9, C-12, T-2, T-3, T-7), and guard rules G4–G5.
+  - **Until then:** keep project-specific content out of the shared files, so the extraction stays mechanical.

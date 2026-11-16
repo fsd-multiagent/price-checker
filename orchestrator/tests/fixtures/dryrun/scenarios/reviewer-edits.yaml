@@ -1,0 +1,4 @@
+# In round 1, the file-verdict code reviewer edits a source file. That fails the step.
+steps:
+  "story:1-1-ean-input/code_review/r1":
+    writes: {"backend/src/main/java/Hack.java": epics.md}

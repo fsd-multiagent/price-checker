@@ -1,0 +1,3 @@
+# The process is killed while Eufrosina (QA) runs on story 1-2.
+steps:
+  "story:1-2-retailer-config/qa/r1": {crash: true}

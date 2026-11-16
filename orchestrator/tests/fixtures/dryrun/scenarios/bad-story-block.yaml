@@ -1,0 +1,4 @@
+# Round 1 of stage 5 writes story blocks with a missing `sources` and an unknown dependency.
+steps:
+  "*/epics/r1":
+    writes: {"_bmad-output/planning-artifacts/epics.md": epics-bad.md}

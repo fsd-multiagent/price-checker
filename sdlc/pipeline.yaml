@@ -1,0 +1,272 @@
+# The stage table of docs/automation-plan.md §2, run by Zamolxe (Orchestrator).
+# Validated at load by orchestrator/src/sdlc/core/pipeline.py (AD-7, AD-16, AD-17, AD-19).
+# Changing the process is an edit here, not in Python. Prompts live in sdlc/prompts/<prompt>.md.
+#
+# Stage fields: id, entry, per_story, learn_queue, needs, branch, steps, parallel, gate,
+#   on_fail, max_rounds, timeout_min, budget_usd (cap per agent or judge step), model, stories_file.
+# Step fields: id, kind (agent | judge | script), skill or agent, script, prompt, tools, inputs,
+#   writes, outcome_source (AD-18), verdict_source (AD-17).
+
+settings:
+  max_rounds: 3
+  max_parallel: 3
+  timeout_min: 30
+  ci_timeout_min: 30
+  serial_paths: [api/openapi.yaml]
+  # Owner: confirm or change this ceiling (plan §6). There is no default; removing it is a load error.
+  run_budget_usd: 100
+
+stages:
+  - id: analysis
+    title: "1. Analysis: Pompiliu (Analyst)"
+    entry: [full]
+    budget_usd: 2
+    steps:
+      - id: brief
+        kind: agent
+        skill: bmad-product-brief
+        prompt: brief
+        tools: [Skill, Read, Grep, Glob, Edit, Write]
+        inputs: [docs/initial-spec.md]
+        writes: true
+      - id: coverage
+        kind: judge
+        prompt: brief-coverage
+        tools: [Read, Grep, Glob]
+        inputs: [docs/initial-spec.md, _bmad-output/planning-artifacts/briefs/]
+        verdict_source: result_block
+    gate: judge_coverage
+
+  - id: requirements
+    title: "2. Requirements: Onofrei (PM)"
+    entry: [full]
+    budget_usd: 3
+    steps:
+      - id: prd
+        kind: agent
+        skill: bmad-prd
+        prompt: prd
+        tools: [Skill, Read, Grep, Glob, Edit, Write]
+        inputs: [_bmad-output/planning-artifacts/briefs/]
+        writes: true
+      - id: prd_validate
+        kind: agent
+        skill: bmad-prd
+        prompt: prd-validate
+        tools: [Skill, Read, Grep, Glob]
+        inputs: [_bmad-output/planning-artifacts/prds/]
+        verdict_source: result_block
+      - id: fr_ac
+        kind: script
+        script: fr_ac_check
+    gate: prd_validate_and_fr_ac
+
+  - id: design
+    title: "3. Design: Safta (UX Designer) and Veronel (Security & Compliance), in parallel"
+    entry: [full]
+    budget_usd: 2
+    steps:
+      - id: ux
+        kind: agent
+        skill: bmad-ux
+        prompt: ux
+        tools: [Skill, Read, Grep, Glob, Edit, Write]
+        inputs: [_bmad-output/planning-artifacts/prds/]
+        writes: true
+      - id: security_prd
+        kind: agent
+        agent: security-compliance-reviewer
+        prompt: security-prd
+        tools: [Read, Grep, Glob]
+        inputs: [_bmad-output/planning-artifacts/prds/, docs/source-register.md]
+        verdict_source: result_block
+    parallel: [[ux, security_prd]]
+    gate: review_verdicts
+
+  - id: architecture
+    title: "4. Architecture: Loredan (Architect), then Veronel (Security & Compliance)"
+    entry: [full]
+    budget_usd: 5
+    timeout_min: 60
+    steps:
+      - id: architect
+        kind: agent
+        skill: bmad-architecture
+        prompt: architecture
+        tools: [Skill, Read, Grep, Glob, Edit, Write]
+        inputs: [_bmad-output/planning-artifacts/prds/, _bmad-output/planning-artifacts/ux-designs/]
+        writes: true
+      - id: security_arch
+        kind: agent
+        agent: security-compliance-reviewer
+        prompt: security-architecture
+        tools: [Read, Grep, Glob]
+        inputs: [_bmad-output/planning-artifacts/architecture/, docs/adr/]
+        verdict_source: result_block
+    gate: review_verdicts
+
+  - id: breakdown
+    title: "5. Breakdown: Onofrei (PM), then Loredan (Architect) readiness"
+    entry: [full]
+    budget_usd: 3
+    stories_file: _bmad-output/planning-artifacts/epics.md
+    steps:
+      - id: epics
+        kind: agent
+        skill: bmad-create-epics-and-stories
+        prompt: epics
+        tools: [Skill, Read, Grep, Glob, Edit, Write]
+        inputs:
+          - _bmad-output/planning-artifacts/prds/
+          - _bmad-output/planning-artifacts/ux-designs/
+          - _bmad-output/planning-artifacts/architecture/
+        writes: true
+      - id: readiness
+        kind: agent
+        skill: bmad-sprint-planning
+        prompt: readiness
+        tools: [Skill, Read, Grep, Glob, Edit, Write]
+        inputs: [_bmad-output/planning-artifacts/epics.md]
+        writes: true
+    gate: {kind: readiness, steps: [readiness]}
+
+  # AD-20: after the stage 5 gate the planning branch merges through a PR; stages 6 and 7 wait.
+  - id: planning-pr
+    title: "Planning PR: CI green, then merge"
+    entry: [full]
+    max_rounds: 2
+    steps:
+      - {id: open_pr, kind: script, script: open_pr}
+      - {id: ci_green, kind: script, script: ci_green}
+      - {id: merge_pr, kind: script, script: merge_pr}
+    gate: ci_green
+
+  - id: infra
+    title: "6. Infrastructure: Pacala (DevOps)"
+    entry: [full]
+    needs: [planning-pr]
+    branch: "infra/{run_id}"
+    budget_usd: 3
+    steps:
+      - id: devops
+        kind: agent
+        agent: devops-release
+        prompt: infra
+        tools: [Read, Grep, Glob, Edit, Write, Bash]
+        inputs: [_bmad-output/planning-artifacts/architecture/, docs/standards/infrastructure.md]
+        writes: true
+      - {id: terraform_plan, kind: script, script: terraform_plan}
+      # The infra branch merges through its own PR; the human terraform apply stays outside the run.
+      - {id: open_pr, kind: script, script: open_pr}
+      - {id: ci_green, kind: script, script: ci_green}
+      - {id: merge_pr, kind: script, script: merge_pr}
+    gate:
+      - {kind: terraform_plan, steps: [terraform_plan]}
+      - {kind: ci_green, steps: [open_pr, ci_green, merge_pr]}
+
+  - id: build
+    title: "7. Build: Marghioala (Developer), Eufrosina (QA), Filofteia (Code Reviewer), Veronel (Security & Compliance)"
+    entry: [full, story, fix]
+    per_story: true
+    needs: [planning-pr]
+    budget_usd: 5
+    steps:
+      - id: dev
+        kind: agent
+        skill: bmad-build-auto
+        prompt: dev
+        tools: [Skill, Read, Grep, Glob, Edit, Write, Bash]
+        inputs: [_bmad-output/planning-artifacts/epics.md, _bmad-output/planning-artifacts/architecture/]
+        writes: true
+      - id: qa
+        kind: agent
+        skill: bmad-testarch-automate
+        prompt: qa
+        tools: [Skill, Read, Grep, Glob, Edit, Write, Bash]
+        inputs: [_bmad-output/planning-artifacts/epics.md, docs/standards/testing.md]
+        writes: true
+      - {id: tests, kind: script, script: tests}
+      - id: code_review
+        kind: agent
+        skill: bmad-code-review
+        prompt: code-review
+        tools: [Skill, Read, Grep, Glob, Write]
+        inputs: [docs/standards/coding.md, docs/standards/testing.md]
+        writes: true # only its verdict file under .sdlc/ (AD-16)
+        verdict_source: file
+      - id: code_lens
+        kind: agent
+        agent: code-reviewer
+        prompt: code-lens
+        tools: [Read, Grep, Glob]
+        inputs: [docs/standards/coding.md, docs/standards/testing.md]
+        verdict_source: result_block
+      - id: security
+        kind: agent
+        agent: security-compliance-reviewer
+        prompt: security-story
+        tools: [Read, Grep, Glob]
+        inputs: [docs/standards/security-compliance.md, docs/source-register.md]
+        verdict_source: result_block
+    parallel: [[code_review, code_lens, security]]
+    gate:
+      - {kind: tests, steps: [tests]}
+      - {kind: review_verdicts, steps: [code_review, code_lens, security]}
+
+  - id: integrate
+    title: "8. Integrate: rebase, PR, CI green, merge"
+    entry: [full, story, fix]
+    per_story: true
+    needs: [build]
+    on_fail: build # a failed rebase or CI gets one Developer fix round, then escalates (AD-15)
+    max_rounds: 2
+    steps:
+      - {id: rebase, kind: script, script: rebase}
+      - {id: open_pr, kind: script, script: open_pr}
+      - {id: ci_green, kind: script, script: ci_green}
+      - {id: merge_pr, kind: script, script: merge_pr}
+    gate: ci_green
+
+  - id: learn
+    title: "9. Learn: Aglaia (Knowledge Keeper), one story at a time on learn/<key>"
+    entry: [full, story, fix]
+    per_story: true
+    learn_queue: story
+    needs: [integrate]
+    budget_usd: 2
+    steps:
+      - id: keeper
+        kind: agent
+        agent: knowledge-keeper
+        prompt: knowledge-keeper
+        tools: [Read, Grep, Glob, Edit, Write]
+        inputs: [docs/standards/documentation.md, docs/adr/README.md]
+        writes: true
+        verdict_source: file
+      - {id: sprint_status, kind: script, script: render_sprint_status}
+      - {id: open_pr, kind: script, script: open_pr}
+      - {id: ci_green, kind: script, script: ci_green}
+      - {id: merge_pr, kind: script, script: merge_pr}
+    gate:
+      - {kind: docs_updated, steps: [keeper]}
+      - {kind: ci_green, steps: [open_pr, ci_green, merge_pr]}
+
+  - id: retro
+    title: "9. Learn: epic retrospective once every story in the epic is merged"
+    entry: [full]
+    per_story: true
+    learn_queue: epic
+    needs: [integrate]
+    budget_usd: 2
+    steps:
+      - id: retrospective
+        kind: agent
+        skill: bmad-retrospective
+        prompt: retrospective
+        tools: [Skill, Read, Grep, Glob, Edit, Write]
+        inputs: [_bmad-output/planning-artifacts/epics.md]
+        writes: true
+      - {id: open_pr, kind: script, script: open_pr}
+      - {id: ci_green, kind: script, script: ci_green}
+      - {id: merge_pr, kind: script, script: merge_pr}
+    gate: ci_green
