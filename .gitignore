@@ -29,3 +29,11 @@ replay_pid*
 .env.*
 *.tfstate*
 *.tfvars
+
+# OS and Python caches
+.DS_Store
+__pycache__/
+
+# Orchestrator run state and per-worktree scratch (spine AD-9)
+.sdlc/
+_bmad-output/sdlc/
