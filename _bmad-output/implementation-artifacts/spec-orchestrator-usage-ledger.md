@@ -8,7 +8,7 @@ review_loop_iteration: 0
 baseline_commit: '3fafbf816b6fd5fd10fabd11fbd662ab8dc98bdb'
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-orchestrator-2026-11-16/ARCHITECTURE-SPINE.md'
-  - '{project-root}/docs/adr/0018-orchestrator-usage-ledger-per-agent.md'
+  - '{project-root}/docs/adr/0019-orchestrator-usage-ledger-per-agent.md'
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -17,7 +17,7 @@ context:
 
 **Problem:** The owner wants the token use of every agent measured. Today each step stores one estimated cost, and `sdlc status` shows only the run total. Nothing is attributed to an agent, kept across runs, warned about, or given to the retrospective.
 
-**Approach:** Implement AD-24 (the usage ledger per agent) and AD-25 (opt-in OpenTelemetry) of the orchestrator spine, with ADR 0018, exactly as written. Phase 1 run `20261117-174705-full` is in progress and must stay resumable with the new code. `orchestrator/tests/fixtures/legacy/state-pre-ad24.json` is a snapshot of its state.
+**Approach:** Implement AD-24 (the usage ledger per agent) and AD-25 (opt-in OpenTelemetry) of the orchestrator spine, with ADR 0019, exactly as written. Phase 1 run `20261117-174705-full` is in progress and must stay resumable with the new code. `orchestrator/tests/fixtures/legacy/state-pre-ad24.json` is a snapshot of its state.
 
 ## Boundaries & Constraints
 
@@ -126,7 +126,7 @@ Pass 1 (2026-11-17). Reviewers: BH = Blind Hunter, VG = Verification Gap, EC = E
 
 | # | Finding | Verdict | Evidence | Route |
 |---|---|---|---|---|
-| 1 | BH1: no ADR or spine change in the patch | false | ADR 0018 and AD-24/AD-25 are committed in `928a607` and `326f46e`, before the baseline; the diff excluded `docs/adr` | reject |
+| 1 | BH1: no ADR or spine change in the patch | false | ADR 0019 and AD-24/AD-25 are committed in `928a607` and `326f46e`, before the baseline; the diff excluded `docs/adr` | reject |
 | 2 | BH2: legacy fixture missing | false | `tests/fixtures/legacy/state-pre-ad24.json` is committed at the baseline `3fafbf8`; the diff excluded it | reject |
 | 3 | BH3, EC3, VG-o3: `status` and `usage` write the ledger and race a live run; `--rebuild` can drop rows | high | `_load_run` → `RunStore.load` → `reconcile` appends; no lock | patch (reports read state; only the run appends; rebuild refuses while a run is running) |
 | 4 | BH4: ledger rows are snapshots at finish time | medium | Rows keep their first values under "first wins" | patch (covered by row 3: reports read state) |

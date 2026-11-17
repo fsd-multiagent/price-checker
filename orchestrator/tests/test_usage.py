@@ -1,5 +1,5 @@
 """Usage ledger per agent and opt-in OpenTelemetry: one test per row of the I/O and edge-case
-matrix in spec-orchestrator-usage-ledger.md (AD-24, AD-25, ADR 0018), plus the per-run
+matrix in spec-orchestrator-usage-ledger.md (AD-24, AD-25, ADR 0019), plus the per-run
 invariant that the ledger's cost sum equals `budget.spent`."""
 
 from __future__ import annotations

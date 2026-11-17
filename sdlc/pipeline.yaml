@@ -13,7 +13,7 @@
 #   usage_limit_max_wait_h, allow_api_key. A plan usage limit pauses the run until resume_at, and
 #   `sdlc status` shows a "plan usage limit" line while paused. Dry-run scenarios: usage-limit
 #   (one pause, exit 0) and usage-limit-forever (escalates, scope run, exit 2).
-# Usage settings (AD-24, AD-25, ADR 0018):
+# Usage settings (AD-24, AD-25, ADR 0019):
 #   agents: role -> the skills and agent definitions it may run. Every new agent or judge step
 #     needs an agent_role from this map; "Judge (gate check)" is a pseudo-role for gate judges
 #     and runs `judge` (every judge step). A missing or disallowed role is a load error.

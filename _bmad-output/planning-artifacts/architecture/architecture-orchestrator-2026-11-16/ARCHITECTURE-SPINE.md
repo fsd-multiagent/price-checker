@@ -20,7 +20,7 @@ companions:
   - docs/adr/0003-orchestrator-git-integration.md
   - docs/adr/0004-gate-commands-in-agents-md.md
   - docs/adr/0005-orchestrator-subscription-limits-and-budget.md
-  - docs/adr/0018-orchestrator-usage-ledger-per-agent.md
+  - docs/adr/0019-orchestrator-usage-ledger-per-agent.md
 ---
 
 # Architecture Spine — Zamolxe (Orchestrator)
