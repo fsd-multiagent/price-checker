@@ -261,7 +261,7 @@ When a Retailer blocks us, the system stops contacting it and flags the Block. R
 - **AC-N3.4** `Retry-After` is honored; errors are retried with exponential backoff and a cap, within the per-Retailer timeout (S-5).
 - **AC-N3.5** Every request carries one honest user agent with a contact URL. A test asserts that it contains none of `bot`, `robot`, `crawl` and `spider`, in any case (S-6).
 - **AC-N3.6** No proxies, CAPTCHA solving, fingerprint spoofing or header impersonation (S-6).
-- **AC-N3.7** Only price, currency, availability, timestamp and URL are kept in the Cache and logs; no product names, descriptions or images are stored there (S-7). Recorded test fixtures have images and long descriptions stripped (T-2).
+- **AC-N3.7** Of the data taken from a Retailer page, only price, currency, availability and URL are kept, plus the Fetch time (S-7). A Cache entry is keyed by EAN and Retailer and holds only those facts and the Row status (AC-3.6). Log lines hold only the fields C-9 allows (EAN, Retailer, outcome, timing) and the time; they never hold page data beyond the outcome. No product name, description or image is kept in the Cache or logs. Recorded test fixtures have images and long descriptions stripped (T-2).
 - **AC-N3.8** These rules are enforced in one shared fetch client that every Adapter must use, not left to each Adapter.
 
 #### NFR-4: Accessibility (spec §7)
