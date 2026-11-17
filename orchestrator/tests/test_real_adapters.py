@@ -696,6 +696,11 @@ def test_real_run_escalates_then_resumes(sdlc_repo, stubs, tmp_path, monkeypatch
         encoding="utf-8",
     )
     osa.chmod(0o755)
+    # The notifier is macOS-only; force it on so CI on Linux exercises the same path.
+    real_init = DesktopNotifier.__init__
+    monkeypatch.setattr(
+        DesktopNotifier, "__init__", lambda self, platform=None: real_init(self, "darwin")
+    )
     gh_config(tmp_path, monkeypatch, issues=[])
     assert main(["--repo", str(repo), "run"]) == 2
     (run_dir,) = list((repo / "_bmad-output" / "sdlc" / "runs").iterdir())

@@ -1,0 +1,52 @@
+# CI for every pull request and every push to main (plan step 0.9, stage 8 "CI green").
+# The job name `ci` is the check to make required on main.
+# Actions are pinned to commit SHAs (S-12). No secrets are used; no live Claude call runs here (T-3).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the orchestrator's git tests need full history
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Git identity for the orchestrator's git tests
+        run: |
+          git config --global user.name "ci"
+          git config --global user.email "ci@users.noreply.github.com"
+
+      - name: Guard hook tests
+        run: python3 .claude/hooks/test_guard.py
+
+      - name: Orchestrator lint and format
+        working-directory: orchestrator
+        run: |
+          uv run --locked ruff check
+          uv run --locked ruff format --check
+
+      - name: Orchestrator tests
+        working-directory: orchestrator
+        run: uv run --locked pytest -q
+
+      - name: Orchestrator dry-run
+        working-directory: orchestrator
+        run: uv run --locked sdlc run --dry-run
