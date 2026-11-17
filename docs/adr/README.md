@@ -32,3 +32,4 @@
 | [0017](0017-logging-and-privacy.md) | Log only an allowlist of fields as JSON to stdout, and turn off access logs | Proposed | 2026-11-17 |
 | [0018](0018-ssh-restriction-jit-nsg.md) | Restrict SSH to a just-in-time NSG rule opened by the workflow over OIDC, a key-only sshd and a forced-command deploy user | Proposed | 2026-11-17 |
 | [0019](0019-orchestrator-usage-ledger-per-agent.md) | Measure every agent step's usage in a ledger derived from the run state, with optional OpenTelemetry export | Accepted | 2026-11-17 |
+| [0020](0020-docker-log-rotation-on-vm.md) | Rotate container logs on the VM with Docker's `local` driver, capped at 5 × 10 MB per container | Proposed | 2026-11-17 |
