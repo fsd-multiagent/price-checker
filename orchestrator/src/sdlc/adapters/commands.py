@@ -105,6 +105,40 @@ def parse_commands(text: str) -> dict[str, tuple[str, ...]]:
     return out
 
 
+def _block_span(text: str) -> tuple[int, int] | None:
+    """Start and end offsets in `text` of the `sdlc-commands` fenced block (fences included)
+    under "Running and verifying", so a copy of the same text elsewhere is never touched."""
+    section = _section(text, SECTION)
+    if section is None:
+        return None
+    m = _FENCE.search(section)
+    if m is None:
+        return None
+    offset = text.find(section)
+    return offset + m.start(), offset + m.end()
+
+
+def restore_commands_block(current: str | None, base: str) -> tuple[str, str] | None:
+    """`current` with its `sdlc-commands` block put back as it is in `base`, and what was
+    restored (`"sdlc-commands block"` or `"whole file"`); None when nothing needs restoring
+    (ADR 0021).
+
+    Other edits to the file are kept. When `current` is gone, or has lost the block or its
+    section, the whole of `base` comes back: there is nothing to splice into, and the agent's
+    other edits to the file are lost (the caller reports that).
+    """
+    wanted = _block_span(base)
+    if wanted is None:
+        return None
+    block = base[wanted[0] : wanted[1]]
+    have = None if current is None else _block_span(current)
+    if current is None or have is None:
+        return base, "whole file"
+    if current[have[0] : have[1]] == block:
+        return None
+    return current[: have[0]] + block + current[have[1] :], "sdlc-commands block"
+
+
 def denied(argv: list[str]) -> str | None:
     """Why the guard hook would deny this command, or None. Checked at every position, so a
     wrapper (`uv run`, `env`) does not hide the program."""
