@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import ro.pricechecker.api.generated.model.EanErrorCode;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -102,6 +104,26 @@ class EanCasesTest {
         assertThat(c.get("code").stringValue()).as("%s", c).isEqualTo(expected);
       }
     }
+  }
+
+  @Test
+  void ac_1_3_3_errorCodesAreExactlyTheContractEanErrorCodeEnum() {
+    List<String> generated =
+        Arrays.stream(EanErrorCode.values()).map(EanErrorCode::getValue).toList();
+    assertThat(generated).containsExactlyElementsOf(CODES);
+    Set<String> used = new HashSet<>();
+    for (JsonNode c : cases()) {
+      if (!c.get("valid").booleanValue()) {
+        used.add(c.get("code").stringValue());
+      }
+    }
+    assertThat(used).containsExactlyInAnyOrderElementsOf(generated);
+  }
+
+  @Test
+  void ac_1_3_3_caseNamesAreUnique() {
+    List<String> names = cases().stream().map(c -> c.get("name").stringValue()).toList();
+    assertThat(names).doesNotHaveDuplicates();
   }
 
   @Test
