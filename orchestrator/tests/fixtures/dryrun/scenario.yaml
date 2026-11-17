@@ -1,0 +1,11 @@
+# Default dry-run: every stage passes. Scenarios under scenarios/ overlay these entries.
+# Keys are "<scope>/<step>" or "<scope>/<step>/r<round>"; "*" matches any scope.
+register: source-register.md
+defaults:
+  agent: {result: results/success.json, status: done}
+  reviewer: {result: results/success.json, verdict: verdicts/pass.json}
+  script: {exit_code: 0}
+steps:
+  "*/epics":
+    writes: {"_bmad-output/planning-artifacts/epics.md": epics.md}
+  "*/readiness": {status: PASS}

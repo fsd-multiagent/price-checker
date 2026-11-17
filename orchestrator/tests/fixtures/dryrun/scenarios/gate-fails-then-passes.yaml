@@ -1,0 +1,3 @@
+# Filofteia (Code Reviewer) finds a cited blocker in round 1 only.
+steps:
+  "story:1-1-ean-input/code_lens/r1": {verdict: verdicts/blocker.json}

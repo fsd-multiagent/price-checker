@@ -1,0 +1,16 @@
+{
+  "reviewer": "dry-run-fixture",
+  "target": "dry-run",
+  "verdict": "fail",
+  "findings": [
+    {
+      "id": "CR-1",
+      "severity": "blocker",
+      "rule": "C-7",
+      "file": "backend/src/main/java/Price.java",
+      "line": 42,
+      "summary": "Unparseable price is returned as 0",
+      "fix": "Return unavailable when the price cannot be parsed"
+    }
+  ]
+}

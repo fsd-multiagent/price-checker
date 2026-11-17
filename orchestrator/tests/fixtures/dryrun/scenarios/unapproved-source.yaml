@@ -1,0 +1,4 @@
+# Stage 5 writes a story whose sources include a retailer that is only Proposed.
+steps:
+  "*/epics":
+    writes: {"_bmad-output/planning-artifacts/epics.md": epics-unapproved.md}

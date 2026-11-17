@@ -1,0 +1,4 @@
+# Round 1: one Developer run reports blocked, another hits its budget cap. Both are failed rounds.
+steps:
+  "story:1-1-ean-input/dev/r1": {status: blocked}
+  "story:1-2-retailer-config/dev/r1": {result: results/error-max-budget.json}

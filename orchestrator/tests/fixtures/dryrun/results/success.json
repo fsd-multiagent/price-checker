@@ -1,0 +1,13 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "duration_ms": 25000,
+  "duration_api_ms": 21000,
+  "num_turns": 7,
+  "result": "replaced by the fake with the scenario's status and verdict",
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "total_cost_usd": 0.12,
+  "permission_denials": [],
+  "usage": {"input_tokens": 1200, "output_tokens": 800}
+}

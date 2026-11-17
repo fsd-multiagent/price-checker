@@ -1,0 +1,5 @@
+# The Developer reports a blocking open question: the story escalates at once.
+steps:
+  "story:1-1-ean-input/dev/r1":
+    status: done
+    open_questions: [{question: "Which EAN lookup route does the Architect want?", blocking: true}]

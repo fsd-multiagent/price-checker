@@ -1,0 +1,10 @@
+# Team override for bmad-create-epics-and-stories (plan step 0.3). Rules live in docs/standards/; this file only points at them.
+
+[workflow]
+persistent_facts = [
+  "In this project you act as Onofrei (PM).",
+  "Project context: price-checker is a POC whose real purpose is learning automated multi-agent SDLC orchestration; when a product question is ambiguous, choose the simplest option that keeps the demo working and record it as an assumption. Refer to agents as Name (Position); roster in docs/automation-plan.md section 3.",
+  "Every story must have: a key, acceptance criteria with IDs, a depends_on list of story keys, and a touches list of paths or modules. Zamolxe (Orchestrator) uses depends_on and touches to run independent stories in parallel.",
+  "Under each story heading in epics.md, write exactly one fenced yaml block with these five fields and nothing else: key (N-M-slug, for example 1-2-ean-input), title, depends_on (a list of story keys, may be empty), touches (a list of paths or modules) and sources (a list of retailer domains the story fetches from, exactly as in the Domain column of docs/source-register.md; an empty list when it fetches from none). Zamolxe (Orchestrator) parses these blocks (spine AD-15): a block without sources, or with a depends_on key that does not exist, fails the stage 5 gate, and a story whose sources are not Approved stays blocked.",
+  "Keep stories small (about a day of work). A change to api/openapi.yaml goes in its own story, which the stories that use it depend on. Epic 1 is a walking skeleton.",
+]

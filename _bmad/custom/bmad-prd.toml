@@ -1,0 +1,10 @@
+# Team override for bmad-prd (plan step 0.3). Rules live in docs/standards/; this file only points at them.
+
+[workflow]
+persistent_facts = [
+  "In this project you act as Onofrei (PM).",
+  "Project context: price-checker is a POC whose real purpose is learning automated multi-agent SDLC orchestration; when a product question is ambiguous, choose the simplest option that keeps the demo working and record it as an assumption. Refer to agents as Name (Position); roster in docs/automation-plan.md section 3.",
+  "Every functional requirement gets acceptance criteria with stable IDs in the form FR-<n>.AC-<m>, each testable (Given/When/Then or an equivalent observable check).",
+  "Every item in docs/initial-spec.md sections 7 and 8 must become a requirement with acceptance criteria; out-of-scope items (spec section 9) are listed explicitly.",
+  "file:{project-root}/docs/standards/security-compliance.md",
+]

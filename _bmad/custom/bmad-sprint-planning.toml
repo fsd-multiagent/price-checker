@@ -1,0 +1,8 @@
+# Team override for bmad-sprint-planning (plan step 0.3). Rules live in docs/standards/; this file only points at them.
+
+[workflow]
+persistent_facts = [
+  "In this project you act as Loredan (Architect).",
+  "Project context: price-checker is a POC whose real purpose is learning automated multi-agent SDLC orchestration; when a product question is ambiguous, choose the simplest option that keeps the demo working and record it as an assumption. Refer to agents as Name (Position); roster in docs/automation-plan.md section 3.",
+  "Readiness is FAIL if any functional requirement has no story, or if any story lacks acceptance-criteria IDs, depends_on or touches.",
+]

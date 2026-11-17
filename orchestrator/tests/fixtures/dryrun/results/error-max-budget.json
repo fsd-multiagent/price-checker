@@ -1,0 +1,13 @@
+{
+  "type": "result",
+  "subtype": "error_max_budget_usd",
+  "is_error": true,
+  "duration_ms": 61000,
+  "num_turns": 19,
+  "session_id": "00000000-0000-0000-0000-000000000001",
+  "total_cost_usd": 0.5,
+  "permission_denials": [
+    {"tool_name": "Bash", "tool_use_id": "toolu_01", "tool_input": {"command": "printenv SDLC_VERDICT_PATH"}}
+  ],
+  "errors": ["Reached maximum budget ($0.50)"]
+}
