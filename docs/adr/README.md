@@ -30,3 +30,4 @@
 | [0015](0015-deployment-topology.md) | Run one `prod` environment: Caddy, web and backend in Docker Compose on one VM, deployed and operated only by GitHub Actions | Proposed | 2026-11-17 |
 | [0016](0016-health-check-on-runner.md) | Run the Health check as the backend in `health` mode on a GitHub Actions runner, gated by production's `/api/status` | Proposed | 2026-11-17 |
 | [0017](0017-logging-and-privacy.md) | Log only an allowlist of fields as JSON to stdout, and turn off access logs | Proposed | 2026-11-17 |
+| [0018](0018-ssh-restriction-jit-nsg.md) | Restrict SSH to a just-in-time NSG rule opened by the workflow over OIDC, a key-only sshd and a forced-command deploy user | Proposed | 2026-11-17 |
