@@ -12,7 +12,11 @@ interface PackageJson {
 }
 
 interface PackageLock {
-  packages: Record<string, { version?: string }>;
+  lockfileVersion: number;
+  packages: Record<
+    string,
+    { version?: string; resolved?: string; integrity?: string; link?: boolean }
+  >;
 }
 
 const pkg = JSON.parse(readFileSync(resolve(webRoot, 'package.json'), 'utf8')) as PackageJson;
@@ -33,6 +37,26 @@ describe('AC 1.2.1 scaffold', () => {
     for (const [name, version] of Object.entries(allDeps)) {
       expect(lock.packages[`node_modules/${name}`]?.version, name).toBe(version);
     }
+  });
+
+  it('AC 1.2.1: lockfile resolves every package from the npm registry with an integrity hash', () => {
+    const lock = JSON.parse(
+      readFileSync(resolve(webRoot, 'package-lock.json'), 'utf8'),
+    ) as PackageLock;
+    expect(lock.lockfileVersion).toBe(3);
+    const unpinned = Object.entries(lock.packages)
+      .filter(([path, entry]) => path !== '' && !entry.link)
+      .filter(
+        ([, entry]) =>
+          !entry.resolved?.startsWith('https://registry.npmjs.org/') ||
+          !entry.integrity?.startsWith('sha512-'),
+      )
+      .map(([path]) => path);
+    expect(unpinned).toEqual([]);
+  });
+
+  it('AC 1.2.1: build script typechecks before bundling', () => {
+    expect(pkg.scripts?.build).toBe('tsc -b && vite build');
   });
 
   it('AC 1.2.1: requires Node 24', () => {

@@ -36,6 +36,29 @@ describe('AC 1.2.3 page shell', () => {
     expect(page).toMatch(/padding:\s*var\(--spacing-xl\)/);
   });
 
+  it('AC 1.2.3: the header is the banner landmark holding the heading and explanation', () => {
+    render(<App />);
+    const banner = screen.getByRole('banner');
+    expect(banner).toContainElement(screen.getByRole('heading', { level: 1 }));
+    expect(banner).toHaveTextContent("Enter a product's EAN");
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+  });
+
+  it('AC 1.2.3: header, main and footer render in order inside the column', () => {
+    const { container } = render(<App />);
+    const page = container.querySelector('.page');
+    expect(page).not.toBeNull();
+    const landmarks = [...page!.children].map((el) => el.tagName.toLowerCase());
+    expect(landmarks).toEqual(['header', 'main', 'footer']);
+  });
+
+  it('AC 1.2.3: index.html has the #root mount point and the page title', () => {
+    const html = readFileSync(resolve(webRoot, 'index.html'), 'utf8');
+    expect(html).toMatch(/<div id="root"><\/div>/);
+    expect(html).toMatch(/<title>Price Checker<\/title>/);
+    expect(html).toMatch(/<meta name="viewport"[^>]*width=device-width/);
+  });
+
   it('AC 1.2.3: axe reports no serious or critical violations', async () => {
     render(<App />);
     const results = await axe.run(document.body);
