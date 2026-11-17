@@ -42,7 +42,13 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
   ```yaml sdlc-commands
   tests:
     - uv run --directory orchestrator pytest -q
+  terraform_plan:
+    - terraform -chdir=infra fmt -check -recursive
+    - terraform -chdir=infra init -backend=false -input=false
+    - terraform -chdir=infra validate
   ```
+
+  The `terraform_plan` gate runs offline: it checks formatting and validity with no Azure access. The real `terraform plan` runs in `.github/workflows/terraform-plan.yml` once the owner sets the `AZURE_*` and `TF_STATE_*` repository variables.
 
 - TODO (stage 4): backend (Java) and web (React) build, test and lint commands. Zamolxe (Orchestrator) runs exactly these at the "tests pass" gate (T-8).
 
