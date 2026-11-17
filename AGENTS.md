@@ -44,15 +44,18 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
   ```yaml sdlc-commands
   tests:
     - uv run --directory orchestrator pytest -q
+    - backend/gradlew -p backend check
   terraform_plan:
     - terraform -chdir=infra fmt -check -recursive
     - terraform -chdir=infra init -backend=false -input=false
     - terraform -chdir=infra validate
+    - terraform -chdir=infra test
   ```
 
-  The `terraform_plan` gate runs offline: it checks formatting and validity with no Azure access. The real `terraform plan` runs in `.github/workflows/terraform-plan.yml` once the owner sets the `AZURE_*` and `TF_STATE_*` repository variables.
+  - `backend/gradlew -p backend check` runs the backend's format check (Spotless), compile, tests and architecture rules (ArchUnit) (ADR 0014). It needs a JDK on the runner; Gradle provisions JDK 21 through the toolchain.
+  - The `terraform_plan` gate runs offline: formatting, validity, and `infra/tests/*.tftest.hcl` against a mocked provider. No Azure access is needed. The real `terraform plan` runs in `.github/workflows/terraform-plan.yml` once the owner sets the `AZURE_*` and `TF_STATE_*` repository variables.
 
-- TODO (stage 4): backend (Java) and web (React) build, test and lint commands. Zamolxe (Orchestrator) runs exactly these at the "tests pass" gate (T-8).
+- TODO: the web (React) commands (`npm --prefix web ci`, `npm --prefix web run check`, ADR 0013/0014) join `tests` through an owner PR once the web scaffold (story 1-2) is on `main`.
 
 ## Conventions that differ from defaults
 
