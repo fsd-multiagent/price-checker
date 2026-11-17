@@ -214,7 +214,7 @@ Versions were not checked on the web in this run (permission denied). Each row i
 | crawler-commons (robots.txt) | 1.x |
 | ArchUnit | 1.5.1 |
 | Spotless (Gradle plugin) + google-java-format | 8.11.0 + 2.0.0 |
-| OpenAPI Generator (`spring`, `typescript-fetch`) | current GA that supports the chosen Spring Boot |
+| OpenAPI Generator (`spring`, `typescript-fetch`) | 7.27.0 (Gradle plugin in `backend/build.gradle.kts`; `web/openapitools.json` via `@openapitools/openapi-generator-cli` 2.42.2, story 1.3) |
 | Node.js | 24 LTS |
 | TypeScript, React, Vite | current GA (React 19.x or newer) |
 | Vitest, Testing Library, axe-core, Playwright, ESLint, Prettier | current GA |

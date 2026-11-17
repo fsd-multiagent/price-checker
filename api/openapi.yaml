@@ -1,0 +1,140 @@
+openapi: 3.0.3
+info:
+  title: price-checker API
+  version: 0.1.0
+  description: >-
+    Contract-first API (C-3, AD-3, ADR 0007). Money is integer bani (RON minor
+    units) and every time is ISO-8601 UTC (AD-5). The server orders the rows and
+    flags the lowest price; the client only formats.
+tags:
+  - name: Lookup
+  - name: Status
+paths:
+  /api/lookup:
+    get:
+      tags: [Lookup]
+      operationId: lookup
+      summary: Compare prices for one EAN across the approved retailers.
+      parameters:
+        - name: ean
+          in: query
+          required: true
+          description: EAN-8 or EAN-13; surrounding whitespace is trimmed (AD-13).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One row per approved retailer, already ordered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LookupResponse'
+        '400':
+          description: The EAN is invalid; no retailer was contacted (S-11).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/status:
+    get:
+      tags: [Status]
+      operationId: status
+      summary: List each approved retailer and whether it is enabled or blocked.
+      responses:
+        '200':
+          description: Retailer status, no prices.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+components:
+  schemas:
+    LookupResponse:
+      type: object
+      required: [ean, rows]
+      properties:
+        ean:
+          type: string
+          description: The validated, trimmed EAN.
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResultRow'
+    ResultRow:
+      type: object
+      description: >-
+        One retailer's result. Only FOUND rows carry priceMinor, availability,
+        url and fetchedAt; non-FOUND rows carry only the four required fields.
+      required: [retailerId, retailerName, status, lowest]
+      properties:
+        retailerId:
+          type: string
+        retailerName:
+          type: string
+        status:
+          type: string
+          enum: [FOUND, NOT_FOUND, UNAVAILABLE, DISABLED]
+        priceMinor:
+          type: integer
+          format: int64
+          description: Price in bani (RON minor units); absent means unavailable (C-7).
+        availability:
+          type: string
+          enum: [IN_STOCK, OUT_OF_STOCK, UNKNOWN]
+        url:
+          type: string
+          format: uri
+        fetchedAt:
+          type: string
+          format: date-time
+          description: When the price was fetched, ISO-8601 UTC.
+        lowest:
+          type: boolean
+          description: True on the row(s) with the lowest price.
+    StatusResponse:
+      type: object
+      required: [retailers]
+      properties:
+        retailers:
+          type: array
+          items:
+            $ref: '#/components/schemas/RetailerStatus'
+    RetailerStatus:
+      type: object
+      required: [retailerId, retailerName, enabled, blocked]
+      properties:
+        retailerId:
+          type: string
+        retailerName:
+          type: string
+        enabled:
+          type: boolean
+        blocked:
+          type: boolean
+        notBefore:
+          type: string
+          format: date-time
+          description: Time until which a Retry-After holds requests, ISO-8601 UTC (ADR 0008).
+    EanErrorCode:
+      type: string
+      enum: [EAN_EMPTY, EAN_NON_DIGIT, EAN_LENGTH, EAN_CHECK_DIGIT]
+    Problem:
+      type: object
+      description: RFC 9457 problem details with the EAN error code.
+      required: [code]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+          format: int32
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+        code:
+          $ref: '#/components/schemas/EanErrorCode'

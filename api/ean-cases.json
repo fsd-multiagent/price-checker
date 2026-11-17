@@ -1,0 +1,20 @@
+{
+  "cases": [
+    { "name": "valid EAN-13", "input": "4006381333931", "valid": true, "ean": "4006381333931" },
+    { "name": "valid EAN-13 (GS1 example)", "input": "5901234123457", "valid": true, "ean": "5901234123457" },
+    { "name": "valid EAN-8", "input": "96385074", "valid": true, "ean": "96385074" },
+    { "name": "valid EAN-8 (second)", "input": "73513537", "valid": true, "ean": "73513537" },
+    { "name": "EAN-13 padded with spaces and a tab", "input": "  5901234123457\t", "valid": true, "ean": "5901234123457" },
+    { "name": "EAN-8 padded with spaces", "input": " 96385074 ", "valid": true, "ean": "96385074" },
+    { "name": "empty", "input": "", "valid": false, "code": "EAN_EMPTY" },
+    { "name": "blank", "input": "   ", "valid": false, "code": "EAN_EMPTY" },
+    { "name": "letter inside", "input": "40063813339A1", "valid": false, "code": "EAN_NON_DIGIT" },
+    { "name": "inner space", "input": "4006 381333931", "valid": false, "code": "EAN_NON_DIGIT" },
+    { "name": "leading minus", "input": "-96385074", "valid": false, "code": "EAN_NON_DIGIT" },
+    { "name": "7 digits", "input": "1234567", "valid": false, "code": "EAN_LENGTH" },
+    { "name": "12 digits", "input": "123456789012", "valid": false, "code": "EAN_LENGTH" },
+    { "name": "14 digits", "input": "12345678901234", "valid": false, "code": "EAN_LENGTH" },
+    { "name": "EAN-13 bad check digit", "input": "4006381333932", "valid": false, "code": "EAN_CHECK_DIGIT" },
+    { "name": "EAN-8 bad check digit", "input": "96385075", "valid": false, "code": "EAN_CHECK_DIGIT" }
+  ]
+}
