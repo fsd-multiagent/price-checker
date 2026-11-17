@@ -159,3 +159,7 @@ Status: done
 ### Round 2 (2026-11-18)
 
 Round 1 finished the work but hit its $5 budget before committing (AD-18 `dev-outcome`). Round 2 reapplied `.sdlc/feedback/r2/steps_86.discarded.patch` unchanged, re-ran verification and committed it: `backend/gradlew -p backend check` exit 0; `npm --prefix web ci`, `run check` (25/25) and `run build` exit 0; `uv run --directory orchestrator pytest -q` 277 passed, 2 skipped; `git status` shows no generated files.
+
+### Round 3 (2026-11-18)
+
+The round-2 `tests` gate failed with exit 1 (AD-18 `tests-outcome`). The step log says why: "sdlc-commands differ from origin/main (AGENTS.md in the worktree)". The story never edited `AGENTS.md`; `main` moved on after the branch was cut (#16 ADR 0021, #17 web check in the gate). Merged `origin/main` (`a573868`) into the story branch with no conflicts; the `sdlc-commands` block now equals `origin/main`, so the web check is gated too, which also closes the residual risk above. No story code changed. Verification of every gate command: `uv run --directory orchestrator pytest -q` 286 passed, 2 skipped; `backend/gradlew -p backend check` exit 0; `npm --prefix web ci` exit 0; `npm --prefix web run check` exit 0 (30/30 tests); `git status` clean.
