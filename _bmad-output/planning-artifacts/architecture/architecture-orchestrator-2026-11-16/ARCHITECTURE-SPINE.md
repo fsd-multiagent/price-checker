@@ -20,6 +20,7 @@ companions:
   - docs/adr/0003-orchestrator-git-integration.md
   - docs/adr/0004-gate-commands-in-agents-md.md
   - docs/adr/0005-orchestrator-subscription-limits-and-budget.md
+  - docs/adr/0006-orchestrator-usage-ledger-per-agent.md
 ---
 
 # Architecture Spine — Zamolxe (Orchestrator)
@@ -141,7 +142,7 @@ stateDiagram-v2
   - A pydantic model validates `pipeline.yaml` at load. Stages refer to step kinds (`agent`, `judge`, `script`) and gate kinds (AD-19) by registry name. An unknown name is a load error.
   - No stage name is hard-coded in Python.
   - Stage fields: `id`, `entry` (the run kinds it belongs to, from `full`, `story` and `fix`), `per_story`, `steps`, `parallel`, `gate`, `on_fail`, `max_rounds`, `timeout_min`, `budget_usd`, optional `model`, optional `effort` (`low | medium | high | xhigh | max`; `ultracode` is excluded on purpose, because it fans out many agents), optional `max_turns`. A stage value overrides the setting `default_model` / `default_effort`; unset means the CLI default (`medium` effort on current models). `sdlc resume` accepts changes to `model`, `effort` and `max_turns`, like the other per-stage limits.
-  - Step fields: `kind`, `skill` or `agent`, `prompt`, `tools`, `writes` (boolean), `outcome_source` (AD-18), `verdict_source` (AD-17).
+  - Step fields: `kind`, `skill` or `agent`, `agent_role` (AD-24, required on `agent` and `judge` steps), `prompt`, `tools`, `writes` (boolean), `outcome_source` (AD-18), `verdict_source` (AD-17).
   - Defaults are in the table below.
 
 | Setting | Default |
@@ -157,6 +158,9 @@ stateDiagram-v2
 | `usage_limit_wait_min` | 30 |
 | `usage_limit_max_wait_h` | 12 |
 | `allow_api_key` | `false` (AD-23) |
+| `agents` | Map from each role (the roster in `docs/automation-plan.md` §3, in Name (Position) form, plus `Judge (gate check)`) to the skills and agent definitions it may run (AD-24) |
+| `usage_warn_ratio` | 0.8 (AD-24) |
+| `telemetry` | `enabled: false`; when on, `endpoint` and `protocol` for OTLP (AD-25) |
 
 ### AD-8 — One way to start an agent [ADOPTED from plan §4.1]
 
@@ -366,6 +370,64 @@ stateDiagram-v2
   - The opt-in live test runs the same check.
   - Owner checklist (plan §6): keep "extra usage" credits off for the runner's account, so a limit pauses the run instead of drawing paid credits.
 
+### AD-24 — Every step's usage is measured and charged to one agent
+
+- **Binds:** `core/models.py`, `core/pipeline.py`, `core/state.py`, `core/usage.py`, `adapters/claude.py`, `store.py`, `cli.py`, `sdlc/pipeline.yaml`, the retrospective prompt
+- **Prevents:** usage lost or charged to no one, a ledger that contradicts `state.json`, double counting after a resume, and a running run that can no longer be resumed.
+- **Rule:**
+  - **Attribution.**
+    - `settings.agents` maps each role in Name (Position) form to the skills and agent definitions it may run. For example, `Veronel (Security & Compliance)` may run `security-compliance-reviewer`, and `Judge (gate check)` runs every `judge` step.
+    - Every `agent` and `judge` step declares `agent_role`. Load fails when the role is missing, unknown, or not allowed to run that step's `skill` or `agent`.
+    - The role is copied onto the step record at `StepStarted`. Later edits to `pipeline.yaml` do not re-attribute steps that already started.
+    - A step's whole usage is charged to its role. `script` steps use no model and get no record.
+  - **What is recorded.**
+    - Token totals are the sums over `modelUsage` (`inputTokens`, `outputTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`), which include subagents. The top-level `usage` block covers only the main loop and is kept for information only.
+    - The cost is `total_cost_usd`.
+    - The record also keeps `duration_ms`, `duration_api_ms`, `num_turns` and `session_id`.
+    - The step file keeps the raw result JSON without the `result` text, so a renamed field can be spotted later.
+  - **One `UsageRecord` per finished attempt of an agent or judge step,** whatever its outcome.
+    - Fields: `v` (schema version), `run_id`, `seq`, `attempt` (for information), `scope`, `stage`, `step`, `round`, `agent_role`, `model`, `effort`, `status` (AD-5), `outcome` (AD-18), `subtype` (CLI), `interrupted`, the four token totals, the per-model breakdown, `cost_usd`, `duration_ms`, `duration_api_ms`, `num_turns`, `session_id`, `usage_complete`, and a UTC timestamp.
+    - It holds no prompt, result or other free text.
+  - **Incomplete attempts.** When an attempt has no parsable output (a timeout, a crash or an interrupt), or reports `error_during_execution` with zero cost or an empty `modelUsage`, the record charges the amount charged to the budget (AD-11), counts zero tokens, and sets `usage_complete: false`.
+  - **`state.json` is the source; the ledger is a projection.**
+    - The record lives on the step record in `state.json` (AD-4).
+    - After `store` saves the state, it appends every final record not yet in the ledger, keyed by `(run_id, seq)`, as one `O_APPEND` write plus `fsync`.
+    - On every load, `store` reconciles: any final record missing from the ledger is appended.
+    - Readers skip a torn last line, read with unknown fields ignored, and deduplicate by key.
+    - `sdlc usage --rebuild` regenerates the ledger from every run's `state.json`.
+    - The ledger is `<runs-dir>/usage.jsonl`: `_bmad-output/sdlc/runs/usage.jsonl` for real runs, and the temporary runs dir for a dry-run, so fake costs never reach the real ledger.
+  - **Old state stays resumable.**
+    - A `state.json` written before AD-24 loads unchanged. Finished agent and judge steps without a record get one on load: zero tokens, `cost_usd` from the step's recorded cost, `usage_complete: false`, and the role from the current pipeline mapping, or `unknown`.
+    - `agent_role` is excluded from the stage-table digest (AD-7), so adding it does not block `sdlc resume`.
+  - **Budgets and reports.**
+    - Budgets, gates and the warning read `state.json` (AD-11).
+    - Reports sum records only through `core/usage.py`, which is pure. That covers `sdlc status` totals and `sdlc usage [<run-id> | --all] [--by agent|stage|model|round|run]`.
+    - For each run, the ledger's `cost_usd` sum equals `budget.spent` to the cent. A test checks this.
+  - **Warning.** When spent + reserved reaches `usage_warn_ratio` (0.8) of `run_budget_usd`, the run records one `UsageWarning` event for that budget value, prints one status line and sends one notification. It warns again after the budget is raised.
+  - **Retrospective.**
+    - Before an epic's retrospective, the orchestrator writes `<worktree>/.sdlc/usage-summary.md`, covering the epic's steps in the current run, by agent, stage and round.
+    - The retrospective prompt names that file. Aglaia (Knowledge Keeper) records the changes she recommends (`model`, `effort`, `max_turns` per stage) as action items.
+    - `sdlc/**` joins the paths that learn branches revert, so the pipeline changes only through an owner-reviewed PR.
+  - **Scope.** Only steps the orchestrator starts are measured. Interactive sessions are not.
+
+### AD-25 — Optional OpenTelemetry export, labelled per agent
+
+- **Binds:** `adapters/claude.py` (agent environment), `adapters/real.py` (preflight), `sdlc/pipeline.yaml` `settings.telemetry`
+- **Prevents:** dashboards that cannot tell agents apart, prompts or responses leaking through telemetry, telemetry output corrupting the JSON result, and a second source of truth for budgets.
+- **Rule:**
+  - **Always, telemetry on or off:** the agent environment drops `OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_TOOL_DETAILS`, `OTEL_LOG_TOOL_CONTENT`, `OTEL_LOG_ASSISTANT_RESPONSES` and `OTEL_LOG_RAW_API_BODIES`.
+  - **Off (the default):** the agent environment also drops `CLAUDE_CODE_ENABLE_TELEMETRY`, `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER`, `OTEL_TRACES_EXPORTER` and `OTEL_EXPORTER_OTLP_HEADERS`. Preflight warns when a settings `env` block sets any of them.
+  - **On** (`settings.telemetry.enabled: true`), every agent process gets:
+    - `CLAUDE_CODE_ENABLE_TELEMETRY=1`
+    - `OTEL_METRICS_EXPORTER=otlp`
+    - the configured `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL`
+    - `CLAUDE_CODE_OTEL_SHUTDOWN_TIMEOUT_MS=10000`
+    - `CLAUDE_CODE_OTEL_DIAG_STDERR=1`
+    - `OTEL_RESOURCE_ATTRIBUTES`: any inherited value, followed by `sdlc.run_id`, `sdlc.seq`, `sdlc.agent` (a slug such as `marghioala_developer`), `sdlc.stage`, `sdlc.step` and `sdlc.scope`, with the values percent-encoded and inherited `sdlc.*` keys replaced
+  - Only `otlp` is accepted. `console` could write into the JSON result on stdout, and `prometheus` makes parallel processes clash on port 9464.
+  - Collector headers come only from the runner's environment, never from `pipeline.yaml` (AD-23).
+  - Telemetry is for observing only, and gaps are expected: a step killed on timeout exports nothing. Budgets read `state.json` and reports read the ledger (AD-24).
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -375,7 +437,7 @@ stateDiagram-v2
 | Timestamps | UTC, ISO 8601 with `Z`, from the `clock` port |
 | Models | pydantic v2 frozen models with tuple or frozenset fields and `StrEnum` statuses. A new state is built through `model_validate`, never `model_copy(update=…)` |
 | Errors | Adapters raise typed errors. `app/` turns them into failure events. The core returns fail verdicts and does not raise them |
-| Logging | One JSON line per event in `events.jsonl`. Raw agent stdout goes to `steps/*.log` |
+| Logging | One JSON line per event in `events.jsonl`. Raw agent stdout goes to `steps/*.log`. Usage goes to `<runs-dir>/usage.jsonl` (AD-24) |
 | Config and secrets | `pipeline.yaml` holds no secrets. Auth comes from `CLAUDE_CODE_OAUTH_TOKEN` in the runner environment. Never read `.env*` |
 | CLI | `sdlc run [--from <stage>] [--dry-run]`, `sdlc story <issue>`, `sdlc fix <issue>`, `sdlc status [<run-id>]`, `sdlc resume <run-id>`. Exit codes: 0 passed, 2 escalated or blocked, 1 internal error |
 | Python style | `uv run ruff check` and `uv run ruff format`; type hints on every public function; `pytest` with `asyncio_mode = "auto"` and `asyncio_default_fixture_loop_scope = "function"`; `uv.lock` committed |

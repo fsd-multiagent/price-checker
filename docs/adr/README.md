@@ -18,6 +18,7 @@
 | [0003](0003-orchestrator-git-integration.md) | Integrate only through merged PRs, and let the orchestrator own the shared bookkeeping files | Accepted | 2026-11-16 |
 | [0004](0004-gate-commands-in-agents-md.md) | Declare gate commands in an `sdlc-commands` block in `AGENTS.md`, trusted only as it is on `origin/main` | Accepted | 2026-11-16 |
 | [0005](0005-orchestrator-subscription-limits-and-budget.md) | Run on the subscription: pause on plan limits, wait on budget reservations, refuse per-token credentials | Accepted | 2026-11-17 |
+| [0006](0006-orchestrator-usage-ledger-per-agent.md) | Measure every agent step's usage in a ledger derived from the run state, with optional OpenTelemetry export | Proposed | 2026-11-17 |
 | [0006](0006-backend-ports-and-adapters.md) | Build the backend as one ports-and-adapters Spring Boot process, packaged by feature | Proposed | 2026-11-17 |
 | [0007](0007-lookup-api-contract.md) | Serve one Lookup endpoint whose response is already decided: rows ordered, lowest flagged, money in bani, times in UTC | Proposed | 2026-11-17 |
 | [0008](0008-shared-fetch-client.md) | Send every retailer request through one fetch client that enforces S-1 to S-6 before each request | Proposed | 2026-11-17 |
