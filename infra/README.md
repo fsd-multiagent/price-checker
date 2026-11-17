@@ -56,5 +56,7 @@ variables with `TF_VAR_*` environment variables (never a committed
 - The VM's `custom_data` (cloud-init) is in `ignore_changes`; changing
   `cloud-init.yaml.tftpl` does not recreate the VM. To roll it out, replace the
   VM deliberately with `-replace=azurerm_linux_virtual_machine.app`.
+- cloud-init sets Docker's `local` log driver, capped at 5 × 10 MB per
+  container, so the AD-14 stdout logs cannot fill the 30 GB disk (ADR 0020).
 - A rule named `jit-ssh-*` showing as drift in a plan means a deploy workflow
   failed to remove its temporary SSH rule (ADR 0018); the next apply removes it.

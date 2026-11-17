@@ -214,6 +214,21 @@ run "adr_0018_cloud_init_restricts_deploy_key_and_hardens_sshd" {
   }
 }
 
+run "adr_0020_docker_logs_are_rotated_and_capped" {
+  command = plan
+
+  assert {
+    condition = anytrue([
+      for f in yamldecode(base64decode(azurerm_linux_virtual_machine.app.custom_data)).write_files :
+      f.path == "/etc/docker/daemon.json" &&
+      jsondecode(f.content)["log-driver"] == "local" &&
+      jsondecode(f.content)["log-opts"]["max-size"] == "10m" &&
+      jsondecode(f.content)["log-opts"]["max-file"] == "5"
+    ])
+    error_message = "cloud-init must write /etc/docker/daemon.json with the local log driver capped at 5 x 10m (ADR 0020)."
+  }
+}
+
 run "i_8_budget_alert_notifies_owner" {
   command = plan
 

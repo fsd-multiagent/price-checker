@@ -27,6 +27,20 @@ users:
       - 'restrict,command="/usr/local/bin/pc-dispatch" ${deploy_ssh_public_key}'
 
 write_files:
+  # ADR 0020: written before the docker.io package starts the daemon, so every
+  # container's stdout (AD-14 JSON lines) is rotated and capped on the 30 GB disk.
+  - path: /etc/docker/daemon.json
+    owner: root:root
+    permissions: '0644'
+    content: |
+      {
+        "log-driver": "local",
+        "log-opts": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      }
+
   - path: /etc/ssh/sshd_config.d/10-price-checker.conf
     owner: root:root
     permissions: '0644'
