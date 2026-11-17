@@ -210,7 +210,7 @@ Versions were not checked on the web in this run (permission denied). Each row i
 | Gradle wrapper (Kotlin DSL) | 9.9.1, distribution sha256 pinned (S-12) |
 | Gradle foojay-resolver-convention (JDK 21 toolchain) | 1.0.0 |
 | Caffeine | 3.x |
-| jsoup | 1.x |
+| jsoup | 1.24.1 (pinned in `backend/build.gradle.kts`, story 2.1) |
 | crawler-commons (robots.txt) | 1.x |
 | ArchUnit | 1.5.1 |
 | Spotless (Gradle plugin) + google-java-format | 8.11.0 + 2.0.0 |
