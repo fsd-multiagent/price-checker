@@ -514,7 +514,23 @@ async def test_real_commands_differ_from_origin_main(repo):
     publish(repo, _block(tests=[py("print('green')")]))
     (repo / "AGENTS.md").write_text(_block(tests=[py("print('edited')")]), encoding="utf-8")
     code, out = await ProjectCommands().run("tests", str(repo), 30, KEY)
-    assert code == 1 and "sdlc-commands differ from origin/main" in out
+    assert code == 1 and "this branch changed the gate block" in out
+
+
+async def test_real_commands_main_changed_block_after_branch_point(repo):
+    """Regression (run 20261117-174705-full): the owner changed the block on main after a
+    story branched. The story did not touch it, so its gate passes and runs the commands from
+    its branch point; a change the story itself makes still fails."""
+    publish(repo, _block(tests=[py("print('branch-point')")]))
+    git(repo, "checkout", "--quiet", "-b", "story")
+    git(repo, "checkout", "--quiet", "main")
+    publish(repo, _block(tests=[py("print('newer-main')")]))
+    git(repo, "checkout", "--quiet", "story")
+    code, out = await ProjectCommands().run("tests", str(repo), 30, KEY)
+    assert code == 0 and "branch-point" in out and "newer-main" not in out
+    (repo / "AGENTS.md").write_text(_block(tests=[py("print('edited')")]), encoding="utf-8")
+    code, out = await ProjectCommands().run("tests", str(repo), 30, KEY)
+    assert code == 1 and "this branch changed the gate block" in out
 
 
 async def test_real_commands_fail_and_refuse_shell(repo):
