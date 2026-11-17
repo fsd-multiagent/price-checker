@@ -68,6 +68,21 @@ class ArchitectureTest {
   }
 
   @Test
+  void ac_1_1_2_lookupImportingRetailerClassFails() {
+    assertViolation("lookuptoretailer");
+  }
+
+  @Test
+  void ac_1_1_2_extractUsingFetchFails() {
+    assertViolation("extracttofetch");
+  }
+
+  @Test
+  void ac_1_1_2_apiBypassingLookupToFetchFails() {
+    assertViolation("apitofetch");
+  }
+
+  @Test
   void ac_1_1_2_httpClientOutsideFetchFails() {
     assertViolation("httpoutside");
   }
