@@ -1,0 +1,20 @@
+# Static retailer config (ADR 0009, AD-8, AD-12). Bundled into the backend at build time.
+# One entry per register domain. ConfigCheck fails the backend tests and startup when:
+#   - adapter is enabled for a domain the register does not mark Approved YYYY-MM-DD,
+#   - an Approved domain has no entry here,
+#   - resolution is missing or not one of search, catalog, curated (AD-12: curated for now),
+#   - minIntervalMs or concurrency is looser than the register's Limits column.
+#   - deadlineMs is missing or not positive.
+retailers:
+  evomag.ro:
+    adapter: disabled
+    resolution: curated
+    minIntervalMs: 2000
+    concurrency: 1
+    deadlineMs: 4000
+  cel.ro:
+    adapter: disabled
+    resolution: curated
+    minIntervalMs: 2000
+    concurrency: 1
+    deadlineMs: 4000
