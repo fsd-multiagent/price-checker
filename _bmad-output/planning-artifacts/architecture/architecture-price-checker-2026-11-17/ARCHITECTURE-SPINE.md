@@ -206,13 +206,14 @@ Versions were not checked on the web in this run (permission denied). Each row i
 | Name | Version |
 | --- | --- |
 | Java (Eclipse Temurin) | 21 LTS [ADOPTED] |
-| Spring Boot | latest OSS-supported 4.x (not 3.5: out of OSS support) |
-| Gradle wrapper (Kotlin DSL) | current GA supported by that Spring Boot |
+| Spring Boot | 4.1.2 (pinned in `backend/build.gradle.kts`, story 1.1) |
+| Gradle wrapper (Kotlin DSL) | 9.9.1, distribution sha256 pinned (S-12) |
+| Gradle foojay-resolver-convention (JDK 21 toolchain) | 1.0.0 |
 | Caffeine | 3.x |
 | jsoup | 1.x |
 | crawler-commons (robots.txt) | 1.x |
-| ArchUnit | 1.x |
-| Spotless + google-java-format | current GA |
+| ArchUnit | 1.5.1 |
+| Spotless (Gradle plugin) + google-java-format | 8.11.0 + 2.0.0 |
 | OpenAPI Generator (`spring`, `typescript-fetch`) | current GA that supports the chosen Spring Boot |
 | Node.js | 24 LTS |
 | TypeScript, React, Vite | current GA (React 19.x or newer) |

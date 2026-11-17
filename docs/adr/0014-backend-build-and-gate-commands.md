@@ -37,6 +37,10 @@ tests:
 - The scaffold story adds the Gradle wrapper, `web/package.json` scripts and the CI workflow.
 - Which scanners to use (for example gitleaks, OSV-Scanner) is Pacala's (DevOps) call at stage 6; the thresholds are fixed here.
 
+## Implementation note (story 1.1)
+
+Pinned versions: Gradle 9.9.1 (wrapper checksum pinned, S-12), Spring Boot 4.1.2, ArchUnit 1.5.1, Spotless plugin 8.11.0 with google-java-format 2.0.0, foojay-resolver-convention 1.0.0, JDK 21 toolchain. The spine Stack table lists the same versions.
+
 ## Compliance
 
 Supports S-10 (secret scan) and S-12 (pinned versions, vulnerability scan blocking high and critical).
