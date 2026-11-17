@@ -101,4 +101,42 @@ class ArchitectureTest {
   void ac_1_1_2_httpClientInsideFetchPasses() {
     assertThatCode(() -> check(FIXTURES + ".httpinside")).doesNotThrowAnyException();
   }
+
+  @Test
+  @Tag("AC-2.1.4")
+  void ac_2_1_4_extractReadingAFileFails() {
+    assertViolation("extractnetwork");
+  }
+
+  @Test
+  @Tag("AC-2.1.4")
+  void ac_2_1_4_extractUsingNioOrNetFails() {
+    assertViolation("extractnio");
+  }
+
+  @Test
+  @Tag("AC-2.1.4")
+  void ac_2_1_4_extractUsingJsoupConnectFails() {
+    assertViolation("extractjsoup");
+  }
+
+  @Test
+  @Tag("AC-2.1.4")
+  void ac_2_1_4_extractResolvingUriWithoutOpeningItPasses() {
+    JavaClasses fixture = new ClassFileImporter().importPackages(FIXTURES + ".extracturi");
+    assertThatCode(() ->
+            ArchitectureRules.extractHasNoNetworkAccess(FIXTURES + ".extracturi").check(fixture))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @Tag("AC-2.1.4")
+  void ac_2_1_4_realExtractHasNoNetworkAccess() {
+    JavaClasses main =
+        new ClassFileImporter()
+            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+            .importPackages(ROOT + ".extract");
+    assertThat(main.contain(ro.pricechecker.extract.StructuredData.class)).isTrue();
+    ArchitectureRules.extractHasNoNetworkAccess(ROOT).check(main);
+  }
 }

@@ -196,10 +196,15 @@ class ProjectCommands:
             block = parse_commands(text)
         except CommandsError as exc:
             return 1, f"no {name} commands in {AGENTS_MD}: {exc}"
-        base = await self._base_block(worktree)
+        point = await self._branch_point(worktree)
+        base = await self._block_at(worktree, point or BASE_REF)
         if base != block:
-            return 1, f"sdlc-commands differ from {BASE_REF} ({AGENTS_MD} in the worktree)"
-        cmds = block.get(name)
+            where = f"the branch point {point[:12]} on {BASE_REF}" if point else BASE_REF
+            return 1, (
+                f"sdlc-commands in the worktree differ from {where}: this branch changed "
+                f"the gate block (ADR 0004)"
+            )
+        cmds = base.get(name) if base else None
         if not cmds:
             return 1, f"no {name} commands in {AGENTS_MD}"
         try:
@@ -226,12 +231,26 @@ class ProjectCommands:
                 return res.returncode or 1, _clip("\n".join(log))
         return 0, _clip("\n".join(log))
 
-    async def _base_block(self, worktree: str) -> dict[str, tuple[str, ...]] | None:
-        """The block as committed on origin/main; None when it cannot be read or parsed."""
+    async def _branch_point(self, worktree: str) -> str | None:
+        """`git merge-base HEAD origin/main`: the commit on main this branch started from.
+
+        The gate compares the worktree's block with the block at this commit, not with
+        today's main, so a change to the block on main after the branch started does not
+        fail the branch. The commands run are the ones at the branch point: trusted (they are
+        on main) and matching the code the branch was built on."""
         try:
             res = await run_proc(
-                ("git", "show", f"{BASE_REF}:{AGENTS_MD}"), cwd=worktree, timeout_s=60
+                ("git", "merge-base", "HEAD", BASE_REF), cwd=worktree, timeout_s=60
             )
+        except AdapterError:
+            return None
+        sha = res.stdout.strip() if res.ok else ""
+        return sha or None
+
+    async def _block_at(self, worktree: str, ref: str) -> dict[str, tuple[str, ...]] | None:
+        """The block as committed at `ref`; None when it cannot be read or parsed."""
+        try:
+            res = await run_proc(("git", "show", f"{ref}:{AGENTS_MD}"), cwd=worktree, timeout_s=60)
         except AdapterError:
             return None
         if not res.ok:

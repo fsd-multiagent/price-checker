@@ -1,0 +1,8 @@
+# Curated EAN-to-product-URL list (AD-12, resolution: curated). Bundled into the backend.
+# Format, keyed by register domain:
+#   knownEans:
+#     <domain>:
+#       - ean: "<8 or 13 digits, quoted, valid GS1 check digit>"
+#         url: "https://<domain or www.domain>/<product path>"
+# Every Approved retailer needs at least 2 entries. Empty until the owner approves a retailer.
+knownEans: {}

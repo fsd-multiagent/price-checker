@@ -35,3 +35,4 @@
 | [0020](0020-docker-log-rotation-on-vm.md) | Rotate container logs on the VM with Docker's `local` driver, capped at 5 × 10 MB per container | Proposed | 2026-11-17 |
 | [0021](0021-gate-commands-change-only-by-owner-pr.md) | Restore the gate-command block on every agent branch, so gate commands change only through an owner PR | Accepted | 2026-11-18 |
 | [0022](0022-factory-changes-by-proposal-and-issue.md) | Agents propose factory changes and build them from owner issues; the owner only reviews and merges | Proposed | 2026-11-18 |
+| [0023](0023-gate-block-compared-at-branch-point.md) | Compare the gate block with the story's branch point on main, not with today's main | Accepted | 2026-11-18 |

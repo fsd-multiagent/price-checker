@@ -1,6 +1,12 @@
-# CI for every pull request and every push to main (plan step 0.9, stage 8 "CI green").
-# The job name `ci` is the check to make required on main.
-# Actions are pinned to commit SHAs (S-12). No secrets are used; no live Claude call runs here (T-3).
+# CI for every pull request and every push to main (plan step 0.9, stage 8 "CI green", story 1.9).
+# The job name `ci` is the check to make required on main: it aggregates every other
+# job and fails when any of them fails, is cancelled or is skipped (AC 1.9.1).
+# Jobs: orchestrator (guard and orchestrator tests), backend and web (ADR 0014 commands, T-8),
+# secret-scan (gitleaks over the event's commit range, S-10, AC-N7.2) and
+# vulnerability-scan (Trivy, runtime dependencies, HIGH and CRITICAL, S-12, AC-N7.3).
+# Actions are pinned to commit SHAs and scanner binaries to version plus SHA-256 (S-12).
+# Each scan job first runs a canary that proves the scanner fails on a planted finding.
+# No secrets are used (S-10); no live Claude call runs and no retailer is contacted (T-3).
 name: ci
 
 on:
@@ -13,10 +19,17 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel on main: each push's commit range must be secret-scanned.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+  TRIVY_VERSION: "0.76.2"
+  TRIVY_SHA256: "bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf"
 
 jobs:
-  ci:
+  orchestrator:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -50,3 +63,192 @@ jobs:
       - name: Orchestrator dry-run
         working-directory: orchestrator
         run: uv run --locked sdlc run --dry-run
+
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: |
+            backend/*.gradle*
+            backend/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Backend check (Spotless, compile, tests, ArchUnit; ADR 0014)
+        run: backend/gradlew -p backend check
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install (npm ci; ADR 0014)
+        run: npm --prefix web ci
+
+      - name: Check (lint, format, typecheck, test; ADR 0014)
+        run: npm --prefix web run check
+
+      - name: Build
+        run: npm --prefix web run build
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the commit range needs both ends
+
+      - name: Install gitleaks (pinned version and SHA-256)
+        run: |
+          dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$dir"
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL --retry 3 -o "$dir/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  $dir/$archive" | sha256sum -c -
+          tar -xzf "$dir/$archive" -C "$dir" gitleaks
+          echo "$dir" >> "$GITHUB_PATH"
+
+      - name: Canary (gitleaks must fail on a planted key that a later commit removes)
+        run: |
+          repo="$(mktemp -d)"
+          git -C "$repo" init -q
+          git -C "$repo" config user.name canary
+          git -C "$repo" config user.email canary@users.noreply.github.com
+          # Assembled from two parts so this workflow file does not trip gitleaks.
+          part1="AKIA"
+          part2="QJ4WN7ZL2X5RBT3H"
+          echo "aws_access_key_id = ${part1}${part2}" > "$repo/config.ini"
+          git -C "$repo" add config.ini
+          git -C "$repo" commit -qm "add key"
+          git -C "$repo" rm -q config.ini
+          git -C "$repo" commit -qm "remove key"
+          set +e
+          gitleaks git --no-banner --redact --exit-code 3 "$repo"
+          rc=$?
+          set -e
+          if [ "$rc" -ne 3 ]; then
+            echo "::error::gitleaks canary: expected exit 3 on a planted key, got $rc. The scanner is broken."
+            exit 1
+          fi
+          echo "Canary detected (exit 3), as expected."
+
+      - name: Scan the commit range of this event
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            log_opts="${PR_BASE_SHA}..${PR_HEAD_SHA}"
+          elif [ -z "$PUSH_BEFORE" ] || ! git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+            # New ref or force-push: no reachable previous tip, so scan the pushed commit only.
+            log_opts="-1 ${PUSH_SHA}"
+          else
+            log_opts="${PUSH_BEFORE}..${PUSH_SHA}"
+          fi
+          echo "gitleaks --log-opts=${log_opts}"
+          gitleaks git --no-banner --redact --log-opts="${log_opts}" .
+
+  vulnerability-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Trivy (pinned version and SHA-256)
+        run: |
+          dir="$RUNNER_TEMP/trivy"
+          mkdir -p "$dir"
+          archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSL --retry 3 -o "$dir/$archive" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${archive}"
+          echo "${TRIVY_SHA256}  $dir/$archive" | sha256sum -c -
+          tar -xzf "$dir/$archive" -C "$dir" trivy
+          echo "$dir" >> "$GITHUB_PATH"
+
+      - name: Canary (Trivy must fail on a lodash 4.17.15 lockfile)
+        run: |
+          dir="$(mktemp -d)"
+          cat > "$dir/package-lock.json" <<'EOF'
+          {
+            "name": "trivy-canary",
+            "version": "1.0.0",
+            "lockfileVersion": 3,
+            "requires": true,
+            "packages": {
+              "": {
+                "name": "trivy-canary",
+                "version": "1.0.0",
+                "dependencies": { "lodash": "4.17.15" }
+              },
+              "node_modules/lodash": {
+                "version": "4.17.15",
+                "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.15.tgz"
+              }
+            }
+          }
+          EOF
+          set +e
+          trivy fs --scanners vuln --severity HIGH,CRITICAL --exit-code 3 --no-progress "$dir"
+          rc=$?
+          set -e
+          if [ "$rc" -ne 3 ]; then
+            echo "::error::Trivy canary: expected exit 3 on lodash 4.17.15, got $rc. The scanner is broken."
+            exit 1
+          fi
+          echo "Canary detected (exit 3), as expected."
+
+      - name: Scan lockfiles (runtime dependencies)
+        run: >-
+          trivy fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --no-progress
+          --skip-dirs web/node_modules .
+
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: |
+            backend/*.gradle*
+            backend/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Build the backend boot jar (no Gradle lockfile; the jar holds the runtime classpath)
+        run: backend/gradlew -p backend bootJar
+
+      - name: Scan the backend boot jar
+        run: >-
+          trivy rootfs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --no-progress
+          backend/build/libs
+
+  ci:
+    if: ${{ !cancelled() }}
+    needs: [orchestrator, backend, web, secret-scan, vulnerability-scan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: All jobs succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+          NOT_ALL_SUCCESS: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: |
+          echo "Job results (orchestrator backend web secret-scan vulnerability-scan): $RESULTS"
+          if [ "$NOT_ALL_SUCCESS" != "false" ]; then
+            echo "::error::A required job failed, was cancelled or was skipped."
+            exit 1
+          fi

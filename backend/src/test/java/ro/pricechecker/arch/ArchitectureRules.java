@@ -2,6 +2,7 @@ package ro.pricechecker.arch;
 
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage;
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.type;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
@@ -10,6 +11,7 @@ import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.lang.ArchRule;
+import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -71,6 +73,7 @@ final class ArchitectureRules {
     rules.add(retailerMayOnlyUse(root));
     rules.add(retailersAreIndependent(root));
     rules.add(httpClientOnlyInFetch(root));
+    rules.add(extractHasNoNetworkAccess(root));
     return rules;
   }
 
@@ -165,6 +168,28 @@ final class ArchitectureRules {
         .orShould()
         .callMethodWhere(urlFetch())
         .as("no HTTP client outside fetch")
+        .allowEmptyShould(true);
+  }
+
+  /** {@code extract} parses strings only: no network, no files, no jsoup connection (AD-7). */
+  static ArchRule extractHasNoNetworkAccess(String root) {
+    return noClasses()
+        .that()
+        .resideInAPackage(root + ".extract..")
+        .should()
+        .dependOnClassesThat(
+            resideInAnyPackage(
+                    "java.net..", "java.nio.file..", "java.nio.channels..", "org.jsoup.helper..")
+                .and(DescribedPredicate.not(type(URI.class)))
+                .or(
+                    DescribedPredicate.describe(
+                        "a file or jsoup connection class",
+                        c ->
+                            c.getName().startsWith("java.io.File")
+                                || c.getName().equals("org.jsoup.Connection"))))
+        .orShould()
+        .callMethodWhere(jsoupConnect())
+        .as("extract has no network or file access")
         .allowEmptyShould(true);
   }
 }
