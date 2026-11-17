@@ -2,7 +2,7 @@
 title: 'Zamolxe (Orchestrator) issue runs, factory stories, owner-review integration, lock and queue'
 type: 'feature'
 created: '2026-11-18'
-status: 'draft'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
 context:
