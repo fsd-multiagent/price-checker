@@ -72,12 +72,15 @@ def parallel_pipeline(caps: dict[str, float], limit: float, settings: str = ""):
     needs: []
     budget_usd: {cap}
     steps:
-      - {{id: w, kind: agent, skill: s, prompt: p, tools: [Read], writes: true}}
+      - {{id: w, kind: agent, agent_role: T, skill: s, prompt: p, tools: [Read], writes: true}}
     gate: review_verdicts
 """
         for sid, cap in caps.items()
     )
-    return load_pipeline(f"settings:\n  run_budget_usd: {limit}\n{settings}stages:{stages}")
+    return load_pipeline(
+        f"settings:\n  run_budget_usd: {limit}\n  agents: {{T: [s, x, worker, judge]}}\n"
+        f"{settings}stages:{stages}"
+    )
 
 
 def running(pipeline, spent: float = 0.0):
@@ -499,12 +502,14 @@ class StubCwdClaude(ClaudeCli):
 ONE_STAGE = """\
 settings:
   run_budget_usd: 5
+  agents: {T: [s, x, worker, stub-worker, judge]}
 stages:
   - id: only
     entry: [full]
     budget_usd: 1
     steps:
-      - {id: work, kind: agent, agent: worker, prompt: work, tools: [Read], writes: true}
+      - {id: work, kind: agent, agent_role: T, agent: worker, prompt: work, tools: [Read],
+         writes: true}
       - {id: tests, kind: script, script: tests}
     gate: {kind: tests, steps: [tests]}
 """
@@ -537,7 +542,7 @@ def test_limits_resume_after_an_effort_change(tmp_path, capsys):
     base = ["--repo", str(REPO), "--runs-dir", str(runs)]
     assert cli.main([*base, "run", "--dry-run", "--pipeline", str(pipe), "--scenario",
                      "gate-fails-max-rounds"]) == 2  # fmt: skip
-    run_id = next(p.name for p in runs.iterdir())
+    run_id = next(p.name for p in runs.iterdir() if p.is_dir())
     changed = pipeline_text().replace(
         "  - id: build\n",
         "  - id: build\n    effort: high\n    max_turns: 40\n    model: opus\n",

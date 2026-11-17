@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from sdlc.core.gates import GATE_KINDS
 from sdlc.core.models import (
+    OTLP_PROTOCOLS,
     OutcomeSource,
     Pipeline,
     Settings,
@@ -52,6 +53,7 @@ def load_pipeline(text: str) -> Pipeline:
         settings = Settings.model_validate(raw.get("settings") or {})
     except ValidationError as exc:
         raise PipelineError(f"settings: {_first_error(exc)}") from exc
+    _check_settings(settings)
 
     stages: list[Stage] = []
     for i, raw_stage in enumerate(raw["stages"]):
@@ -96,6 +98,7 @@ def _resolve_stage(raw: Any, index: int, earlier: list[Stage], settings: Setting
         except ValidationError as exc:
             raise PipelineError(f"{step_where}: {_first_error(exc)}") from exc
         steps.append(_resolve_step(step, step_where))
+        _check_role(steps[-1], step_where, settings)
     data["steps"] = steps
 
     try:
@@ -206,6 +209,42 @@ def _resolve_step(step: Step, where: str) -> Step:
     if outcome is OutcomeSource.VERDICT and step.verdict_source is None:
         raise PipelineError(f"{where}: outcome_source 'verdict' needs a verdict_source")
     return Step.model_validate({**step.model_dump(), "outcome_source": outcome})
+
+
+def _check_settings(settings: Settings) -> None:
+    """AD-24 roster shape; AD-25 telemetry: an http(s) endpoint and an OTLP protocol."""
+    for role, runners in settings.agents.items():
+        if not role.strip() or not runners:
+            raise PipelineError(f"settings: agents: role '{role}' must list what it may run")
+    t = settings.telemetry
+    if t.enabled:
+        if not (t.endpoint or "").startswith(("http://", "https://")):
+            raise PipelineError(
+                "settings: telemetry: enabled needs an http:// or https:// endpoint (AD-25)"
+            )
+        if t.protocol not in OTLP_PROTOCOLS:
+            raise PipelineError(
+                f"settings: telemetry: protocol must be one of {', '.join(OTLP_PROTOCOLS)} (AD-25)"
+            )
+
+
+def _check_role(step: Step, where: str, settings: Settings) -> None:
+    """AD-24: every agent and judge step names a known role allowed to run it."""
+    runner = step.runner
+    if runner is None:
+        if step.agent_role is not None:
+            raise PipelineError(f"{where}: a script step has no agent_role (AD-24)")
+        return
+    role = step.agent_role
+    if not role:
+        raise PipelineError(f"{where}: {_a(step.kind)} step needs an agent_role (AD-24)")
+    if role not in settings.agents:
+        raise PipelineError(f"{where}: unknown agent_role '{role}' (not in settings.agents)")
+    if runner not in settings.agents[role]:
+        raise PipelineError(
+            f"{where}: agent_role '{role}' may not run '{runner}' "
+            f"(allowed: {', '.join(settings.agents[role])}) (AD-24)"
+        )
 
 
 def _a(kind: StepKind) -> str:

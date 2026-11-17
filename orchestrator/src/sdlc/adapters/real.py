@@ -10,7 +10,13 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 
-from sdlc.adapters.claude import CREDENTIAL_VARS, ClaudeCli, credential_set
+from sdlc.adapters.claude import (
+    CONTENT_LOG_VARS,
+    CREDENTIAL_VARS,
+    TELEMETRY_SWITCHES,
+    ClaudeCli,
+    credential_set,
+)
 from sdlc.adapters.clock import SystemClock
 from sdlc.adapters.commands import ProjectCommands
 from sdlc.adapters.fs import LocalFs
@@ -18,6 +24,7 @@ from sdlc.adapters.gh import GhCli
 from sdlc.adapters.git import GitCli
 from sdlc.adapters.notifier import DesktopNotifier
 from sdlc.adapters.proc import ProcResult, run_proc
+from sdlc.core.models import Telemetry
 from sdlc.ports import AdapterError, Ports
 
 TOOLS = ("claude", "git", "gh")
@@ -29,9 +36,11 @@ _BILLING = (
 )
 
 
-def real_ports(repo: str | Path, allow_api_key: bool = False) -> Ports:
+def real_ports(
+    repo: str | Path, allow_api_key: bool = False, telemetry: Telemetry | None = None
+) -> Ports:
     return Ports(
-        claude=ClaudeCli(allow_api_key=allow_api_key),
+        claude=ClaudeCli(allow_api_key=allow_api_key, telemetry=telemetry),
         git=GitCli(repo),
         gh=GhCli(repo),
         commands=ProjectCommands(),
@@ -108,6 +117,60 @@ def credential_problems(
         if str(data.get("apiKeyHelper") or "").strip():
             problems.append(f"apiKeyHelper is set in {path}: {_BILLING}")
     return problems
+
+
+EXPORTER_VARS = ("OTEL_METRICS_EXPORTER", "OTEL_LOGS_EXPORTER", "OTEL_TRACES_EXPORTER")
+
+
+def _switched_on(value: object) -> bool:
+    """`0`, `false`, `none` and empty count as off."""
+    return str(value or "").strip().lower() not in ("", "0", "false", "none")
+
+
+def telemetry_warnings(
+    repo: str | Path,
+    *,
+    telemetry_on: bool = False,
+    environ: Mapping[str, str] | None = None,
+    home: str | Path | None = None,
+    platform: str | None = None,
+) -> list[str]:
+    """AD-25: a settings file's `env` block reaches every agent and cannot be stripped. Warn
+    when it turns on a content-logging variable; while telemetry is off, when it turns on a
+    telemetry switch; while it is on, when it sets an exporter other than `otlp` or `none`
+    (`console` would write into the JSON result)."""
+    env = os.environ if environ is None else environ
+    warnings: list[str] = []
+    for path in settings_files(repo, home, env, platform):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue  # credential_problems reports an unreadable file
+        block = data.get("env") if isinstance(data, dict) else None
+        if not isinstance(block, dict):
+            continue
+        for name in CONTENT_LOG_VARS:
+            if _switched_on(block.get(name)):
+                warnings.append(_warning(name, path, "would export prompt, tool or response text"))
+        if not telemetry_on:
+            for name in TELEMETRY_SWITCHES:
+                if _switched_on(block.get(name)):
+                    why = "turns telemetry on for every agent although settings.telemetry is off"
+                    warnings.append(_warning(name, path, why))
+            continue
+        for name in EXPORTER_VARS:
+            value = str(block.get(name) or "").strip()
+            if value and value.lower() not in ("otlp", "none"):
+                why = f"sets exporter '{value}'; only otlp is safe (console corrupts the result)"
+                warnings.append(_warning(name, path, why))
+    return warnings
+
+
+def _warning(name: str, path: Path, why: str) -> str:
+    return (
+        f"{name} is set in the env block of {path}: it {why}; the orchestrator cannot remove "
+        "it from there (AD-25)"
+    )
 
 
 async def preflight(

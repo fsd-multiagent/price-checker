@@ -9,5 +9,9 @@
   "session_id": "00000000-0000-0000-0000-000000000000",
   "total_cost_usd": 0.12,
   "permission_denials": [],
-  "usage": {"input_tokens": 1200, "output_tokens": 800}
+  "usage": {"input_tokens": 1200, "output_tokens": 800, "cache_read_input_tokens": 5000, "cache_creation_input_tokens": 300},
+  "modelUsage": {
+    "claude-opus-4-1": {"inputTokens": 1500, "outputTokens": 900, "cacheReadInputTokens": 6000, "cacheCreationInputTokens": 400, "webSearchRequests": 0, "costUSD": 0.1, "contextWindow": 200000},
+    "claude-haiku-4-5": {"inputTokens": 700, "outputTokens": 200, "cacheReadInputTokens": 1000, "cacheCreationInputTokens": 100, "webSearchRequests": 0, "costUSD": 0.02, "contextWindow": 200000}
+  }
 }

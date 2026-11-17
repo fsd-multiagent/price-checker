@@ -160,14 +160,14 @@ def test_stepless_gate_takes_only_unclaimed_steps():
 
     p = load_pipeline(
         """
-settings: {run_budget_usd: 10}
+settings: {run_budget_usd: 10, agents: {T: [s, x, worker, stub-worker, judge]}}
 stages:
   - id: one
     entry: [full]
     budget_usd: 1
     steps:
       - {id: t, kind: script, script: tests}
-      - {id: r, kind: judge, prompt: p, tools: [Read], verdict_source: result_block}
+      - {id: r, kind: judge, agent_role: T, prompt: p, tools: [Read], verdict_source: result_block}
     gate:
       - {kind: tests, steps: [t]}
       - review_verdicts

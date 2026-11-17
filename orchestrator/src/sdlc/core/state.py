@@ -17,6 +17,7 @@ from sdlc.core.models import (
     GateEvaluated,
     Merged,
     Outcome,
+    PathsReverted,
     Pipeline,
     PrOpened,
     RunFinished,
@@ -30,6 +31,8 @@ from sdlc.core.models import (
     Status,
     StepFinished,
     StepInterrupted,
+    StepKind,
+    StepResult,
     StepStarted,
     StoriesLoaded,
     Story,
@@ -38,11 +41,14 @@ from sdlc.core.models import (
     UnitStarted,
     UnitUnblocked,
     UsageLimited,
+    UsageRecord,
+    UsageWarning,
     VerdictSource,
     WorktreeReady,
 )
 from sdlc.core.outcome import derive_outcome
 from sdlc.core.pipeline import ancestors
+from sdlc.core.usage import UNKNOWN_ROLE, is_measured, sum_models
 
 S = Status
 TRANSITIONS: dict[Status, frozenset[Status]] = {
@@ -284,7 +290,7 @@ def _step_started(p: Pipeline, d: dict[str, Any], e: StepStarted) -> None:
     u = _unit(d, e.scope, e.stage)
     if u["status"] != S.RUNNING or u["round"] != e.round:
         raise CoreError(f"unit {e.scope}/{e.stage} is not running round {e.round}")
-    p.stage(e.stage).step(e.step)
+    step = p.stage(e.stage).step(e.step)
     d["steps"].append(
         {
             "seq": e.seq,
@@ -296,6 +302,8 @@ def _step_started(p: Pipeline, d: dict[str, Any], e: StepStarted) -> None:
             "cap": e.cap,
             "base_sha": _scope(d, e.scope)["head_sha"],
             "started_at": e.at,
+            # AD-24: later pipeline edits do not re-attribute a step that already started.
+            "agent_role": step.agent_role,
         }
     )
     d["next_seq"] += 1
@@ -348,6 +356,9 @@ def _step_finished(p: Pipeline, d: dict[str, Any], e: StepFinished) -> None:
             _escalate_record(d, r["scope"], u["reason"])
     else:
         _move(r, S.FAILED, what)
+    # AD-24: no record for a script, or for an attempt that failed before any model ran.
+    if is_measured(step.kind) and e.result.subtype not in NO_MODEL_SUBTYPES:
+        r["usage"] = _usage_record(p, d, r, e.result, e.at)
 
 
 def _step_interrupted(p: Pipeline, d: dict[str, Any], e: StepInterrupted) -> None:
@@ -359,6 +370,120 @@ def _step_interrupted(p: Pipeline, d: dict[str, Any], e: StepInterrupted) -> Non
     # The real cost of a killed process is unknown: charge its whole cap (AD-11).
     d["budget"]["spent"] += r["cap"]
     r["cost"] = r["cap"]
+    kind = _step_kind(p, r)
+    if kind is None or is_measured(kind):
+        r["usage"] = _usage_record(p, d, r, None, e.at)
+
+
+# --------------------------------------------------------------------------- usage (AD-24)
+
+INCOMPLETE_SUBTYPES = frozenset({"error_during_execution"})
+# The orchestrator failed the step before any `claude` process started (AD-24: no record).
+NO_MODEL_SUBTYPES = frozenset({"error_orchestrator"})
+
+
+def _step_kind(p: Pipeline, r: dict[str, Any]) -> StepKind | None:
+    """The step's kind in the current pipeline; None when the pipeline no longer has it."""
+    try:
+        return p.stage(r["stage"]).step(r["step"]).kind
+    except KeyError:
+        return None
+
+
+def _usage_record(
+    p: Pipeline,
+    d: dict[str, Any],
+    r: dict[str, Any],
+    result: StepResult | None,
+    at: str,
+    *,
+    backfill: bool = False,
+) -> dict[str, Any]:
+    """One finished attempt's usage. Without a parsable result (a timeout, crash or interrupt),
+    or for `error_during_execution` with zero cost or no `modelUsage`, the record charges what
+    the budget was charged, counts zero tokens and sets `usage_complete: false`."""
+    role = r.get("agent_role") or UNKNOWN_ROLE
+    try:
+        stage = p.stage(r["stage"])
+        role = r.get("agent_role") or stage.step(r["step"]).agent_role or UNKNOWN_ROLE
+        requested = stage.model or p.settings.default_model
+        effort = stage.effort or p.settings.default_effort
+    except KeyError:  # the pipeline no longer has this stage or step
+        requested, effort = None, None
+    models = result.model_usage if result is not None else ()
+    complete = (
+        result is not None
+        and not backfill
+        and bool(models)
+        and not (result.subtype in INCOMPLETE_SUBTYPES and result.total_cost_usd == 0)
+    )
+    if not complete:
+        models = ()
+    # The ids `--by model` groups by; the configured alias is kept as `model_requested`.
+    model = max(models, key=lambda m: m.cost_usd).model if models else requested
+    attempt = sum(
+        1
+        for x in d["steps"]
+        if (x["scope"], x["step"], x["round"]) == (r["scope"], r["step"], r["round"])
+        and x["seq"] <= r["seq"]
+    )
+    record = {
+        "run_id": d["run_id"],
+        "seq": r["seq"],
+        "attempt": attempt,
+        "scope": r["scope"],
+        "stage": r["stage"],
+        "step": r["step"],
+        "round": r["round"],
+        "agent_role": role,
+        "model": model,
+        "model_requested": requested,
+        "effort": str(effort) if effort else None,
+        "status": r["status"],
+        "outcome": r["outcome"],
+        "subtype": result.subtype if result is not None else None,
+        "interrupted": bool(r["interrupted"]),
+        **sum_models(models),
+        "models": [m.model_dump() for m in models],
+        "cost_usd": r["cost"],  # what the budget was charged (AD-11)
+        "duration_ms": result.duration_ms if result is not None else None,
+        "duration_api_ms": result.duration_api_ms if result is not None else None,
+        "num_turns": result.num_turns if result is not None else 0,
+        "session_id": result.session_id if result is not None else None,
+        "usage_complete": complete,
+        "at": at,
+    }
+    return UsageRecord.model_validate(record).model_dump(mode="json")
+
+
+def backfill_usage(p: Pipeline, state: RunState) -> RunState:
+    """AD-24: a state written before AD-24 gets a record for each finished agent or judge step:
+    zero tokens, the step's recorded cost, `usage_complete: false`, and the role from the
+    current pipeline, or `unknown`. Returns the state unchanged when nothing is missing."""
+    d = state.model_dump(mode="json")
+    changed = False
+    for r in d["steps"]:
+        if r["usage"] is not None or r["status"] in (S.RUNNING, S.PENDING):
+            continue
+        kind = _step_kind(p, r)
+        if (kind is not None and not is_measured(kind)) or (kind is None and not r["cap"]):
+            continue
+        if not r.get("agent_role") and kind is not None:
+            r["agent_role"] = p.stage(r["stage"]).step(r["step"]).agent_role
+        r["usage"] = _usage_record(
+            p, d, r, None, r["finished_at"] or r["started_at"], backfill=True
+        )
+        changed = True
+    return RunState.model_validate(d) if changed else state
+
+
+def usage_warning_due(p: Pipeline, state: RunState) -> bool:
+    """AD-24: spent + reserved reached `usage_warn_ratio` of the budget, and no warning was
+    recorded for this budget value yet."""
+    b = state.budget
+    if b.limit <= 0 or state.usage_warned_limit == b.limit:
+        return False
+    return b.spent + b.reserved >= p.settings.usage_warn_ratio * b.limit
 
 
 def _gate_evaluated(p: Pipeline, d: dict[str, Any], e: GateEvaluated) -> None:
@@ -507,6 +632,14 @@ def _limit_wait(p: Pipeline, d: dict[str, Any], at: str, resets_at: str | None) 
         )
 
 
+def _paths_reverted(p: Pipeline, d: dict[str, Any], e: PathsReverted) -> None:
+    """Audit only: the learn branch's commit left these paths out (AD-24)."""
+
+
+def _usage_warning(p: Pipeline, d: dict[str, Any], e: UsageWarning) -> None:
+    d["usage_warned_limit"] = e.budget_limit
+
+
 def _budget_exhausted(p: Pipeline, d: dict[str, Any], e: BudgetExhausted) -> None:
     d["budget"]["exhausted"] = True
     _escalate_record(d, "run", e.reason)
@@ -549,6 +682,8 @@ _HANDLERS: dict[type, Any] = {
     Tagged: _tagged,
     EscalationOpened: _escalation_opened,
     UsageLimited: _usage_limited,
+    UsageWarning: _usage_warning,
+    PathsReverted: _paths_reverted,
     BudgetExhausted: _budget_exhausted,
     RunStopped: _run_stopped,
     RunFinished: _run_finished,

@@ -236,10 +236,12 @@ async def test_matrix_budget_cap(tmp_path):
     [
         (
             "    steps:\n      - id: ux\n        kind: agent\n        skill: bmad-ux\n"
+            '        agent_role: "Safta (UX Designer)"\n'
             "        prompt: ux\n        tools: [Skill, Read, Grep, Glob, Edit, Write]\n"
             "        inputs: [_bmad-output/planning-artifacts/prds/]\n        writes: true\n"
             "      - id: security_prd\n",
             "    steps:\n      - id: ux\n        kind: agent\n        skill: bmad-ux\n"
+            '        agent_role: "Safta (UX Designer)"\n'
             "        prompt: ux\n        tools: [Skill, Read, Grep, Glob, Edit, Write]\n"
             "        inputs: [_bmad-output/planning-artifacts/prds/]\n        writes: true\n"
             "      - id: security_prd\n        writes: true\n",
@@ -345,7 +347,7 @@ def test_cli_resume_of_dry_run(tmp_path, capsys):
         )
         == 2
     )
-    run_id = next(p.name for p in runs.iterdir())
+    run_id = next(p.name for p in runs.iterdir() if p.is_dir())
     # Resume reloads the run's scenario: the blocker is still there, so the scope gets
     # max_rounds fresh rounds (its counter was reset) and escalates again.
     assert cli.main(["--repo", str(REPO), "--runs-dir", str(runs), "resume", run_id]) == 2
@@ -360,7 +362,7 @@ def test_cli_resume_refuses_a_renamed_stage(tmp_path, capsys):
     base = ["--repo", str(REPO), "--runs-dir", str(runs)]
     assert cli.main([*base, "run", "--dry-run", "--pipeline", str(pipe), "--scenario",
                      "gate-fails-max-rounds"]) == 2  # fmt: skip
-    run_id = next(p.name for p in runs.iterdir())
+    run_id = next(p.name for p in runs.iterdir() if p.is_dir())
     pipe.write_text(pipeline_text().replace("  - id: infra\n", "  - id: infra2\n"), "utf-8")
     capsys.readouterr()
     assert cli.main([*base, "resume", run_id]) == 1
@@ -373,7 +375,7 @@ def test_cli_resume_refuses_an_exhausted_budget(tmp_path, capsys):
     pipe.write_text(with_budget(pipeline_text(), 4), "utf-8")
     base = ["--repo", str(REPO), "--runs-dir", str(runs)]
     assert cli.main([*base, "run", "--dry-run", "--pipeline", str(pipe)]) == 2
-    run_id = next(p.name for p in runs.iterdir())
+    run_id = next(p.name for p in runs.iterdir() if p.is_dir())
     capsys.readouterr()
     assert cli.main([*base, "resume", run_id]) == 2
     err = capsys.readouterr().err
@@ -387,7 +389,7 @@ def test_cli_resume_after_raising_the_budget_proceeds(tmp_path, capsys):
     pipe.write_text(with_budget(pipeline_text(), 4), "utf-8")
     base = ["--repo", str(REPO), "--runs-dir", str(runs)]
     assert cli.main([*base, "run", "--dry-run", "--pipeline", str(pipe)]) == 2
-    run_id = next(p.name for p in runs.iterdir())
+    run_id = next(p.name for p in runs.iterdir() if p.is_dir())
     # The owner raises the ceiling and a per-stage limit; the stage table is unchanged.
     raised = with_budget(pipeline_text(), 100)
     raised = raised.replace("    timeout_min: 60\n", "    timeout_min: 90\n")
@@ -402,7 +404,7 @@ def test_cli_resume_of_a_passed_run_is_a_clear_error(tmp_path, capsys):
     runs = tmp_path / "runs"
     base = ["--repo", str(REPO), "--runs-dir", str(runs)]
     assert cli.main([*base, "run", "--dry-run"]) == 0
-    run_id = next(p.name for p in runs.iterdir())
+    run_id = next(p.name for p in runs.iterdir() if p.is_dir())
     capsys.readouterr()
     assert cli.main([*base, "resume", run_id]) == 1
     err = capsys.readouterr().err

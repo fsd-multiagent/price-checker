@@ -7,7 +7,7 @@ Every model is a frozen pydantic v2 model with tuple fields. A new value is buil
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -96,6 +96,19 @@ class Step(Frozen):
     writes: bool = False
     outcome_source: OutcomeSource | None = None
     verdict_source: VerdictSource | None = None
+    # AD-24: the role, in Name (Position) form, charged with the step's usage. Required on
+    # agent and judge steps; left out of the stage-table digest.
+    agent_role: str | None = None
+
+    @property
+    def runner(self) -> str | None:
+        """What the step runs, for the role check: `judge` for every judge step, the skill or
+        agent of an agent step, None for a script."""
+        if self.kind is StepKind.SCRIPT:
+            return None
+        if self.kind is StepKind.JUDGE:
+            return "judge"
+        return self.skill or self.agent
 
 
 class Gate(Frozen):
@@ -163,6 +176,18 @@ class Stage(Frozen):
         return "story" if self.per_story else "run"
 
 
+OTLP_PROTOCOLS = ("grpc", "http/protobuf", "http/json")
+
+
+class Telemetry(Frozen):
+    """AD-25: opt-in OpenTelemetry metrics export over OTLP, the only exporter. Collector
+    headers come from the runner's environment, never from here (AD-23)."""
+
+    enabled: bool = False
+    endpoint: str | None = None
+    protocol: str | None = None
+
+
 class Settings(Frozen):
     max_rounds: int = 3
     max_parallel: int = 3
@@ -184,6 +209,14 @@ class Settings(Frozen):
     usage_limit_wait_min: float = Field(default=30, gt=0)
     usage_limit_max_wait_h: float = Field(default=12, gt=0)
     allow_api_key: bool = False
+    # AD-24: role (Name (Position)) -> the skills and agent definitions it may run; `judge`
+    # stands for every judge step.
+    agents: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    usage_warn_ratio: float = Field(default=0.8, gt=0, le=1)
+    telemetry: Telemetry = Telemetry()
+    # AD-24: paths a learn branch reverts before it commits, so the pipeline changes only
+    # through an owner-reviewed PR.
+    learn_revert_paths: tuple[str, ...] = ()
 
 
 class Pipeline(Frozen):
@@ -244,6 +277,22 @@ class Denial(Frozen):
     detail: str = ""
 
 
+class Tokens(Frozen):
+    """The four token counts of `claude -p` usage (AD-24)."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+
+
+class ModelUsage(Tokens):
+    """One model's entry of `modelUsage`; subagents included (AD-24)."""
+
+    model: str
+    cost_usd: float = 0.0
+
+
 class StepResult(Frozen):
     """One step's result. Agent steps copy the `claude -p --output-format json` shape (AD-8)."""
 
@@ -258,6 +307,16 @@ class StepResult(Frozen):
     # Set by `adapters/claude.py` when the error text names a plan usage limit (AD-18).
     usage_limited: bool = False
     resets_at: str | None = None  # the reset time the limit message names, if any (UTC ISO)
+    # AD-24: token totals come from `model_usage` (subagents included); `usage` covers only the
+    # main loop and is kept for information.
+    model_usage: tuple[ModelUsage, ...] = ()
+    usage: Tokens | None = None
+    duration_ms: int | None = None
+    duration_api_ms: int | None = None
+    session_id: str | None = None
+    # The parsed JSON without its `result` text. Kept only in the step file (AD-24): excluded
+    # from every dump, so it never reaches `events.jsonl` or `state.json`.
+    raw: dict[str, Any] | None = Field(default=None, exclude=True)
 
 
 # --------------------------------------------------------------------------- stories
@@ -305,6 +364,44 @@ class Scope(Frozen):
     merged_sha: str | None = None
 
 
+class UsageRecord(Tokens):
+    """AD-24: one finished attempt of an agent or judge step; a ledger row. No free text.
+
+    `cost_usd` is the amount charged to the budget. Unknown fields are ignored when read.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    v: int = 1
+    run_id: str
+    seq: int
+    attempt: int = 1
+    scope: str
+    stage: str
+    step: str
+    round: int
+    agent_role: str
+    model: str | None = None  # the costliest `modelUsage` id, else the requested model
+    model_requested: str | None = None  # the configured `--model` value (an alias), if any
+    effort: str | None = None
+    status: Status
+    outcome: Outcome | None = None
+    subtype: str | None = None
+    interrupted: bool = False
+    models: tuple[ModelUsage, ...] = ()
+    cost_usd: float = 0.0
+    duration_ms: int | None = None
+    duration_api_ms: int | None = None
+    num_turns: int = 0
+    session_id: str | None = None
+    usage_complete: bool = False
+    at: str
+
+    @property
+    def key(self) -> tuple[str, int]:
+        return (self.run_id, self.seq)
+
+
 class StepRecord(Frozen):
     seq: int
     scope: str
@@ -322,6 +419,8 @@ class StepRecord(Frozen):
     status_value: str | None = None
     verdict: Verdict | None = None
     interrupted: bool = False
+    agent_role: str | None = None  # copied at StepStarted (AD-24)
+    usage: UsageRecord | None = None  # set when an agent or judge attempt ends (AD-24)
 
 
 class Counter(Frozen):
@@ -370,6 +469,8 @@ class RunState(Frozen):
     resume_at: str | None = None
     limit_episode_start: str | None = None
     limit_exceeded: bool = False
+    # AD-24: the budget value the usage warning was last recorded for.
+    usage_warned_limit: float | None = None
 
     @property
     def halted(self) -> bool:
@@ -534,6 +635,24 @@ class UsageLimited(_Event):
     resets_at: str | None = None
 
 
+class UsageWarning(_Event):
+    """AD-24: spent + reserved reached `usage_warn_ratio` of the run budget `budget_limit`."""
+
+    type: Literal["usage_warning"] = "usage_warning"
+    budget_limit: float
+    spent: float
+    reserved: float
+
+
+class PathsReverted(_Event):
+    """Audit: paths a learn branch reverted before committing step `seq` (AD-24)."""
+
+    type: Literal["paths_reverted"] = "paths_reverted"
+    scope: str
+    seq: int
+    paths: tuple[str, ...]
+
+
 class BudgetExhausted(_Event):
     type: Literal["budget_exhausted"] = "budget_exhausted"
     reason: str
@@ -569,6 +688,8 @@ Event = Annotated[
     | Tagged
     | EscalationOpened
     | UsageLimited
+    | UsageWarning
+    | PathsReverted
     | BudgetExhausted
     | RunStopped
     | RunFinished,

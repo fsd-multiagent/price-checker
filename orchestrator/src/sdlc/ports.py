@@ -27,7 +27,7 @@ class Invocation:
     """One `claude -p` process (AD-8).
 
     `key`, `verdict_source` and `attempt` describe the step for the fakes; the real adapter
-    ignores them.
+    ignores them. `labels` are used only when telemetry is on (AD-25).
     """
 
     key: StepKey
@@ -38,6 +38,8 @@ class Invocation:
     timeout_s: float = 1800.0
     verdict_source: str | None = None
     attempt: int = 1  # the k-th attempt of this step in this round, counted from the state
+    # AD-25: `sdlc.*` telemetry resource labels (run_id, seq, agent, stage, step, scope).
+    labels: Mapping[str, str] = field(default_factory=dict)
 
 
 class AdapterError(Exception):

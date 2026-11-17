@@ -2,9 +2,10 @@
 title: 'Zamolxe (Orchestrator) usage ledger per agent, with opt-in OpenTelemetry'
 type: 'feature'
 created: '2026-11-17'
-status: 'draft'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
+baseline_commit: '3fafbf816b6fd5fd10fabd11fbd662ab8dc98bdb'
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-orchestrator-2026-11-16/ARCHITECTURE-SPINE.md'
   - '{project-root}/docs/adr/0018-orchestrator-usage-ledger-per-agent.md'
@@ -120,6 +121,33 @@ context:
 ## Spec Change Log
 
 ## Review Triage Log
+
+Pass 1 (2026-11-17). Reviewers: BH = Blind Hunter, VG = Verification Gap, EC = Edge Case Hunter.
+
+| # | Finding | Verdict | Evidence | Route |
+|---|---|---|---|---|
+| 1 | BH1: no ADR or spine change in the patch | false | ADR 0018 and AD-24/AD-25 are committed in `928a607` and `326f46e`, before the baseline; the diff excluded `docs/adr` | reject |
+| 2 | BH2: legacy fixture missing | false | `tests/fixtures/legacy/state-pre-ad24.json` is committed at the baseline `3fafbf8`; the diff excluded it | reject |
+| 3 | BH3, EC3, VG-o3: `status` and `usage` write the ledger and race a live run; `--rebuild` can drop rows | high | `_load_run` → `RunStore.load` → `reconcile` appends; no lock | patch (reports read state; only the run appends; rebuild refuses while a run is running) |
+| 4 | BH4: ledger rows are snapshots at finish time | medium | Rows keep their first values under "first wins" | patch (covered by row 3: reports read state) |
+| 5 | BH5, EC11, VG4: `model` is an alias while `--by model` groups by ids; by-model totals differ from spent | medium | `_usage_record` uses `stage.model or default_model` | patch |
+| 6 | BH6: `_pipeline_for` docstring is wrong | low | It loads the current file | patch (docstring) |
+| 7 | BH7, EC7, EC8, EC9, VG1, VG2: telemetry not metrics-only; per-signal overrides win; dead `exporter` field; warning gaps; wiring untested | medium | `agent_env` keeps inherited otlp logs and traces exporters | patch |
+| 8 | BH8, EC14: retro summary parse can raise; epic scope excluded; partial without saying so | medium | `int(subject.rsplit(...))`; `epic_records` filter | patch |
+| 9 | BH9: `sdlc/**` revert is silent | medium | No event, no prompt mention for the keeper | patch |
+| 10 | BH10: `raw` bloats events and state | medium | `StepResult.raw` travels in `StepFinished` | patch |
+| 11 | BH11, VG-o1: dead `is_measured`; `_key` lacks the model branch | low | Direct correction | patch |
+| 12 | BH12, EC5: CLI gaps (`--all` with a run id, unknown run checked after rebuild, wording) | low | Direct correction | patch |
+| 13 | BH13: docs incomplete | low | AGENTS.md, pipeline header | patch |
+| 14 | BH14a: the warning does not re-arm after the budget is lowered and raised back | low | Needs an owner lowering then restoring the same value; the fix adds state | reject |
+| 15 | BH14b, VG3, VG5: tests missing (status line, by model, protocol, empty roster, digest, removed step) | medium | Pre-verified by VG | patch |
+| 16 | EC1, EC2: a ledger write or read failure crashes the run | high | OSError or UnicodeDecodeError in `reconcile`/`read_ledger` | patch |
+| 17 | EC4: one corrupt state breaks `--all` and `--rebuild` | medium | No per-run guard | patch |
+| 18 | EC6: `Infinity` raises OverflowError | low | Direct correction | patch |
+| 19 | EC10: `error_orchestrator` steps get a record | medium | No model ran | patch |
+| 20 | EC12: a judge step with a skill is rejected | low | `Step.runner` returns the skill | patch |
+| 21 | EC13: a legacy custom pipeline without roles cannot resume | low | Only for custom `--pipeline` runs; better error message | patch (message) |
+| 22 | VG-o2: `test_real_no_required_checks` is timing-sensitive | medium | Pre-existing, not caused by this change | defer |
 
 ## Verification
 

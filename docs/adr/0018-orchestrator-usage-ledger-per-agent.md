@@ -1,8 +1,8 @@
 # 0018. Measure every agent step's usage in a ledger derived from the run state, with optional OpenTelemetry export
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-17
-- **Deciders:** Loredan (Architect); owner approval pending
+- **Deciders:** Loredan (Architect); accepted by Adrian (owner), 2026-11-17
 - **Stage / story:** setup, orchestrator update during phase 1
 - **Rules touched:** D-2, D-6; orchestrator spine AD-7, AD-24, AD-25; extends ADR 0002 (state is the source) and ADR 0005 (budgets are estimates)
 
