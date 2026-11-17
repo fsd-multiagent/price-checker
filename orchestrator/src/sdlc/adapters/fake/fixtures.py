@@ -1,8 +1,9 @@
 """Canned results for the dry-run, keyed by scope, step and round (AD-2).
 
-A scenario file (`scenario.yaml`) maps `<scope>/<step>[/r<n>]` to an entry; `*` matches any
-scope. Lookup order: exact scope and round, exact scope, `*` with round, `*`, then the kind
-default. Entry fields:
+A scenario file (`scenario.yaml`) maps `<scope>/<step>[/r<n>[/a<k>]]` to an entry; `*` matches
+any scope, and `a<k>` is the k-th attempt of the step in that round (a usage limit or a crash
+reruns a step in the same round). Lookup order: exact scope, round and attempt, exact scope and
+round, exact scope, then the same with `*`, then the kind default. Entry fields:
 
 - `result`: a `claude -p --output-format json` fixture file (the real shape, AD-8)
 - `status`: the status the agent reports in its result (`done`, `blocked`, `ambiguous`, `PASS`)
@@ -42,13 +43,14 @@ class FixtureBook:
             overlay = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         return cls(root, overlay)
 
-    def lookup(self, scope: str, step: str, round_: int, kind: str) -> dict[str, Any]:
-        for key in (
-            f"{scope}/{step}/r{round_}",
-            f"{scope}/{step}",
-            f"*/{step}/r{round_}",
-            f"*/{step}",
-        ):
+    def lookup(
+        self, scope: str, step: str, round_: int, kind: str, attempt: int | None = None
+    ) -> dict[str, Any]:
+        keys = [f"{scope}/{step}/r{round_}", f"{scope}/{step}", f"*/{step}/r{round_}", f"*/{step}"]
+        if attempt is not None:
+            keys.insert(2, f"*/{step}/r{round_}/a{attempt}")
+            keys.insert(0, f"{scope}/{step}/r{round_}/a{attempt}")
+        for key in keys:
             if key in self.steps:
                 return {**self.defaults.get(kind, {}), **(self.steps[key] or {})}
         return dict(self.defaults.get(kind, {}))

@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 from conftest import ORCH
 
+from sdlc.adapters import real
 from sdlc.adapters.claude import ClaudeCli, build_argv
 from sdlc.adapters.commands import ProjectCommands, parse_commands
 from sdlc.adapters.fake import FakeGit, FixtureBook
@@ -26,6 +27,7 @@ from sdlc.adapters.gh import GhCli
 from sdlc.adapters.git import GitCli
 from sdlc.adapters.notifier import DesktopNotifier, osascript_argv
 from sdlc.adapters.proc import run_proc
+from sdlc.adapters.real import CREDENTIAL_VARS, credential_problems
 from sdlc.cli import main
 from sdlc.core.fr_ac import check_prds, check_text
 from sdlc.ports import AdapterError, Invocation, StepKey
@@ -651,6 +653,13 @@ def sdlc_repo(repo, stubs, monkeypatch) -> Path:
     git(repo, "commit", "--quiet", "-m", "sdlc")
     git(repo, "push", "--quiet", "origin", "HEAD:refs/heads/main")
     monkeypatch.setenv("STUB_CLAUDE_WRITE", "out.txt")
+    # AD-23: the credential preflight must not see the developer's own settings or keys.
+    home = repo.parent / "home"
+    home.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    for name in (*CREDENTIAL_VARS, "CLAUDE_CONFIG_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(real, "MANAGED_SETTINGS", {})
     return repo
 
 
@@ -760,6 +769,8 @@ def test_real_preflight_dirty_checkout(sdlc_repo, capsys):
 @pytest.mark.skipif(os.environ.get("SDLC_LIVE") != "1", reason="paid call; set SDLC_LIVE=1")
 async def test_live_claude_one_call(tmp_path):
     """One real `claude -p` call (about $0.05) to confirm the `--output-format json` shape."""
+    # AD-23: the same credential check as the preflight, so the call uses the subscription.
+    assert credential_problems(ORCH.parent) == []
     argv = build_argv(budget_usd=0.25, allowed_tools=("Read",), restrict_tools=True)
     inv = Invocation(key=KEY, argv=argv, stdin="Reply with the single word: ok", cwd=str(tmp_path),
                      timeout_s=180)  # fmt: skip

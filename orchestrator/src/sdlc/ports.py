@@ -26,7 +26,8 @@ class StepKey:
 class Invocation:
     """One `claude -p` process (AD-8).
 
-    `key` and `verdict_source` describe the step for the fakes; the real adapter ignores both.
+    `key`, `verdict_source` and `attempt` describe the step for the fakes; the real adapter
+    ignores them.
     """
 
     key: StepKey
@@ -36,6 +37,7 @@ class Invocation:
     env: Mapping[str, str] = field(default_factory=dict)
     timeout_s: float = 1800.0
     verdict_source: str | None = None
+    attempt: int = 1  # the k-th attempt of this step in this round, counted from the state
 
 
 class AdapterError(Exception):
@@ -88,6 +90,9 @@ class Fs(Protocol):
 
 class Clock(Protocol):
     def now(self) -> str: ...
+    async def sleep_until(self, until: str) -> None:
+        """Return once `until` (UTC ISO) has passed. The dry-run fake returns at once (AD-1)."""
+        ...
 
 
 class Notifier(Protocol):

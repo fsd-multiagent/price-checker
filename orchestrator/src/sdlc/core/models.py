@@ -29,6 +29,7 @@ class Status(StrEnum):
     BLOCKED = "blocked"
     ESCALATED = "escalated"
     SKIPPED = "skipped"
+    SUPERSEDED = "superseded"  # step records only: an attempt cut short by a plan limit (AD-18)
 
 
 class StepKind(StrEnum):
@@ -44,6 +45,17 @@ class Outcome(StrEnum):
     BLOCKED = "blocked"
     AMBIGUOUS = "ambiguous"
     ERROR = "error"
+    LIMITED = "limited"  # a plan usage limit was hit (AD-18)
+
+
+class Effort(StrEnum):
+    """AD-7: `--effort` levels. `ultracode` is excluded on purpose: it fans out many agents."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+    MAX = "max"
 
 
 class OutcomeSource(StrEnum):
@@ -107,6 +119,8 @@ class Stage(Frozen):
     timeout_min: int | None = None
     budget_usd: float = 0.0
     model: str | None = None
+    effort: Effort | None = None
+    max_turns: int | None = None
     stories_file: str | None = None
 
     def step(self, step_id: str) -> Step:
@@ -165,6 +179,11 @@ class Settings(Frozen):
     ci_timeout_min: int = 30
     run_budget_usd: float
     register_path: str = "docs/source-register.md"
+    default_model: str | None = None
+    default_effort: Effort | None = None
+    usage_limit_wait_min: float = Field(default=30, gt=0)
+    usage_limit_max_wait_h: float = Field(default=12, gt=0)
+    allow_api_key: bool = False
 
 
 class Pipeline(Frozen):
@@ -236,6 +255,9 @@ class StepResult(Frozen):
     result: str | None = None
     errors: tuple[str, ...] = ()
     exit_code: int | None = None
+    # Set by `adapters/claude.py` when the error text names a plan usage limit (AD-18).
+    usage_limited: bool = False
+    resets_at: str | None = None  # the reset time the limit message names, if any (UTC ISO)
 
 
 # --------------------------------------------------------------------------- stories
@@ -278,6 +300,7 @@ class Scope(Frozen):
     worktree: str | None = None
     head_sha: str | None = None
     needs_reset: bool = False
+    reset_without_feedback: bool = False  # the reset discards a superseded attempt (AD-18)
     pr: int | None = None
     merged_sha: str | None = None
 
@@ -342,6 +365,16 @@ class RunState(Frozen):
     scenario: str | None = None
     pipeline_path: str | None = None
     pipeline_sha256: str | None = None
+    # AD-18: no step starts before `resume_at`; the episode runs from the first `limited`
+    # result to the next step that ends `done`. `limit_exceeded` escalates the run (scope run).
+    resume_at: str | None = None
+    limit_episode_start: str | None = None
+    limit_exceeded: bool = False
+
+    @property
+    def halted(self) -> bool:
+        """No new step starts: the budget is exhausted or a limit episode ran too long."""
+        return self.budget.exhausted or self.limit_exceeded
 
     def unit(self, scope: str, stage: str) -> Unit | None:
         for u in self.units:
@@ -493,6 +526,14 @@ class EscalationOpened(_Event):
     issue: int
 
 
+class UsageLimited(_Event):
+    """AD-18: step `seq` hit a plan usage limit; the run waits until `resume_at`."""
+
+    type: Literal["usage_limited"] = "usage_limited"
+    seq: int
+    resets_at: str | None = None
+
+
 class BudgetExhausted(_Event):
     type: Literal["budget_exhausted"] = "budget_exhausted"
     reason: str
@@ -527,6 +568,7 @@ Event = Annotated[
     | Merged
     | Tagged
     | EscalationOpened
+    | UsageLimited
     | BudgetExhausted
     | RunStopped
     | RunFinished,
@@ -596,6 +638,13 @@ class ExhaustBudget(Frozen):
     reason: str
 
 
+class Wait(Frozen):
+    """AD-1, AD-11: nothing can start before `until`; the app sleeps through the clock port."""
+
+    type: Literal["wait"] = "wait"
+    until: str
+
+
 class Finish(Frozen):
     type: Literal["finish"] = "finish"
     exit_code: int
@@ -611,6 +660,7 @@ Action = (
     | OpenEscalation
     | TagStage
     | ExhaustBudget
+    | Wait
     | Finish
 )
 
@@ -619,6 +669,7 @@ class TickInputs(Frozen):
     """Facts read from outside the core before each decision (AD-1)."""
 
     approved_domains: frozenset[str] = frozenset()
+    now: str | None = None  # UTC ISO from the clock port; None means "no time-based waits"
 
 
 class CoreError(Exception):

@@ -22,7 +22,10 @@ def derive_outcome(
 ) -> Derived:
     """`readiness` is True for a step that feeds a `readiness` gate: PASS, CONCERNS and FAIL
     are then reported values for the gate to judge. Elsewhere FAIL is an error."""
-    if result.subtype != "success" or result.is_error:
+    failed = result.subtype != "success" or result.is_error
+    if failed and result.usage_limited:  # AD-18: checked first, only on an error result
+        return Derived(Outcome.LIMITED, f"plan usage limit: {_error_text(result)}", None)
+    if failed:
         detail = "; ".join(result.errors) if result.errors else ""
         return Derived(Outcome.ERROR, f"{result.subtype}{': ' + detail if detail else ''}", None)
 
@@ -56,6 +59,10 @@ def derive_outcome(
     if blocking:
         return Derived(Outcome.AMBIGUOUS, blocking, value)
     return Derived(outcome, None, value)
+
+
+def _error_text(result: StepResult) -> str:
+    return "; ".join((*result.errors, result.result or "")).strip("; ")[:300]
 
 
 def _question(data: dict[str, Any]) -> str | None:

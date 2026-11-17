@@ -7,7 +7,7 @@ paradigm: 'functional core / imperative shell, persisted state machine'
 scope: 'The sdlc Python CLI in orchestrator/ that runs the stage table of docs/automation-plan.md (step 0.8)'
 status: final
 created: '2026-11-16'
-updated: '2026-11-16'
+updated: '2026-11-17'
 binds: ['automation-plan §2', '§4.1', '§4.2', '§4.3', '§4.4', '§4.5', '§5', '§6', '§7']
 sources:
   - docs/automation-plan.md
@@ -18,6 +18,8 @@ companions:
   - docs/adr/0001-orchestrator-functional-core.md
   - docs/adr/0002-orchestrator-run-state-and-resume.md
   - docs/adr/0003-orchestrator-git-integration.md
+  - docs/adr/0004-gate-commands-in-agents-md.md
+  - docs/adr/0005-orchestrator-subscription-limits-and-budget.md
 ---
 
 # Architecture Spine — Zamolxe (Orchestrator)
@@ -57,7 +59,8 @@ flowchart LR
 - **Rule:**
   - `core/` imports nothing from `adapters/`, `app/`, `subprocess`, `asyncio`, and no file or network I/O.
   - Its function is `(pipeline, state, event) → (new state, actions)`.
-  - Time and file contents come in as event fields.
+  - Time and file contents come in as event fields. Each tick's inputs carry `now`.
+  - Waiting is an action: the scheduler returns `Wait(until)`, and `app/` sleeps through the `Clock` port (`sleep_until`), which the dry-run fake advances at once.
 
 ### AD-2 — Dry-run is the real loop with fake adapters
 
@@ -93,7 +96,7 @@ flowchart LR
 - **Binds:** run, stage, story, round and step nodes; the CLI; resume; routing
 - **Prevents:** statuses or transitions that the scheduler, `status` and `resume` read differently.
 - **Rule:**
-  - Status is a `StrEnum` with the values `pending | running | passed | failed | blocked | escalated | skipped`.
+  - Status is a `StrEnum` with the values `pending | running | passed | failed | blocked | escalated | skipped | superseded`. `superseded` applies only to step records: a step attempt that a plan usage limit cut short (AD-18). Gates and round counters ignore it.
   - Only the transitions in the diagram below are legal. Anything else is a core error.
   - `blocked` means waiting on a human input from plan §6, or on a dependency that is escalated. It consumes no round.
   - `on_fail` may point only to the same stage or an earlier one in the same chain. Rewinding moves the target and every later stage of that chain from `passed` to `pending`, with the reason `invalidated_by`.
@@ -109,6 +112,8 @@ stateDiagram-v2
   running --> failed
   running --> blocked
   running --> escalated
+  running --> superseded: limited (AD-18)
+  superseded --> [*]
   passed --> pending: invalidated_by on_fail rewind
   failed --> pending: round < max_rounds
   failed --> escalated: round = max_rounds
@@ -122,7 +127,7 @@ stateDiagram-v2
 - **Rule:**
   - Each scope records its `head_sha` after every step that passes.
   - Before a step starts, the orchestrator records its `base_sha`. It always equals the scope's `head_sha`, because AD-16 allows one writer per worktree.
-  - A failed round, a timeout, or a step still `running` when the state is loaded all reset the worktree to the scope `head_sha` (`git reset --hard` then `git clean -fd`, never `-x`, so `.sdlc/` survives).
+  - A failed round, a timeout, a `limited` outcome (AD-18), or a step still `running` when the state is loaded all reset the worktree to the scope `head_sha` (`git reset --hard` then `git clean -fd`, never `-x`, so `.sdlc/` survives).
   - The discarded diff is saved as `steps/<seq>.discarded.patch` and named in the next fix prompt.
   - Leftover changes are committed only when a step ends `done`.
   - On load, any rebase in progress is aborted before anything else.
@@ -135,7 +140,7 @@ stateDiagram-v2
 - **Rule:**
   - A pydantic model validates `pipeline.yaml` at load. Stages refer to step kinds (`agent`, `judge`, `script`) and gate kinds (AD-19) by registry name. An unknown name is a load error.
   - No stage name is hard-coded in Python.
-  - Stage fields: `id`, `entry` (the run kinds it belongs to, from `full`, `story` and `fix`), `per_story`, `steps`, `parallel`, `gate`, `on_fail`, `max_rounds`, `timeout_min`, `budget_usd`, optional `model`.
+  - Stage fields: `id`, `entry` (the run kinds it belongs to, from `full`, `story` and `fix`), `per_story`, `steps`, `parallel`, `gate`, `on_fail`, `max_rounds`, `timeout_min`, `budget_usd`, optional `model`, optional `effort` (`low | medium | high | xhigh | max`; `ultracode` is excluded on purpose, because it fans out many agents), optional `max_turns`. A stage value overrides the setting `default_model` / `default_effort`; unset means the CLI default (`medium` effort on current models). `sdlc resume` accepts changes to `model`, `effort` and `max_turns`, like the other per-stage limits.
   - Step fields: `kind`, `skill` or `agent`, `prompt`, `tools`, `writes` (boolean), `outcome_source` (AD-18), `verdict_source` (AD-17).
   - Defaults are in the table below.
 
@@ -148,17 +153,23 @@ stateDiagram-v2
 | `bookkeeping_paths` | See AD-21 |
 | `ci_timeout_min` | 30 |
 | `run_budget_usd` | Set by the owner in setup (plan §6); no default, so a missing value is a load error |
+| `default_model`, `default_effort` | Unset (the CLI default) |
+| `usage_limit_wait_min` | 30 |
+| `usage_limit_max_wait_h` | 12 |
+| `allow_api_key` | `false` (AD-23) |
 
 ### AD-8 — One way to start an agent [ADOPTED from plan §4.1]
 
 - **Binds:** `adapters/claude.py`, `sdlc/prompts/`
 - **Prevents:** steps built with different flags, prompts or parsing, and permission holes.
 - **Rule:**
-  - One function builds every invocation: `claude -p --output-format json --max-budget-usd <cap> --no-session-persistence --allowedTools <a,b,c> [--tools <a,b,c>] [--agent <name>] [--model <m>]`.
+  - One function builds every invocation: `claude -p --output-format json --max-budget-usd <cap> --no-session-persistence --allowedTools <a,b,c> [--tools <a,b,c>] [--agent <name>] [--model <m>] [--effort <level>] [--max-turns <n>]`. `--max-turns` is hidden from `--help` but documented for print mode; reaching it ends the step as `error_max_turns`, a failed round.
   - Tool lists are passed as one comma-joined argument.
   - Never pass `--bare`, which skips the guard hooks, or any permission-bypass flag.
   - The prompt is rendered from `sdlc/prompts/<step>.md` and passed on stdin. It names every input path, the verdict path, and on a fix round the failed verdicts and the discarded patch.
-  - The process runs with `cwd` set to the worktree, `TMPDIR=<worktree>/.sdlc/tmp` and `SDLC_VERDICT_PATH`.
+  - The process runs with `cwd` set to the worktree, `TMPDIR=<worktree>/.sdlc/tmp`, and `SDLC_VERDICT_PATH` for file verdicts.
+  - The orchestrator removes `CLAUDE_CODE_RETRY_WATCHDOG*` and `CLAUDE_CODE_EFFORT_LEVEL` from the agent's environment. `claude -p` then fails fast at a plan limit, and only the orchestrator waits (AD-18); and `--effort` is not silently overridden.
+  - Output that cannot be parsed, for example after a bad `model` or `effort` value, ends that step as `error`. It never stops the run.
   - The output is parsed into one `StepResult`: `subtype`, `is_error`, `total_cost_usd`, `num_turns`, `permission_denials`, an optional `result`, and `errors`. Denials are logged.
 
 ### AD-9 — Agents write only inside their own worktree
@@ -191,8 +202,12 @@ stateDiagram-v2
   - When a gate fails, the scope goes to its `on_fail` target (AD-5).
   - Rounds are counted per `(scope, gate)`, and the round is charged to the gate that failed.
   - At `max_rounds` the scope escalates (AD-14).
-  - A step's `budget_usd` is reserved before it starts. A step may start only if spent + reserved + its cap ≤ `run_budget_usd`. Otherwise the run escalates, and steps that are already running finish.
-  - When nothing is runnable or running, the run exits. The exit code is 0 if everything passed, otherwise 2.
+  - A step's `budget_usd` is reserved before it starts. `core.apply` keeps reserved equal to the sum of the caps of the running steps; a step that ends, for any reason, releases its reservation and charges its reported cost in the same transition.
+  - A step may start only if spent + reserved + its cap ≤ `run_budget_usd`.
+  - If it does not fit, but some step is running and spent + its cap ≤ `run_budget_usd`, it waits. Once a step waits for budget, no step queued after it starts in that tick, so a large step is not starved.
+  - If nothing is running, or spent + its cap > `run_budget_usd`, the run escalates as budget exhausted (scope `run`), and steps that are already running finish.
+  - Budget amounts are `total_cost_usd` values: API-equivalent estimates computed by the CLI. On a subscription they are not charges; the cap limits how much of the plan's allowance a run can use. `--max-budget-usd` can be overshot slightly, so caps keep some headroom.
+  - The run is **waiting** while `resume_at` (AD-18) is in the future, or while a step waits for budget. When nothing is runnable, running or waiting, the run exits. The exit code is 0 if everything passed, otherwise 2.
 
 ### AD-12 — The orchestrator owns git and GitHub
 
@@ -269,8 +284,13 @@ stateDiagram-v2
 - **Binds:** `adapters/claude.py`, `core/scheduler.py`
 - **Prevents:** a skill reporting `blocked` (for example `bmad-build-auto`) while the CLI still returns `subtype: success`, and that being read as a pass.
 - **Rule:**
-  - `StepResult.outcome` is one of `done | blocked | ambiguous | error`. It is derived from the step's `outcome_source`, for example the result's JSON status, a result file, or verdict presence.
-  - Any `subtype` other than `success` is `error`.
+  - `StepResult.outcome` is one of `done | blocked | ambiguous | error | limited`. It is derived from the step's `outcome_source`, for example the result's JSON status, a result file, or verdict presence.
+  - `limited` means a plan usage limit was hit. It is checked first, but only when `subtype` is not `success` or `is_error` is true, and only against the error text (`errors[]`, and `result` when present). One case-insensitive pattern list in `adapters/claude.py`: `hit your (session|weekly|opus|sonnet|fable) limit` and `hit your .*(spend|usage) limit`.
+    - The step is closed as `superseded`: gates and round counters ignore it. Its worktree is reset and its diff saved (AD-6), and its reservation is released and its reported cost charged (AD-11). A new attempt of the same step, in the same round, becomes pending.
+    - The run records a `UsageLimited` event in `state.json`: `resume_at = max(current resume_at, reset time named in the message if any, now + usage_limit_wait_min)`. No step starts before `resume_at`. Running steps finish.
+    - A limit episode starts with the first `limited` and ends at the next step that ends `done`. When the episode's wall-clock length passes `usage_limit_max_wait_h`, the run escalates with scope `run`.
+    - `sdlc resume` clears `resume_at` and the episode.
+  - Any other `subtype` than `success` is `error`.
   - Only `done` lets a step pass.
   - `blocked` and `error` are failed rounds.
   - `ambiguous`, meaning a blocking open question reported by a skill, escalates at once.
@@ -332,6 +352,20 @@ stateDiagram-v2
   - The run kind selects the stages whose `entry` includes it.
   - `sdlc story <issue>` and `sdlc fix <issue>` parse one fenced `yaml` story block from the issue body into `runs/<id>/stories.yaml`, which uses the schema of an `epics.md` entry. If the issue has no valid block, the run escalates at once.
 
+### AD-23 — Real runs use the subscription unless an API key is allowed
+
+- **Binds:** `adapters/real.py` preflight, `cli.py`
+- **Prevents:** a run billed per token by accident. In `-p` mode, `ANTHROPIC_API_KEY` always wins over the subscription login when it is present.
+- **Rule:**
+  - Preflight refuses a real run (exit 1), unless `settings.allow_api_key` is `true`, when any of these is set to a non-empty value:
+    - `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_PROFILE`
+    - `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`
+
+    It checks the process environment, and the `env` block and `apiKeyHelper` in `~/.claude/settings.json`, `.claude/settings.json` and `.claude/settings.local.json`. The message names what it found and says that `-p` would then bill per token or go through another provider.
+  - Agent processes inherit exactly the environment the preflight checked; the orchestrator adds variables (AD-8) but never adds credentials.
+  - The opt-in live test runs the same check.
+  - Owner checklist (plan §6): keep "extra usage" credits off for the runner's account, so a limit pauses the run instead of drawing paid credits.
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -358,7 +392,7 @@ stateDiagram-v2
 | pytest | 9.2.0 |
 | pytest-asyncio | 1.5.0 |
 | ruff | 0.17.5 |
-| Claude Code CLI | 2.1.325 |
+| Claude Code CLI | ≥ 2.1.325 (runner: 2.1.326) |
 | gh | 2.96.0 |
 | git | 2.54.0 |
 
@@ -409,7 +443,8 @@ flowchart TB
 | Question | Blocking? | Revisit when |
 | --- | --- | --- |
 | The exact `--output-format json` shape, confirmed with one real call (about $0.05) | No. The fields were verified from the CLI schema | The first `claude` adapter test with a live call |
-| Whether the repo has auto-merge and required checks turned on (plan §6 owner checklist) | Yes for stage 8, no for the step 0.8 dry-run | Step 0.9 |
+| Whether the repo has auto-merge and required checks turned on (plan §6 owner checklist). The org is on GitHub Free; the owner chose to make the repo public so both become available | Yes for stage 8 | After the owner makes the repo public and sets branch protection |
+| The exact text and field (`result` or `errors[]`) of a usage-limit result under `-p`; the docs give the messages but not the JSON shape | No. AD-18 matches both fields | The first real run that hits a limit: save it as a fixture |
 
 ## Deferred
 

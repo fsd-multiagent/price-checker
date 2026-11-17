@@ -5,6 +5,7 @@ The state is dumped to plain data, changed, and rebuilt with `model_validate`.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sdlc.core.gates import last_verdict_block, parse_verdict_text
@@ -36,6 +37,7 @@ from sdlc.core.models import (
     UnitBlocked,
     UnitStarted,
     UnitUnblocked,
+    UsageLimited,
     VerdictSource,
     WorktreeReady,
 )
@@ -46,11 +48,12 @@ S = Status
 TRANSITIONS: dict[Status, frozenset[Status]] = {
     S.PENDING: frozenset({S.RUNNING, S.BLOCKED, S.SKIPPED}),
     S.BLOCKED: frozenset({S.PENDING}),
-    S.RUNNING: frozenset({S.PASSED, S.FAILED, S.BLOCKED, S.ESCALATED}),
+    S.RUNNING: frozenset({S.PASSED, S.FAILED, S.BLOCKED, S.ESCALATED, S.SUPERSEDED}),
     S.PASSED: frozenset({S.PENDING}),
     S.FAILED: frozenset({S.PENDING, S.ESCALATED}),
     S.ESCALATED: frozenset({S.PENDING}),
     S.SKIPPED: frozenset(),
+    S.SUPERSEDED: frozenset(),
 }
 
 
@@ -60,6 +63,8 @@ def legal(old: Status, new: Status) -> bool:
 
 def _move(node: dict[str, Any], new: Status, what: str) -> None:
     old = Status(node["status"])
+    if new is S.SUPERSEDED and "seq" not in node:  # AD-5: step records only
+        raise CoreError(f"illegal transition {old} -> {new} for {what}: step records only")
     if not legal(old, new):
         raise CoreError(f"illegal transition {old} -> {new} for {what}")
     node["status"] = new
@@ -128,7 +133,17 @@ def apply(pipeline: Pipeline, state: RunState, event: Event) -> RunState:
     if handler is None:
         raise CoreError(f"no handler for event {type(event).__name__}")
     handler(pipeline, d, event)
+    # AD-11: reserved is always the sum of the caps of the running steps.
+    d["budget"]["reserved"] = sum(r["cap"] for r in d["steps"] if r["status"] == S.RUNNING)
     return RunState.model_validate(d)
+
+
+def parse_time(at: str) -> datetime:
+    return datetime.strptime(at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+
+
+def format_time(t: datetime) -> str:
+    return t.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _unit(d: dict[str, Any], scope: str, stage: str) -> dict[str, Any]:
@@ -155,7 +170,13 @@ def _record(d: dict[str, Any], seq: int) -> dict[str, Any]:
 def _escalate_record(d: dict[str, Any], scope: str, reason: str) -> None:
     for e in d["escalations"]:
         if e["scope"] == scope:
-            e["reason"] = reason
+            if scope == "run" and reason not in e["reason"]:
+                # A second run-level escalation keeps the first reason and is reported again:
+                # OpenEscalation reuses the issue by its marker and comments (AD-13).
+                e["reason"] = f"{e['reason']}; then: {reason}"
+                e["issue"] = None
+            elif scope != "run":
+                e["reason"] = reason
             return
     d["escalations"].append({"scope": scope, "reason": reason, "issue": None})
 
@@ -174,6 +195,10 @@ def _run_resumed(p: Pipeline, d: dict[str, Any], e: RunResumed) -> None:
         _move(d, S.RUNNING, "run")
     d["exit_code"] = None
     d["budget"]["exhausted"] = False
+    # AD-18: a resume clears the wait and the limit episode.
+    d["resume_at"] = None
+    d["limit_episode_start"] = None
+    d["limit_exceeded"] = False
     if e.budget_limit is not None:
         d["budget"]["limit"] = e.budget_limit
     for u in d["units"]:
@@ -274,7 +299,6 @@ def _step_started(p: Pipeline, d: dict[str, Any], e: StepStarted) -> None:
         }
     )
     d["next_seq"] += 1
-    d["budget"]["reserved"] += e.cap
 
 
 def _step_finished(p: Pipeline, d: dict[str, Any], e: StepFinished) -> None:
@@ -297,11 +321,21 @@ def _step_finished(p: Pipeline, d: dict[str, Any], e: StepFinished) -> None:
         status_value=derived.status_value,
         verdict=verdict.model_dump() if verdict else None,
     )
-    d["budget"]["reserved"] = max(0.0, d["budget"]["reserved"] - r["cap"])
-    d["budget"]["spent"] += e.result.total_cost_usd
+    d["budget"]["spent"] += e.result.total_cost_usd  # the reservation is released in `apply`
     what = f"step {e.seq} ({r['scope']}/{r['step']})"
-    if derived.outcome is Outcome.DONE:
+    if derived.outcome is Outcome.LIMITED:
+        # AD-18: gates and round counters ignore the attempt; the worktree is reset (AD-6) and
+        # a new attempt of the step, in the same round, becomes pending.
+        _move(r, S.SUPERSEDED, what)
+        sc = _scope(d, r["scope"])
+        sc["needs_reset"] = True
+        sc["reset_without_feedback"] = True  # the cut-short attempt's diff is not a fix hint
+        _limit_wait(p, d, e.at, e.result.resets_at)  # set here, so a crash cannot lose it
+    elif derived.outcome is Outcome.DONE:
         _move(r, S.PASSED, what)
+        episode = d["limit_episode_start"]
+        if episode is not None and r["started_at"] >= episode:
+            d["limit_episode_start"] = None  # AD-18: a step started in the episode ended done
         if e.head_sha:
             _scope(d, r["scope"])["head_sha"] = e.head_sha
     elif derived.outcome is Outcome.AMBIGUOUS:
@@ -323,7 +357,6 @@ def _step_interrupted(p: Pipeline, d: dict[str, Any], e: StepInterrupted) -> Non
     r["reason"] = "interrupted; rerun in the same round"
     r["finished_at"] = e.at
     # The real cost of a killed process is unknown: charge its whole cap (AD-11).
-    d["budget"]["reserved"] = max(0.0, d["budget"]["reserved"] - r["cap"])
     d["budget"]["spent"] += r["cap"]
     r["cost"] = r["cap"]
 
@@ -349,6 +382,7 @@ def _gate_evaluated(p: Pipeline, d: dict[str, Any], e: GateEvaluated) -> None:
         d["counters"].append(counter)
     counter["fails"] += 1  # AD-11: the round is charged to the gate that failed
     _scope(d, e.scope)["needs_reset"] = True
+    _scope(d, e.scope)["reset_without_feedback"] = False
     _move(u, S.FAILED, what)
     max_rounds = stage.max_rounds or p.settings.max_rounds
     if counter["fails"] >= max_rounds:
@@ -391,7 +425,9 @@ def _gate_evaluated(p: Pipeline, d: dict[str, Any], e: GateEvaluated) -> None:
 def _scope_reset(p: Pipeline, d: dict[str, Any], e: ScopeReset) -> None:
     sc = _scope(d, e.scope)
     sc["needs_reset"] = False
-    if e.patch:
+    quiet = sc["reset_without_feedback"]
+    sc["reset_without_feedback"] = False
+    if e.patch and not quiet:
         for u in d["units"]:
             if u["scope"] == e.scope and u["status"] in (S.PENDING, S.RUNNING):
                 u["feedback"] = (*u["feedback"], e.patch)
@@ -436,6 +472,41 @@ def _escalation_opened(p: Pipeline, d: dict[str, Any], e: EscalationOpened) -> N
     raise CoreError(f"no escalation for {e.scope}")
 
 
+def _usage_limited(p: Pipeline, d: dict[str, Any], e: UsageLimited) -> None:
+    """Audit of a limited step. `StepFinished` already set the wait; re-applying it from the
+    record's own finish time changes nothing (idempotent)."""
+    r = _record(d, e.seq)
+    if r["status"] != S.SUPERSEDED:
+        raise CoreError(f"step {e.seq} is not superseded by a usage limit")
+    _limit_wait(p, d, r["finished_at"] or e.at, e.resets_at)
+
+
+def _limit_wait(p: Pipeline, d: dict[str, Any], at: str, resets_at: str | None) -> None:
+    """AD-18: resume_at = max(current, the named reset time, now + usage_limit_wait_min)."""
+    settings = p.settings
+    candidates = [parse_time(at) + timedelta(minutes=settings.usage_limit_wait_min)]
+    if d["resume_at"]:
+        candidates.append(parse_time(d["resume_at"]))
+    if resets_at:
+        candidates.append(parse_time(resets_at))
+    resume_at = max(candidates)
+    d["resume_at"] = format_time(resume_at)
+    if d["limit_episode_start"] is None:
+        d["limit_episode_start"] = at
+    start = parse_time(d["limit_episode_start"])
+    # The episode lasts at least until resume_at: escalate once that passes the maximum wait.
+    if not d["limit_exceeded"] and resume_at - start > timedelta(
+        hours=settings.usage_limit_max_wait_h
+    ):
+        d["limit_exceeded"] = True
+        _escalate_record(
+            d,
+            "run",
+            f"plan usage limit: still limited after {settings.usage_limit_max_wait_h:g} h "
+            f"(episode since {d['limit_episode_start']}, next try {d['resume_at']})",
+        )
+
+
 def _budget_exhausted(p: Pipeline, d: dict[str, Any], e: BudgetExhausted) -> None:
     d["budget"]["exhausted"] = True
     _escalate_record(d, "run", e.reason)
@@ -444,7 +515,11 @@ def _budget_exhausted(p: Pipeline, d: dict[str, Any], e: BudgetExhausted) -> Non
 def _run_finished(p: Pipeline, d: dict[str, Any], e: RunFinished) -> None:
     if e.exit_code == 0:
         new = S.PASSED
-    elif d["budget"]["exhausted"] or any(u["status"] == S.ESCALATED for u in d["units"]):
+    elif (
+        d["budget"]["exhausted"]
+        or d["limit_exceeded"]
+        or any(u["status"] == S.ESCALATED for u in d["units"])
+    ):
         new = S.ESCALATED
     else:
         new = S.BLOCKED
@@ -473,6 +548,7 @@ _HANDLERS: dict[type, Any] = {
     Merged: _merged,
     Tagged: _tagged,
     EscalationOpened: _escalation_opened,
+    UsageLimited: _usage_limited,
     BudgetExhausted: _budget_exhausted,
     RunStopped: _run_stopped,
     RunFinished: _run_finished,

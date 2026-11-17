@@ -3,9 +3,15 @@
 # Changing the process is an edit here, not in Python. Prompts live in sdlc/prompts/<prompt>.md.
 #
 # Stage fields: id, entry, per_story, learn_queue, needs, branch, steps, parallel, gate,
-#   on_fail, max_rounds, timeout_min, budget_usd (cap per agent or judge step), model, stories_file.
+#   on_fail, max_rounds, timeout_min, budget_usd (cap per agent or judge step), model,
+#   effort (low | medium | high | xhigh | max), max_turns, stories_file. A stage's model and
+#   effort override default_model / default_effort; unset means the CLI default (AD-7).
 # Step fields: id, kind (agent | judge | script), skill or agent, script, prompt, tools, inputs,
 #   writes, outcome_source (AD-18), verdict_source (AD-17).
+# Settings for subscription runs (ADR 0005): default_model, default_effort, usage_limit_wait_min,
+#   usage_limit_max_wait_h, allow_api_key. A plan usage limit pauses the run until resume_at, and
+#   `sdlc status` shows a "plan usage limit" line while paused. Dry-run scenarios: usage-limit
+#   (one pause, exit 0) and usage-limit-forever (escalates, scope run, exit 2).
 
 settings:
   max_rounds: 3
@@ -15,6 +21,15 @@ settings:
   serial_paths: [api/openapi.yaml]
   # Set by the owner, 2026-11-16 (plan §6). There is no default; removing it is a load error.
   run_budget_usd: 50
+  # Unset: the CLI default model and effort (AD-7).
+  default_model: null
+  default_effort: null
+  # A plan usage limit pauses the run for at least this long, and escalates it once one
+  # limit episode passes usage_limit_max_wait_h (AD-18).
+  usage_limit_wait_min: 30
+  usage_limit_max_wait_h: 12
+  # false: a real run refuses API-key or third-party-provider credentials (AD-23).
+  allow_api_key: false
 
 stages:
   - id: analysis

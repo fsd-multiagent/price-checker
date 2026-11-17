@@ -58,7 +58,7 @@ def test_transition_table_is_the_ad5_diagram():
         (S.PENDING, S.RUNNING), (S.PENDING, S.BLOCKED), (S.PENDING, S.SKIPPED),
         (S.BLOCKED, S.PENDING),
         (S.RUNNING, S.PASSED), (S.RUNNING, S.FAILED), (S.RUNNING, S.BLOCKED),
-        (S.RUNNING, S.ESCALATED),
+        (S.RUNNING, S.ESCALATED), (S.RUNNING, S.SUPERSEDED),
         (S.PASSED, S.PENDING),
         (S.FAILED, S.PENDING), (S.FAILED, S.ESCALATED),
         (S.ESCALATED, S.PENDING),

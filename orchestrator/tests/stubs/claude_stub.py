@@ -1,7 +1,8 @@
 """A stand-in `claude` executable for the real-adapter tests. Never calls the API.
 
 Driven by environment variables:
-- `STUB_CLAUDE_MODE`: `success` (default), `timeout` (spawns a child, then sleeps) or `garbage`.
+- `STUB_CLAUDE_MODE`: `success` (default), `timeout` (spawns a child, then sleeps), `garbage`,
+  or `limit-text` (a plain-text plan usage limit message, exit 1).
 - `STUB_CLAUDE_WRITE`: a path, relative to the cwd, to write before answering.
 - `STUB_LOG`: a file that gets one JSON line per call (argv, cwd, stdin, selected env).
 - `STUB_CHILD_PID`: in `timeout` mode, the file that receives the child's pid.
@@ -21,7 +22,8 @@ def main() -> int:
     stdin = sys.stdin.read()
     log = os.environ.get("STUB_LOG")
     if log:
-        env = {k: v for k, v in os.environ.items() if k.startswith(("SDLC_", "STUB_", "TMPDIR"))}
+        logged = ("SDLC_", "STUB_", "TMPDIR", "CLAUDE_CODE_", "ANTHROPIC_")
+        env = {k: v for k, v in os.environ.items() if k.startswith(logged)}
         env["PATH"] = os.environ.get("PATH", "")
         line = {"tool": "claude", "argv": sys.argv[1:], "cwd": os.getcwd(), "stdin": stdin}
         with open(log, "a", encoding="utf-8") as f:
@@ -29,6 +31,9 @@ def main() -> int:
     mode = os.environ.get("STUB_CLAUDE_MODE", "success")
     if mode == "garbage":
         print("this is not json")
+        return 1
+    if mode == "limit-text":
+        print("You've hit your session limit · resets 3pm (UTC)")
         return 1
     if mode == "timeout":
         child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"])
