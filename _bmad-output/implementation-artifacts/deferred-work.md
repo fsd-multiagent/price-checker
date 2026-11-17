@@ -42,3 +42,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-orchestrator-real-adapters.md`
   summary: Resolved by this spec, to be closed by Aglaia (Knowledge Keeper): real adapters (entry 1), the desktop notifier (entry 3), the comment on a reused escalation issue (adapter side only; the core still skips a second escalation), and moving a re-passed tag (triage row 38 of the dry-run spec).
   evidence: Delivered on `feat/orchestrator-real-adapters`; existing entries are not edited by Build.
+- source_spec: none
+  summary: Usage visibility in Zamolxe (Orchestrator) — `sdlc status` shows the estimated cost per stage and per step (and per model from the result's `modelUsage`), and warns once (status line plus notification) when spent + reserved passes 80% of `run_budget_usd`.
+  evidence: Owner decision 2026-11-17. Phase 1 run 20261117-174705-full had used $10.22 of $50 by stage 4 (requirements took 3 rounds); nothing showed where the usage went or warned before the ceiling. Today only the run total is shown.
+- source_spec: none
+  summary: Usage review in the epic retrospective — the orchestrator passes the run's per-stage usage (cost, rounds, model, effort) to Aglaia (Knowledge Keeper)'s `bmad-retrospective` step, which recommends `model`/`effort`/`max_turns` changes in `sdlc/pipeline.yaml` as action items.
+  evidence: Owner decision 2026-11-17. No agent owns token consumption; the retrospective prompt (`sdlc/prompts/retrospective.md`) gets no cost data. Depends on the usage-visibility entry above.
