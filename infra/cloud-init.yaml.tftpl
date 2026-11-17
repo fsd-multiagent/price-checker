@@ -1,0 +1,86 @@
+#cloud-config
+# Rendered by Terraform templatefile(); `$${` and `%%{` are escapes.
+# Hardening and the forced-command deploy user follow ADR 0018.
+# The scripts under /opt/price-checker/bin come from story 3.3.
+
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - unattended-upgrades
+
+ssh_pwauth: false
+disable_root: true
+
+groups:
+  - docker
+
+users:
+  - default
+  - name: deploy
+    gecos: price-checker deploy (forced command only)
+    shell: /bin/bash
+    lock_passwd: true
+    groups: [docker]
+    ssh_authorized_keys:
+      - 'restrict,command="/usr/local/bin/pc-dispatch" ${deploy_ssh_public_key}'
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/10-price-checker.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      # ADR 0018: key-only, no root, only the admin and deploy users.
+      # First match wins in sshd_config, so this file overrides 50-cloud-init.conf.
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PubkeyAuthentication yes
+      PermitRootLogin no
+      PermitEmptyPasswords no
+      AllowUsers ${admin_username} deploy
+      AllowAgentForwarding no
+      AllowTcpForwarding no
+      X11Forwarding no
+      PermitTunnel no
+      MaxAuthTries 3
+      LoginGraceTime 30
+
+  - path: /usr/local/bin/pc-dispatch
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # Forced command for the deploy user (ADR 0018). Accepts only
+      # `deploy` and `kill-switch`, and runs /opt/price-checker/bin/<name>
+      # with the remaining words as arguments, each from a safe charset,
+      # never starting with `-` and never containing `..`.
+      set -euo pipefail
+      read -r -a words <<< "$${SSH_ORIGINAL_COMMAND:-}"
+      if [ "$${#words[@]}" -eq 0 ]; then
+        echo "pc-dispatch: no command" >&2
+        exit 64
+      fi
+      name="$${words[0]}"
+      case "$name" in
+        deploy|kill-switch) ;;
+        *) echo "pc-dispatch: command not allowed" >&2; exit 64 ;;
+      esac
+      for arg in "$${words[@]:1}"; do
+        if ! [[ "$arg" =~ ^[A-Za-z0-9._:/@=+-]+$ ]] || [[ "$arg" == -* || "$arg" == *..* ]]; then
+          echo "pc-dispatch: argument rejected" >&2
+          exit 64
+        fi
+      done
+      target="/opt/price-checker/bin/$name"
+      if [ ! -x "$target" ]; then
+        echo "pc-dispatch: $name is not installed" >&2
+        exit 69
+      fi
+      exec "$target" "$${words[@]:1}"
+
+runcmd:
+  - install -d -o root -g root -m 0755 /opt/price-checker /opt/price-checker/bin
+  - install -d -o deploy -g deploy -m 0750 /opt/price-checker/config
+  - systemctl enable --now docker
+  - systemctl restart ssh
