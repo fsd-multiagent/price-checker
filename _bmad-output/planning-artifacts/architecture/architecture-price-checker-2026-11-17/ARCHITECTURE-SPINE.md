@@ -1,0 +1,308 @@
+---
+name: 'price-checker'
+type: architecture-spine
+purpose: build-substrate
+altitude: feature
+paradigm: 'ports and adapters (hexagonal) modular monolith backend + thin generated-client SPA'
+scope: 'The price-checker product: backend, web app, retailer adapters, config, deployment, health check, CI gates'
+status: final
+created: '2026-11-17'
+updated: '2026-11-17'
+binds: [FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, NFR-1, NFR-2, NFR-3, NFR-4, NFR-5, NFR-6, NFR-7]
+sources:
+  - _bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md
+  - _bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/addendum.md
+  - _bmad-output/planning-artifacts/ux-designs/ux-price-checker-2026-11-17/EXPERIENCE.md
+  - _bmad-output/planning-artifacts/ux-designs/ux-price-checker-2026-11-17/DESIGN.md
+  - docs/standards/ (C-, T-, S-, I-, D-)
+  - docs/source-register.md
+companions:
+  - docs/adr/0006-backend-ports-and-adapters.md to docs/adr/0017-logging-and-privacy.md
+---
+
+# Architecture Spine — price-checker
+
+Author: Loredan (Architect), headless, run 20261117-174705-full, stage 4, round 1. Each AD names the ADR that records it (D-2).
+
+## Design Paradigm
+
+**Ports and adapters, in one backend process.** The `lookup` core decides everything about a Lookup: which rows, which status, which URL to fetch, cache, normalization, lowest price, order. It sees retailers only through the `RetailerAdapter` port, and the network only through the shared fetch client (`fetch`). Each `retailer.<id>` package is an adapter: it fetches one product page and extracts facts, and it knows nothing about other retailers, config, the cache or the API. The web app is a thin view over one generated API client; it formats, it does not decide.
+
+```mermaid
+flowchart LR
+  web["web (React SPA)"] -->|generated client| api
+  api["api (controllers)"] --> lookup
+  api --> ean
+  api --> registry
+  lookup --> ean
+  lookup --> cache
+  lookup --> registry
+  lookup --> adapter["adapter (port: RetailerAdapter, AdapterOutcome, PageFacts, RetailerHttp)"]
+  lookup -.->|beans via port| retailerX["retailer.&lt;id&gt;"]
+  retailerX --> adapter
+  retailerX --> ean
+  retailerX --> extract
+  adapter --> ean
+  fetch --> adapter
+  retailerX -->|RetailerHttp| fetch
+  fetch --> registry
+  health --> lookup
+  health --> registry
+  health --> fetch
+  registry["registry (register, retailers.yaml, known-eans.yaml, runtime.yaml, BlockStore)"]
+```
+
+Arrows are the only allowed dependencies between packages (AD-1); the dotted arrow is runtime wiring only — `lookup` sees adapters as `RetailerAdapter` beans and never imports a `retailer.<id>` class. `cache` depends on nothing in the app. `retailer.<id>` packages never depend on each other, on `lookup`, `cache`, `registry` or `api`.
+
+## Invariants & Rules
+
+### AD-1 — Package by feature, dependency direction enforced by tests (ADR 0006)
+
+- **Binds:** all backend code; C-B1, C-5, C-12
+- **Prevents:** retailer code leaking into the core, adapters calling each other, a second HTTP path.
+- **Rule:** Root package `ro.pricechecker`; feature packages `api`, `ean`, `adapter` (the port types), `lookup`, `cache`, `registry`, `fetch`, `extract`, `health`, `retailer.<id>`. An ArchUnit test allows exactly the arrows in the paradigm diagram and forbids any HTTP client outside `fetch` (`java.net.http`, `URL#openConnection`, `URL#openStream`, `org.jsoup.Jsoup#connect`, any other client library); `extract` parses strings only. A source text-scan test fails when a retailer domain or a CSS selector string appears outside `retailer.<id>` and `config/`.
+
+### AD-2 — One backend instance (ADR 0006) [ADOPTED]
+
+- **Binds:** cache, rate limiters, Block state, deployment
+- **Prevents:** two instances with separate limiters and caches, breaking S-3 and S-5.
+- **Rule:** Exactly one backend container runs in production. Scaling out needs a new ADR.
+
+### AD-3 — Contract-first API with two endpoints (ADR 0007) [ADOPTED C-3, C-W1]
+
+- **Binds:** FR-1 to FR-5, AD-16, api, web
+- **Prevents:** hand-written clients or handlers drifting from the contract.
+- **Rule:** `api/openapi.yaml` is the only contract: `GET /api/lookup?ean={ean}` → `LookupResponse`; `GET /api/status` → `StatusResponse` (per Approved retailer: `retailerId`, `retailerName`, `enabled` (adapter enabled and fetching allowed), `blocked`; no prices). Spring interfaces and the TypeScript client are generated in the build, never committed or edited. Generated DTOs live in `api` only; `lookup` returns domain types that `api` maps.
+
+### AD-4 — The server decides; the web app formats (ADR 0007)
+
+- **Binds:** FR-3, FR-4, FR-5, AC-3.5, AC-N2.3, UX row order
+- **Prevents:** lowest-price and ordering rules implemented twice and drifting.
+- **Rule:** `lookup` returns rows in UX order (FOUND by price ascending, FOUND with no price, NOT_FOUND, UNAVAILABLE, DISABLED; ties by `retailerName`) and sets `lowest: true` on every row tied for the Lowest price (FOUND, price present, availability not OUT_OF_STOCK). The web app never re-sorts and never compares prices.
+
+### AD-5 — Wire formats (ADR 0007)
+
+- **Binds:** `LookupResponse`, `StatusResponse`, errors
+- **Prevents:** float prices, ambiguous times, client errors that do not match server errors.
+- **Rule:**
+  - `ResultRow`: `retailerId` (register domain, e.g. `cel.ro`), `retailerName`, `status` ∈ {`FOUND`, `NOT_FOUND`, `UNAVAILABLE`, `DISABLED`}, `priceMinor` (integer bani, always RON; absent = price unavailable), `availability` ∈ {`IN_STOCK`, `OUT_OF_STOCK`, `UNKNOWN`}, `url`, `fetchedAt`, `lowest`. Non-FOUND rows carry only `retailerId`, `retailerName`, `status`, `lowest=false`. `LookupResponse` = `{ ean, rows }`.
+  - Times are ISO-8601 UTC instants (`2026-11-17T12:05:00Z`). Only the web app converts to Europe/Bucharest.
+  - Errors are RFC 9457 `application/problem+json` with `code` ∈ {`EAN_EMPTY`, `EAN_NON_DIGIT`, `EAN_LENGTH`, `EAN_CHECK_DIGIT`}; the web app maps the code to the same copy as its own check (UX Voice and Tone).
+  - A failing retailer never makes the Lookup non-2xx (AC-5.4).
+
+### AD-6 — The shared fetch client is the only way out, and it enforces S-1 to S-6 (ADR 0008)
+
+- **Binds:** NFR-3, FR-9, FR-11, AC-2.4, AC-N3.8, C-12, S-1 to S-6
+- **Prevents:** a rule enforced by one adapter and forgotten by another.
+- **Rule:** An adapter receives a `RetailerHttp` bound to its retailer id; it cannot name a host. Before every request (robots.txt and redirects included) the client refuses, sending nothing, unless:
+  1. the retailer is Approved in the bundled register and its adapter is enabled in `retailers.yaml` (AD-8);
+  2. fetching is `allowed` in `runtime.yaml` and `BlockStore` reports no active Block (AD-9);
+  3. the URL is `https` on the retailer's register domain or `www.` of it (redirects to any other host refused);
+  4. robots.txt allows the path for our user agent — robots.txt is loaded single-flight, cached 24 h, and a 5xx or unparseable file disallows everything (RFC 9309);
+  5. a rate-limit and concurrency permit is free before the deadline; every attempt, redirect and robots.txt fetch takes a permit; otherwise fail fast → `UNAVAILABLE` (S-5).
+
+  It sends one fixed user agent containing the contact URL (no `bot`, `robot`, `crawl`, `spider`), no cookies, no login. It retries only timeouts and 5xx, at most 2 times, with exponential backoff inside the deadline; on 429 it honors `Retry-After` within the deadline; on 403 or a recognized challenge page it calls `BlockStore.record` and does not retry. It stamps `fetchedAt` from the injected `Clock`.
+
+  Outcome mapping (one table for all adapters):
+
+  | What happened | Recorded by | Row status |
+  |---|---|---|
+  | 200, product facts found | adapter → `Found` | `FOUND` (no price if price missing, null or non-RON) |
+  | 200, page has no recognizable product facts | adapter → `Unavailable(UNPARSEABLE)` | `UNAVAILABLE` |
+  | 404 or 410 on the curated URL | fetch → adapter → `NotFound` | `NOT_FOUND` |
+  | timeout, 5xx after retries, refused permit, 429 past the deadline | fetch → `Unavailable` | `UNAVAILABLE` |
+  | 403, challenge page (generic markers in `fetch`), robots.txt disallows the path | fetch → `BlockStore.record` | `UNAVAILABLE` (Block, AC-11.1) |
+  | 429 within the deadline | fetch backs off; not a Block (AC-11.4) | as the retry ends |
+
+### AD-7 — Adapter contract (ADR 0012)
+
+- **Binds:** every `retailer.<id>`, C-5, C-6, C-7, FR-3, AC-8.4
+- **Prevents:** adapters returning different shapes, guessing prices, keeping extra page data, or resolving URLs their own way.
+- **Rule:** One Spring bean per retailer implements `RetailerAdapter { String retailerId(); AdapterOutcome fetchAndExtract(Ean ean, URI productUrl, RetailerHttp http); }`. `AdapterOutcome` is sealed: `Found(PageFacts)`, `NotFound`, `Unavailable(UnavailableReason)` (enum). `PageFacts` holds only `priceMinor` (nullable), `currency`, `availability`, `url`, `eanOnPage` (nullable) — never name, description or image (S-7). Extraction uses the shared `extract` helpers in the order structured data → meta tags → the adapter's own selectors, each a separate tested function; an unparseable price is `null`, never 0. Adapters do not handle deadlines, cache, log, or read config. The application fails to start unless `retailers.yaml` ids and adapter beans match one-to-one.
+
+### AD-8 — The bundled source register is the only compliance authority (ADR 0009)
+
+- **Binds:** FR-9, AC-2.1, AC-9.1 to 9.4, AC-10.1, S-1
+- **Prevents:** a runtime file, flag or env var enabling a non-Approved retailer (AC-9.3).
+- **Rule:** The build copies `docs/source-register.md` into the backend artifact. One parser in `registry` reads `Domain` and `Status`; Approved only if Status matches `Approved YYYY-MM-DD`; any parse error approves nothing. The Result rows of a Lookup are exactly the `retailers.yaml` entries whose domain is Approved; an Approved retailer whose adapter is disabled gets a `DISABLED` row. A backend test fails when an entry with `adapter: enabled` is not Approved, an Approved retailer has no entry, `resolution` is missing or not in {`search`, `catalog`, `curated`}, or the rate limit is looser than the register's Limits column. Approval or retirement takes effect at the next deploy; the Kill switch is the immediate stop.
+
+### AD-9 — Three config files, one writer each (ADR 0009)
+
+- **Binds:** FR-7, FR-11, AC-7.1 to 7.5, AC-11.1, S-8, I-9
+- **Prevents:** operator and app overwriting each other; a restart clearing a Block; a flipped kill-switch reading failing open.
+- **Rule:**
+
+  | File | Where | Only writer | Holds | Read |
+  |---|---|---|---|---|
+  | `config/retailers.yaml` | repo, in the artifact | developers, by PR | per retailer: `id` (register domain), `name`, `adapter: enabled\|disabled`, `resolution`, rate limit, concurrency, `deadlineMs` | start |
+  | `config/known-eans.yaml` | repo, in the artifact | developers, by PR | per retailer id: list of `{ ean, url }` | start |
+  | `runtime.yaml` | VM `/opt/price-checker/config/` | `kill-switch` workflow (write temp file, then `mv`) | per retailer: `fetching: allowed\|stopped`, `clearGeneration` (integer) | polled every 15 s |
+  | `blocks.json` | VM volume `/opt/price-checker/state/` | backend `registry.BlockStore` only (whole-map atomic write) | per retailer: `blockGeneration`, `blockedAt`, reason | start; then in memory |
+
+  "Kill switch off" in the PRD means `fetching: stopped`. A retailer missing from `runtime.yaml` is stopped. An unparseable `runtime.yaml` keeps the last good settings and logs an error; with none since start, all are stopped. `BlockStore.record` sets `blockGeneration` = current `clearGeneration`; a Block is active while `blockGeneration >= clearGeneration`; `clear-block` increments `clearGeneration`. Only `BlockStore` reads or writes `blocks.json`.
+
+### AD-10 — Row status precedence and normalization (ADR 0011)
+
+- **Binds:** FR-2, FR-5, FR-6, FR-7, FR-10, FR-11, AC-3.5, AC-N2.3
+- **Prevents:** a stopped or Blocked retailer showing a cached price; two places choosing a status.
+- **Rule:** For each Approved retailer `lookup` decides, in order: adapter disabled or fetching stopped → `DISABLED`; active Block → `UNAVAILABLE`; EAN not in `known-eans.yaml` for that retailer → `NOT_FOUND`, no request; cache hit → cached verdict; else load. The load = `adapter.fetchAndExtract` then `normalize`: `eanOnPage` present and different → `NOT_FOUND`; currency not RON or price null → `FOUND` without price. Only `FOUND` and `NOT_FOUND` verdicts are cached (AC-6.3).
+
+### AD-11 — Lookup execution and cache (ADR 0011)
+
+- **Binds:** FR-2, FR-6, NFR-1, AC-2.2 to 2.4, S-3
+- **Prevents:** concurrent Lookups fetching one page twice; one slow retailer delaying others.
+- **Rule:** One virtual thread per retailer per Lookup. Each retailer has one `deadlineMs` (default 4000). `cache` is a generic Caffeine async cache keyed `(retailerId, ean)`, TTL 15 min (configurable), whose loader `lookup` supplies; the value is the normalized verdict: `status`, `priceMinor`, `availability`, `url`, `fetchedAt`. Concurrent misses share one in-flight load; the load owns its deadline from its start and is not cancelled when a waiting caller gives up; a caller whose own deadline passes returns `UNAVAILABLE` for that row only. Nothing else caches retailer data.
+
+### AD-12 — EAN resolution: curated list for release 1 (ADR 0010)
+
+- **Binds:** FR-10, FR-8, NFR-6, AC-10.1 to 10.5
+- **Prevents:** a search request at evoMAG (robots.txt disallows it) or an unreviewed catalog source.
+- **Rule:** Every retailer uses `resolution: curated`. `config/known-eans.yaml` is the curated map, the Health check list and the demo list; `lookup` reads it through `registry` and passes the URL to the adapter. `search` for one retailer needs a new ADR after its register row records the search route as allowed; `catalog` needs its own register row first.
+
+### AD-13 — One EAN rule, implemented once per side (ADR 0007)
+
+- **Binds:** FR-1, AC-1.1 to 1.6, S-11, T-7
+- **Prevents:** client and server accepting different inputs.
+- **Rule:** Trim leading/trailing whitespace, then: empty → `EAN_EMPTY`; any non-digit → `EAN_NON_DIGIT`; length not 8 or 13 → `EAN_LENGTH`; bad GS1 check digit → `EAN_CHECK_DIGIT`. `ean.Ean` and `web/src/ean.ts` implement it and both test suites run `api/ean-cases.json`. The server validates before any other work; `lookup` accepts only `Ean`.
+
+### AD-14 — Logs hold an allowlist of fields (ADR 0017)
+
+- **Binds:** NFR-5, AC-N3.7, AC-N5.2, AC-11.2, C-9, S-7, S-9
+- **Prevents:** IPs, client user agents, raw user input or page content reaching a log.
+- **Rule:** Application events go through `LookupLog` only: JSON lines on stdout with `ts`, `level`, `event`, `ean` (a validated `Ean` only), `retailer`, `outcome` (enum), `durationMs`. A rejected input logs `event=ean_rejected` and the `code`, never the input. Exceptions log their type, not their message. Tomcat access logs off; Caddy has no access log and its own logs drop `remote_ip`, headers and URI. Blocks log at `WARN`.
+
+### AD-15 — Deployment and operations (ADR 0015) [ADOPTED spec §10, I-1 to I-9]
+
+- **Binds:** NFR-7, FR-7, I-1 to I-9, S-8, S-10, S-13
+- **Prevents:** a second environment, hand changes, or ops actions needing SSH by a person or agent.
+- **Rule:** One `prod` environment: one Azure Linux VM in an EU region with Docker Compose services `proxy` (Caddy 2, automatic HTTPS, port 80 redirects, `/api/*` → `backend:8080`, else → `web:8080`, `/data` on a volume), `web` (static SPA) and `backend`. Images built by GitHub Actions, pushed to GHCR, tagged with the git SHA, pulled with the workflow's short-lived `GITHUB_TOKEN` (logged out after). Only GitHub Actions reaches the VM by SSH: `deploy` (on merge to `main`) and `kill-switch` (workflow_dispatch: retailer, `allow` / `stop` / `clear-block`). Same origin for web and API; no CORS.
+
+### AD-16 — Health check: backend in `health` mode on a GitHub runner (ADR 0016)
+
+- **Binds:** FR-8, AC-8.1 to 8.7, AC-11.2, I-10, T-3, T-6
+- **Prevents:** a health check that skips fetch-client rules, hides a production Block, or is masked by a cache.
+- **Rule:** `.github/workflows/health-check.yml` (daily cron and workflow_dispatch) reads production `GET /api/status` with `curl` (fails if unreachable), fails every `blocked` retailer, and writes a runner `runtime.yaml` with `fetching: allowed` only for `enabled` ones. It then runs the backend built from `main` with the `health` profile: no web server, a no-op cache, an empty `blocks.json`, the same `lookup` core, register and fetch client. It checks every Known EAN is `FOUND` with price, availability and URL, and robots.txt for every adapter path; it writes a report (retailer, EAN, missing fact) and the stripped page (T-2), and exits non-zero on any failure. The workflow then opens or updates one `adapter-broken` issue per failing retailer with `gh`.
+
+## Consistency Conventions
+
+| Concern | Convention |
+| --- | --- |
+| Retailer id | The register `Domain` value exactly (`cel.ro`, `evomag.ro`). Java package: domain without dots (`retailer.celro`). Fixtures: `fixtures/<id>/`. |
+| Naming | Glossary terms as written (`Lookup`, `ResultRow`, `RowStatus`, `KnownEan`). Enum values UPPER_SNAKE on the wire. |
+| Money | Integer bani (`priceMinor`) in code and on the wire; page-text parsing only in `extract`; display `1.299,99 lei` via `Intl.NumberFormat('ro-RO')`. |
+| Time | `java.time.Clock` injected (T-5); `Instant` in code and on the wire; Europe/Bucharest only in the web app. |
+| Config | Spring `@ConfigurationProperties` records validated at start; env vars only for secrets and file paths (C-4). |
+| Errors | Adapters return `AdapterOutcome`; only `fetch` and `lookup` turn exceptions into `UNAVAILABLE`; API errors are problem+json. |
+| Tests | Names or tags carry the AC id (T-1): `@Tag("AC-6.3")` in JUnit, `it('AC-1.3 …')` in Vitest and Playwright. Adapter tests read `fixtures/<id>/` only (T-2, T-3). |
+| Web state | Component state only; no state library, no router; `/?ean=` via the History API; loading copy "Checking retailers…". |
+
+## Stack
+
+Versions were not checked on the web in this run (permission denied). Each row is the line to use; the scaffold story pins the current GA patch after a web check and updates this table.
+
+| Name | Version |
+| --- | --- |
+| Java (Eclipse Temurin) | 21 LTS [ADOPTED] |
+| Spring Boot | latest OSS-supported 4.x (not 3.5: out of OSS support) |
+| Gradle wrapper (Kotlin DSL) | current GA supported by that Spring Boot |
+| Caffeine | 3.x |
+| jsoup | 1.x |
+| crawler-commons (robots.txt) | 1.x |
+| ArchUnit | 1.x |
+| Spotless + google-java-format | current GA |
+| OpenAPI Generator (`spring`, `typescript-fetch`) | current GA that supports the chosen Spring Boot |
+| Node.js | 24 LTS |
+| TypeScript, React, Vite | current GA (React 19.x or newer) |
+| Vitest, Testing Library, axe-core, Playwright, ESLint, Prettier | current GA |
+| Caddy | 2.x |
+| Terraform, azurerm provider | 1.x, 4.x |
+
+## Structural Seed
+
+```text
+api/openapi.yaml            # the contract (AD-3)
+api/ean-cases.json          # shared EAN validation cases (AD-13)
+config/retailers.yaml       # static retailer config (AD-8, AD-9)
+config/known-eans.yaml      # curated EAN→URL map; Health check and demo EANs (AD-12)
+fixtures/<retailer-id>/     # recorded, stripped pages (T-2)
+backend/                    # Spring Boot, Gradle wrapper; src/main/java/ro/pricechecker/<feature>/
+web/                        # Vite + React + TypeScript; web/e2e/ Playwright
+deploy/compose.yaml, deploy/Caddyfile
+infra/                      # Terraform (I-1)
+.github/workflows/          # ci, terraform-plan, deploy, kill-switch, health-check
+```
+
+```mermaid
+flowchart TB
+  user((Shopper)) -->|HTTPS 443| proxy
+  subgraph vm["Azure Linux VM, EU (prod)"]
+    proxy["proxy: Caddy, TLS"] -->|/api/*| backend["backend: Spring Boot"]
+    proxy -->|/| web["web: static SPA"]
+    backend --- cfg[("runtime.yaml: kill-switch workflow")]
+    backend --- st[("blocks.json: backend")]
+  end
+  backend -->|fetch client| retailers["Approved retailers"]
+  gha["GitHub Actions"] -->|SSH deploy key: deploy, kill-switch| vm
+  gha -->|health mode, fetch client| retailers
+  gha -->|GET /api/status| proxy
+  gha -->|push images| ghcr[("GHCR")]
+```
+
+```mermaid
+sequenceDiagram
+  participant W as web
+  participant L as lookup
+  participant C as cache
+  participant A as retailer adapter
+  participant F as fetch client
+  W->>L: GET /api/lookup?ean
+  L->>L: validate EAN (400 on error)
+  par each Approved retailer
+    L->>L: precedence: DISABLED, Block, not in known-eans (AD-10)
+    L->>C: get or load (single-flight)
+    C->>L: run loader
+    L->>A: fetchAndExtract(ean, url, http)
+    A->>F: GET product URL
+    F-->>A: page or refusal
+    A-->>L: AdapterOutcome
+    L->>L: normalize (AD-10)
+    L-->>C: verdict (cached if FOUND or NOT_FOUND)
+  end
+  L->>L: lowest and order (AD-4)
+  L-->>W: LookupResponse
+```
+
+## Capability → Architecture Map
+
+| Capability | Lives in | Governed by |
+| --- | --- | --- |
+| FR-1 EAN entry | `web/src/ean.ts`, `ean` | AD-13, AD-5 |
+| FR-2 parallel lookup | `lookup` | AD-10, AD-11 |
+| FR-3 facts per retailer | `retailer.<id>`, `extract`, web table | AD-4, AD-5, AD-7 |
+| FR-4 lowest price | `lookup` | AD-4 |
+| FR-5 failure containment | `lookup`, `fetch` | AD-5, AD-10 |
+| FR-6 cache | `cache`, `lookup` | AD-10, AD-11 |
+| FR-7 kill switch | `registry`, `kill-switch` workflow | AD-9, AD-15 |
+| FR-8 health check | `health`, `health-check` workflow | AD-16 |
+| FR-9 compliance gate | `registry`, `fetch`, register test | AD-6, AD-8 |
+| FR-10 EAN resolution | `lookup`, `config/known-eans.yaml` | AD-10, AD-12 |
+| FR-11 Block | `fetch`, `registry.BlockStore` | AD-6, AD-9 |
+| NFR-1 responsiveness | `lookup` | AD-11 |
+| NFR-2 accuracy | `extract`, `lookup` | AD-7, AD-10 |
+| NFR-3 polite fetching | `fetch` | AD-6 |
+| NFR-4 accessibility | `web` | EXPERIENCE.md, ADR 0013 |
+| NFR-5 privacy | logging, proxy | AD-14 |
+| NFR-6 demo reliability | `config/known-eans.yaml`, `web/e2e` | AD-12, ADR 0013 |
+| NFR-7 transport and supply chain | `deploy`, `infra`, CI | AD-15, ADR 0014 |
+
+## Deferred
+
+- **Exact versions** — the scaffold story pins them after a web check, including a Spring Boot 4 + OpenAPI Generator compatibility spike.
+- **Azure region, VM size, DNS label** — Pacala (DevOps), within I-3 and I-8; bound: EU region and a DNS name Caddy can get a certificate for.
+- **Secret and vulnerability scanners** — Pacala (DevOps) at stage 6; thresholds fixed in ADR 0014 (high and critical fail).
+- **Search or catalog resolution** — needs a register row first (AD-12).
+- **Product name in rows** — waits for the owner on S-7 (PRD §9 Q5).
+- **UI component library** — none; DESIGN.md tokens as plain CSS.
+- **Metrics and tracing** — none beyond logs and the Health check.
+- **Staging environment** — none; CI uses stubs (T-3, T-4).
+- **Gate commands** — proposed in ADR 0014; they enter the `sdlc-commands` block in `AGENTS.md` by a stage 9 PR, since a worktree may not change it (ADR 0004).

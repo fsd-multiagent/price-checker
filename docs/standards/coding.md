@@ -21,14 +21,14 @@
 
 ## Backend (Java 21, Spring Boot)
 
-- **C-B1** Organize packages by feature (`ean`, `lookup`, `retailer.<name>`, `cache`, `health`), not by layer.
+- **C-B1** Organize packages by feature (`api`, `ean`, `adapter`, `lookup`, `cache`, `registry`, `fetch`, `extract`, `health`, `retailer.<id>`), not by layer. Allowed dependencies are in ADR 0006 and the architecture spine (AD-1).
 - **C-B2** Use constructor injection only. Never use field injection.
 - **C-B3** Controllers implement the interfaces generated from OpenAPI and hold no business logic.
-- **C-B4** Use JUnit 5 for tests. Formatter and static analysis: **TBD (Architect)**.
+- **C-B4** Use JUnit 5 for tests. Build with the Gradle wrapper in `backend/` (`backend/gradlew -p backend check`). Format with Spotless (google-java-format); compile with `-Xlint:all -Werror`; ArchUnit and a source text-scan test enforce the package rules (ADR 0006, ADR 0014).
 
 ## Web (React)
 
 - **C-W1** The API client is generated from `api/openapi.yaml`. Never write fetch calls to the backend by hand.
 - **C-W2** Every input has a label. Every error message is announced to screen readers, for example through `aria-live`. Everything can be done with the keyboard.
 - **C-W3** Prices are shown in RON with the retailer's name and the time the price was fetched. A retailer with no price shows "unavailable" or "not found", never an empty cell.
-- **C-W4** Language (TypeScript or JavaScript), build tool and test runner: **TBD (Architect)**.
+- **C-W4** TypeScript, Vite, Vitest with Testing Library and axe-core, Playwright for end-to-end, ESLint and Prettier. `npm --prefix web run check` runs lint, typecheck and unit tests (ADR 0013).
