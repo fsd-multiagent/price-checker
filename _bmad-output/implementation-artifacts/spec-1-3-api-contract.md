@@ -140,6 +140,35 @@ Schemas: `ResultRow` required `retailerId, retailerName, status, lowest`; option
   - `[false]` `[reject]` intent scope beyond touches — enabling files only (R2).
   - `[maybe-false]` `[reject]` remaining intent notes (strip() choice, Problem extra fields) — descriptive, no defect named.
 
+### 2026-11-18 — Review pass (round 4 follow-up)
+- verdicts: 25 findings — high 0, medium 1, low 13, false 6, maybe-false 5
+- findings (blind 10, edge 6, verification-gap 3, intent 6 divergences):
+  - `[maybe-false]` `[defer]` blind 1: NBSP/BOM trimmed by JS `trim()` but not Java `strip()` — carried: same claim as the Unicode whitespace row above; settle in 1.4/1.7.
+  - `[maybe-false]` `[defer]` blind 2: no non-ASCII digit or leading-zero case — carried: Unicode digit row above; settle in 1.4/1.7.
+  - `[low]` `[reject]` blind 3: `priceMinor` and `lowest=false` rules only in prose — carried: AD-5 prose row above.
+  - `[maybe-false]` `[reject]` blind 4: web `generate` leaves stale files — carried: edge 4 row above (tsc fails loudly).
+  - `[medium]` `[defer]` blind 5: web gate needs a JRE and downloads an unverified jar — carried: blind 6 row above (stories 1.9/3.2); AGENTS.md is owner-only.
+  - `[low]` `[reject]` blind 6: `ean` has no `maxLength`, no 5xx declared — 5xx carried (AD-5); input bounds belong to the 1.4 validator, adding a constraint now is new public surface.
+  - `[low]` `[patch]` blind 7: orchestrator test change has a dead `> 1` assertion after `== 3` — removed the dead assertion. The change itself stays: the r3 `tests` gate (AD-18) failed on this wall-clock flake (`test_real_no_required_checks`, 1 failed / 285 passed), not on story code.
+  - `[false]` `[reject]` blind 8: `contract.test.ts` sorts lengths as strings — both sides use the same default sort, so equal sets compare equal; no wrong result.
+  - `[low]` `[reject]` blind 9: `ApiContractTest` re-parses the YAML per lookup — test-only cost under a second; not worth a refactor.
+  - `[low]` `[reject]` blind 10: no `example` values or extra AD-5 descriptions — documentation nicety, no AC requires it.
+  - `[maybe-false]` `[reject]` edge 1: stale web generated files — carried: edge 4 row above.
+  - `[maybe-false]` `[defer]` edge 2: NBSP trimmed differently — carried: Unicode whitespace row above.
+  - `[low]` `[reject]` edge 3: `EanCasesTest` NPE on malformed case — carried: blind 9 row above (fails loudly, data valid).
+  - `[low]` `[reject]` edge 4: float `0.05` passed to `timeout_min: int` — pre-existing: the test already passed `0.01`; no type checker runs on tests.
+  - `[false]` `[reject]` edge 5: fake `time` namespace lacks other attributes / 1000-tick limit — `gh.py` reads only `time.monotonic` (lines 93, 105, 130, 142) and the test makes under 20 reads.
+  - `[low]` `[patch]` edge 6: redundant `> 1` assertion — same root cause as blind 7; removed.
+  - `[low]` `[reject]` verification-gap 1: no test that the Gradle `doFirst` delete clears stale generated classes — gate runs start from a fresh worktree with no `build/`; only incremental local builds can meet it, and the fix is a new test.
+  - `[low]` `[patch]` verification-gap other 1: dead `> 1` assertion — same as blind 7; removed.
+  - `[low]` `[reject]` verification-gap other 2: CLI 2.42.2 in the spine row not cross-checked — carried: blind 8 row above (exact pin enforced by scaffold.test.ts).
+  - `[false]` `[reject]` intent 1: test-side GS1 oracle counts as forbidden EAN validation logic — it lives only in tests to check the data; the boundary names `ean.Ean` and `web/src/ean.ts`, which are absent.
+  - `[low]` `[reject]` intent 2: AD-5 value rules untested at HTTP layer — carried: no controllers until 1.4/1.6.
+  - `[false]` `[reject]` intent 3: `backend/build/` ignore not tested — existing `backend/.gitignore` covers it; `git status` after builds is clean.
+  - `[false]` `[reject]` intent 4: tests carry AC-1.3.x, not AC-1.1–1.4 — T-1 asks for this story's AC ids; the case names cite AC-1.x.
+  - `[false]` `[reject]` intent 5: `generated.test.ts` constructs the client — test-only existence check; no app code imports `./generated`.
+  - `[low]` `[reject]` intent 6: orchestrator test edit is outside the intent — required to clear the r3 gate failure (AD-18, T-8); reverting it brings the flake back.
+
 ## Auto Run Result
 
 Status: done
@@ -163,3 +192,13 @@ Round 1 finished the work but hit its $5 budget before committing (AD-18 `dev-ou
 ### Round 3 (2026-11-18)
 
 The round-2 `tests` gate failed with exit 1 (AD-18 `tests-outcome`). The step log says why: "sdlc-commands differ from origin/main (AGENTS.md in the worktree)". The story never edited `AGENTS.md`; `main` moved on after the branch was cut (#16 ADR 0021, #17 web check in the gate). Merged `origin/main` (`a573868`) into the story branch with no conflicts; the `sdlc-commands` block now equals `origin/main`, so the web check is gated too, which also closes the residual risk above. No story code changed. Verification of every gate command: `uv run --directory orchestrator pytest -q` 286 passed, 2 skipped; `backend/gradlew -p backend check` exit 0; `npm --prefix web ci` exit 0; `npm --prefix web run check` exit 0 (30/30 tests); `git status` clean.
+
+### Round 4 (gate fix and follow-up review)
+
+The round-3 `tests` gate failed with exit 1 (AD-18). Its step log showed `uv run --directory orchestrator pytest -q`: 1 failed, 285 passed. The failure was `tests/test_real_adapters.py::test_real_no_required_checks`, a wall-clock test (0.6 s deadline) that polled `gh` only once on a loaded runner. No story code was involved. Fix: the test now patches `sdlc.adapters.gh.time` with a fake clock (1 s per read, 3 s deadline), so it polls exactly three times whatever the runner speed (T-3 deterministic tests). The dead `> 1` assertion was removed after review.
+
+- Files changed: `orchestrator/tests/test_real_adapters.py` (fake clock in `test_real_no_required_checks`).
+- Review: 25 findings. Patched 1 entry (low ×3 members: the dead assertion). No new deferrals; carried deferrals unchanged. All rejected findings and reasons are in the triage log.
+- Follow-up review recommended: false (follow-up pass; no `high` patched; patched counts high 0, medium 0, low 1).
+- Verification: `uv run --directory orchestrator pytest -q` 286 passed, 2 skipped; `backend/gradlew -p backend check` exit 0; `npm --prefix web ci` exit 0; `npm --prefix web run check` exit 0 (30/30); after the patch `tests/test_real_adapters.py` 53 passed, 1 skipped, `ruff check` and `ruff format --check` clean.
+- Residual risk: the diff now touches an orchestrator test outside the story's listed files; `origin/main` may fix the same flake separately, which would produce a trivial merge conflict.
