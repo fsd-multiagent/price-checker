@@ -44,7 +44,8 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
     - uv run --directory orchestrator pytest -q
   ```
 
-- TODO (stage 4): backend (Java) and web (React) build, test and lint commands. Zamolxe (Orchestrator) runs exactly these at the "tests pass" gate (T-8).
+- Backend (Java 21, Spring Boot), from the repo root: `backend/gradlew -p backend check` runs compile, Spotless and all tests (ADR 0014). Details and pitfalls: `backend/CLAUDE.md`. It is not yet in the `sdlc-commands` block below; adding it needs a reviewed PR to `main` (ADR 0004).
+- TODO: web (React) build, test and lint commands. Zamolxe (Orchestrator) runs exactly the `sdlc-commands` entries at the "tests pass" gate (T-8).
 
 ## Conventions that differ from defaults
 

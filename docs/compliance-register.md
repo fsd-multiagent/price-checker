@@ -15,7 +15,7 @@
 
 | ID | Requirement | Control | Enforced in | Evidence | Status |
 |---|---|---|---|---|---|
-| CR-1 | Contact only approved retailers (spec §8.1) | S-1 | Shared fetch client (C-12) reads the approved list; guard G4 for agent sessions | `.claude/hooks/test_guard.py` (G4 tests); fetch-client test TBD (stage 7) | Planned |
+| CR-1 | Contact only approved retailers (spec §8.1) | S-1 | Shared fetch client (C-12) reads the approved list; guard G4 for agent sessions | `.claude/hooks/test_guard.py` (G4 tests); `backend/src/test/java/ro/pricechecker/arch/ArchitectureTest.java` (no HTTP client outside `fetch`, C-12; story 1.1); fetch-client test TBD (stage 7) | Planned |
 | CR-2 | Only a human approves a retailer (spec §4) | S-1 | Guard G5 blocks agent edits that set `Approved`; `.claude/settings.json` asks before guardrail edits | `.claude/hooks/test_guard.py` (G5 tests) | Implemented |
 | CR-3 | Public pages only, logged out (spec §8.2) | S-2 | Fetch client sends no cookies or credentials | TBD (stage 7) | Planned |
 | CR-4 | One lookup per retailer per EAN; no crawling (spec §8.2) | S-3 | Fetch client and adapters; cache (FR-6) | TBD (stage 7) | Planned |
@@ -27,7 +27,7 @@
 | CR-10 | No personal data, no accounts, no IP logging | S-9, C-9 | Backend logging config | TBD (stage 7) | Planned |
 | CR-11 | No secrets in repo, images, logs or state | S-10, I-5 | `.gitignore`, CI secret scan, OIDC; settings deny reading `.env`, tfstate, tfvars | TBD (stage 6) | Planned |
 | CR-12 | Validate input; encode the EAN in retailer URLs | S-11 | Backend validation | TBD (stage 7) | Planned |
-| CR-13 | Pinned dependencies; no known critical vulnerabilities | S-12 | CI dependency scan | TBD (stage 6) | Planned |
+| CR-13 | Pinned dependencies; no known critical vulnerabilities | S-12 | `backend/build.gradle.kts`, `backend/settings.gradle.kts` and the wrapper pin exact versions and the distribution sha256; CI dependency scan | `backend/src/test/java/ro/pricechecker/BuildPinningTest.java` (pins, no dynamic versions; story 1.1); CI dependency scan TBD (stage 6) | Planned |
 | CR-14 | TLS only; ports 80 (redirect) and 443; SSH only from the deploy source | S-13, I-3 | Terraform network security group; reverse proxy | TBD (stage 6) | Planned |
 | CR-15 | `terraform apply` is done by a human only (plan §6) | Guard G1 | `.claude/hooks/guard.py`, `.claude/settings.json` deny rules | `.claude/hooks/test_guard.py` (G1 tests) | Implemented |
 | CR-16 | Changes reach `main` only through a PR with green CI (plan §4.2) | Guard G2; branch protection | `.claude/hooks/guard.py`; GitHub branch protection (step 0.9) | `.claude/hooks/test_guard.py` (G2 tests); branch protection TBD | Implemented |

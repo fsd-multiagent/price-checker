@@ -201,7 +201,7 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
 
 ## Stack
 
-Versions were not checked on the web in this run (permission denied). Each row is the line to use; the scaffold story pins the current GA patch after a web check and updates this table.
+Versions were not checked on the web in the architecture run (permission denied). Each row is the line to use; the scaffold story pins the current GA patch after a web check and updates this table. Story 1.1 pinned the backend build rows on 2026-11-17; `backend` `BuildPinningTest` fails if they drift from the build files.
 
 | Name | Version |
 | --- | --- |
@@ -229,7 +229,7 @@ api/ean-cases.json          # shared EAN validation cases (AD-13)
 config/retailers.yaml       # static retailer config (AD-8, AD-9)
 config/known-eans.yaml      # curated EAN→URL map; Health check and demo EANs (AD-12)
 fixtures/<retailer-id>/     # recorded, stripped pages (T-2)
-backend/                    # Spring Boot, Gradle wrapper; src/main/java/ro/pricechecker/<feature>/
+backend/                    # Spring Boot, Gradle wrapper; src/main/java/ro/pricechecker/<feature>/; folder rules in backend/CLAUDE.md
 web/                        # Vite + React + TypeScript; web/e2e/ Playwright
 deploy/compose.yaml, deploy/Caddyfile
 infra/                      # Terraform (I-1)
