@@ -1,10 +1,10 @@
 ---
 title: "PRD: Price Checker"
-status: final
+status: in-review
 created: 2026-11-17
 updated: 2026-11-17
 owner: Adrian (product owner, sole approver)
-author: Onofrei (PM), headless, run 20261117-174705-full, stage requirements, round 1
+author: Onofrei (PM), headless, run 20261117-174705-full, stage requirements, round 2
 inputs:
   - _bmad-output/planning-artifacts/briefs/brief-price-checker-2026-11-17/brief.md
   - _bmad-output/planning-artifacts/briefs/brief-price-checker-2026-11-17/addendum.md
@@ -22,7 +22,9 @@ This PRD is for Safta (UX Designer), Loredan (Architect), Veronel (Security & Co
 - FR-1 to FR-8 keep the numbers they have in spec §6. FR-9 to FR-11 are new: they turn the compliance gate, EAN resolution and block handling from spec §4 and §8 into requirements.
 - Acceptance criteria are numbered `AC-<FR>.<n>` (for example `AC-3.2`). NFR criteria are numbered `AC-N<NFR>.<n>` (for example `AC-N3.4`).
 - Every item in spec §7 and §8 maps to an NFR with acceptance criteria. The NFRs cite rules S-1 to S-13 (Veronel's stage-3 check).
-- Terms in §3 Glossary are used exactly as defined. Inferred points are tagged `[ASSUMPTION]` and listed in §10.
+- Every AC is verified by an automated test (T-1). Process steps that no test can verify (owner approvals, recordings, pre-talk checks) are not ACs; they are in §7.1 Release checklist.
+- Terms in §3 Glossary are used exactly as defined. Inferred points are tagged `[ASSUMPTION]` and listed in §10. An `[ASSUMPTION]` never widens a rule in `docs/standards/`.
+- **Deviation from spec §6 FR-3:** the spec shows a product name in each row. S-7 allows storing only price, currency, availability, timestamp and URL, and the Cache stores Result rows, so the first release shows no product name. §9 question 5 asks the owner whether to amend S-7.
 - Technical choices that are already made (spec §10) and the options for EAN resolution are in `addendum.md`, not here.
 
 ## 1. Vision
@@ -48,13 +50,13 @@ How the product reads retailer pages is part of the story: it only contacts reta
 ### 2.3 Key user journeys
 
 - **UJ-1. Ioana checks a headphone price before buying.**
-  Ioana, a shopper in Cluj, has a pair of headphones in her basket at one shop and the box's EAN-13 in front of her. She opens the website on her laptop (no sign-in) and pastes the 13 digits. Within about 5 seconds she sees one row per Approved retailer: product name, price in RON, availability, a link and when the row was fetched. The cheapest row is highlighted. She follows its link to the retailer's page. **Edge case:** she mistypes one digit; the check digit fails, she sees an error next to the input, and no lookup runs.
+  Ioana, a shopper in Cluj, has a pair of headphones in her basket at one shop and the box's EAN-13 in front of her. She opens the website on her laptop (no sign-in) and pastes the 13 digits. Within about 5 seconds she sees one row per Approved retailer: retailer name, price in RON, availability, a link and when the row was fetched. The cheapest row is highlighted. She follows its link to the retailer's page. **Edge case:** she mistypes one digit; the check digit fails, she sees an error next to the input, and no lookup runs.
 
 - **UJ-2. The presenter runs the lookup live while one retailer misbehaves.**
   On stage, the presenter types a demo EAN. One retailer answers; another times out. The table still renders: the first row shows its price and is highlighted; the second row says "Unavailable". The presenter types the same EAN again for the audience and it answers at once from the cache, with the original fetch time. **Edge case:** if the venue network is down, the presenter switches to the fallback video.
 
 - **UJ-3. The presenter shows the compliance gate and the kill switch.**
-  The presenter shows the source register, where Altex is Not checked, and shows that Altex never appears in the table. After the owner changes Altex to Approved (and only then), its adapter may be enabled. Later the presenter turns one retailer's kill switch off in the config file; within a minute, without a deploy, that retailer's row shows "Disabled" and no request reaches it.
+  The presenter shows the source register, where Altex is Not checked, and shows that Altex never appears in the table. Altex's Adapter already exists, built and tested offline from saved pages, but is disabled. After the owner changes Altex to Approved (and only then), its Adapter may be enabled. Later the presenter turns one retailer's kill switch off in the config file; within a minute, without a deploy, that retailer's row shows "Disabled" and no request reaches it.
 
 - **UJ-4. A layout change is caught before the audience sees it.**
   A retailer's product page changes (for the demo, a simulated change). The scheduled health check looks up the known EANs, extraction fails for that retailer, and the check fails visibly, naming the retailer and the EAN. That failure starts the self-healing story (spec §12, criterion 3).
@@ -67,17 +69,17 @@ How the product reads retailer pages is part of the story: it only contacts reta
 - **Approved retailer** — A Retailer whose source-register status is `Approved YYYY-MM-DD`. Every other status (Not checked, Proposed, Rejected, Retired) is blocked.
 - **Adapter** — The per-Retailer code that resolves an EAN to a product page and extracts the facts from it. One Adapter per Retailer.
 - **Lookup** — One request by a Shopper for one EAN. A Lookup produces one Result row per Approved retailer.
-- **Result row** — The row for one Retailer in the comparison table. It has a Row status and, when found, a product name, a Price, an Availability, a product link and a Fetch time.
+- **Result row** — The row for one Retailer in the comparison table. It has a Row status and, when found, a Price, an Availability, a product link and a Fetch time.
 - **Row status** — One of: `Found`, `Not found` (the Retailer does not stock or cannot resolve the EAN), `Unavailable` (timeout, error, Block or an unparseable page), `Disabled` (the Kill switch is off).
 - **Price** — An amount in RON, VAT included, extracted from the product page. A Price that is missing or cannot be parsed is shown as "unavailable", never as 0.
 - **Availability** — One of: In stock, Out of stock, Unknown.
 - **Fetch time** — When the Retailer's page was actually fetched. A cached Result row keeps its original Fetch time.
 - **Lowest price** — The smallest valid Price among `Found` Result rows whose Availability is not Out of stock.
-- **Cache** — Short-lived in-memory storage of Result rows keyed by Retailer and EAN.
+- **Cache** — Short-lived in-memory storage of Result rows keyed by Retailer and EAN. It holds only the S-7 facts (price, currency, availability, Fetch time, URL) plus the Row status.
 - **Kill switch** — A per-Retailer on/off setting in a config file the app reloads without a deploy.
 - **Health check** — A scheduled Lookup of the Known EANs that fails visibly when an Adapter cannot extract the expected facts.
 - **Known EANs** — A list, kept in the repo, of EANs per Retailer that are expected to be `Found`. Used by the Health check and as the demo EANs.
-- **Block** — A Retailer refusing us: HTTP 403, a CAPTCHA or bot-challenge page, or a robots.txt change that disallows our path.
+- **Block** — A Retailer refusing us: HTTP 403, a CAPTCHA or bot-challenge page, or a robots.txt that now disallows a path our Adapter uses.
 - **Fallback video** — A pre-recorded video of UJ-1 and UJ-2 working against Approved retailers, used on stage if the live demo fails.
 
 ## 4. Features and functional requirements
@@ -114,7 +116,7 @@ The system looks up the EAN at every Approved retailer whose Kill switch is on, 
 - **AC-2.1** A Lookup produces exactly one Result row per Approved retailer, including Disabled ones, and no row for any other Retailer.
 - **AC-2.2** Requests to different Retailers run concurrently: with two Retailers each answering in 2 s, the Lookup completes in under 3 s, not 4 s.
 - **AC-2.3** Each Retailer has its own timeout. A Retailer that does not answer in time gets Row status `Unavailable`; the other rows are unaffected.
-- **AC-2.4** A Lookup makes at most one product-page fetch per Retailer per EAN, plus at most one resolution request where the Retailer's resolution method needs one (S-3).
+- **AC-2.4** A Lookup makes at most one product-page fetch per Retailer per EAN, plus at most one resolution request where the Retailer's resolution method needs one (S-3). Retries of the same request after an error (AC-N3.4) are not extra fetches; they are capped at 2 per request and stay within the per-Retailer timeout [ASSUMPTION: cap of 2].
 
 #### FR-9: Contact only Approved retailers (compliance gate)
 
@@ -125,7 +127,9 @@ The system contacts a Retailer only while the Source register marks it Approved.
 - **AC-9.1** The app's retailer configuration lists, for each enabled Adapter, the Retailer it serves. A CI check fails when any enabled Adapter's Retailer is not Approved in the Source register (S-1).
 - **AC-9.2** A Retailer that is Not checked, Proposed, Rejected or Retired is never contacted by a Lookup or by the Health check, and has no Result row.
 - **AC-9.3** No code path, flag or environment variable lets a Lookup contact a Retailer that is not Approved.
-- **AC-9.4** Moving a Retailer to Approved is done by the owner in the Source register; agents may draft a row but never set Approved (S-1).
+- **AC-9.4** An Adapter may be built for a Retailer that is not Approved, but only from saved fixture pages (T-2); it ships disabled, and the CI check in AC-9.1 fails if it is enabled. Its tests never contact the Retailer (T-3).
+
+Setting a Retailer to Approved is an owner action in the Source register, not an AC; agents may draft a row but never set Approved (S-1). See §7.1.
 
 #### FR-10: Resolve an EAN to a product page
 
@@ -133,7 +137,7 @@ Each Adapter can find the product page for an EAN using only a method its Retail
 
 **Acceptance criteria:**
 
-- **AC-10.1** Each Adapter documents its resolution method (Retailer search, an external EAN catalog, or a curated EAN-to-URL list), and that method is recorded in an ADR (D-2).
+- **AC-10.1** Each Adapter declares its resolution method (Retailer search, an external EAN catalog, or a curated EAN-to-URL list) in the retailer configuration, and a CI check fails when an enabled Adapter has no declared method or the method is not one of these three. The choice itself is recorded in an ADR (D-2).
 - **AC-10.2** No Adapter requests a path that the Retailer's robots.txt disallows for our user agent; for evoMAG this means no search pages (S-4).
 - **AC-10.3** When a Retailer cannot resolve the EAN by its method, the Result row has Row status `Not found`, not `Unavailable`.
 - **AC-10.4** Every Known EAN resolves to a product page at the Retailers it is listed for.
@@ -159,15 +163,16 @@ The system keeps each Result row for a short time so repeated Lookups do not hit
 
 #### FR-3: Show the facts for each Retailer
 
-The Shopper sees, for each Retailer, the product name, Price, Availability, product link and Fetch time. Realizes UJ-1.
+The Shopper sees, for each Retailer, the Price, Availability, product link and Fetch time. No product name is shown (see §0, S-7). Realizes UJ-1.
 
 **Acceptance criteria:**
 
-- **AC-3.1** A `Found` row shows the Retailer name, product name, Price formatted in RON with VAT included (for example `1.299,99 lei`), Availability, a link to the product page and the Fetch time.
+- **AC-3.1** A `Found` row shows the Retailer name, Price formatted in RON with VAT included (for example `1.299,99 lei`), Availability, a link to the product page and the Fetch time.
 - **AC-3.2** The product link points to the Retailer's own product page and opens in a new tab.
 - **AC-3.3** Fetch time is shown in Romanian local time (Europe/Bucharest) [ASSUMPTION].
 - **AC-3.4** Prices from structured data are used first, then meta tags, then Retailer-specific selectors (spec §8 extraction order).
 - **AC-3.5** A Price in a currency other than RON is not shown as a Price; the row shows the price as unavailable [ASSUMPTION].
+- **AC-3.6** No product name, description or image is extracted into a Result row, cached or logged (S-7). A test asserts that a cached row holds only Row status, price, currency, availability, Fetch time and URL.
 
 #### FR-4: Highlight the lowest price
 
@@ -216,8 +221,9 @@ A scheduled job looks up the Known EANs and fails visibly when an Adapter breaks
 **Acceptance criteria:**
 
 - **AC-8.1** The Health check runs on a schedule, at least once a day, and can also be started by hand [ASSUMPTION: daily].
-- **AC-8.2** It looks up each Retailer's Known EANs and checks that each one is `Found` with a product name and a valid Price.
-- **AC-8.3** When any check fails, the run fails visibly (a failed CI job run) and its output names the Retailer, the EAN and what was missing.
+- **AC-8.2** It looks up each Retailer's Known EANs and checks that each one is `Found` with a valid Price, an Availability and a product link.
+- **AC-8.3** When any check fails, the run ends with a failure status that the owner and the presenter can see without logging in to the VM, and its output names the Retailer, the EAN and what was missing. Where it runs is the ADR in §9 question 4.
+- **AC-8.7** The Health check fetches each enabled Retailer's robots.txt and fails for that Retailer, as a Block (FR-11), when it disallows a path the Adapter uses for our user agent (S-4).
 - **AC-8.4** A simulated layout change (a saved product page with its structured data and selectors altered) makes both the Adapter's tests and the Health check fail.
 - **AC-8.5** The Health check obeys the same rules as a Lookup: Approved and enabled Retailers only, rate and concurrency limits, and the honest user agent (FR-9, NFR-3).
 - **AC-8.6** Each Approved retailer has at least two Known EANs [ASSUMPTION].
@@ -228,7 +234,7 @@ When a Retailer blocks us, the system stops contacting it and flags the Block. R
 
 **Acceptance criteria:**
 
-- **AC-11.1** On a Block (HTTP 403, a CAPTCHA or bot-challenge page), the system stops sending requests to that Retailer until an operator clears the flag, and the Retailer's rows show `Unavailable` (S-6).
+- **AC-11.1** On a Block (HTTP 403, a CAPTCHA or bot-challenge page, or the robots.txt case in AC-8.7), the system stops sending requests to that Retailer until an operator clears the flag, and the Retailer's rows show `Unavailable` (S-6).
 - **AC-11.2** A Block is logged at warning level or higher with the Retailer and the time, and makes the next Health check fail for that Retailer.
 - **AC-11.3** The system never retries a Block through another IP, a proxy, a different user agent or altered headers (S-6).
 - **AC-11.4** HTTP 429 is not a Block: the system honors `Retry-After` and backs off (NFR-3).
@@ -255,7 +261,7 @@ When a Retailer blocks us, the system stops contacting it and flags the Block. R
 - **AC-N3.4** `Retry-After` is honored; errors are retried with exponential backoff and a cap, within the per-Retailer timeout (S-5).
 - **AC-N3.5** Every request carries one honest user agent with a contact URL. A test asserts that it contains none of `bot`, `robot`, `crawl` and `spider`, in any case (S-6).
 - **AC-N3.6** No proxies, CAPTCHA solving, fingerprint spoofing or header impersonation (S-6).
-- **AC-N3.7** Only price, currency, availability, timestamp, URL and product name are kept; no descriptions or images are stored (S-7) [ASSUMPTION: product name is kept because FR-3 shows it].
+- **AC-N3.7** Only price, currency, availability, timestamp and URL are kept in the Cache and logs; no product names, descriptions or images are stored there (S-7). Recorded test fixtures have images and long descriptions stripped (T-2).
 - **AC-N3.8** These rules are enforced in one shared fetch client that every Adapter must use, not left to each Adapter.
 
 #### NFR-4: Accessibility (spec §7)
@@ -269,20 +275,22 @@ When a Retailer blocks us, the system stops contacting it and flags the Block. R
 #### NFR-5: Privacy (spec §7; S-9)
 
 - **AC-N5.1** No accounts, sign-in or cookies that identify a user.
-- **AC-N5.2** Application and reverse-proxy logs record the EAN and never the client IP address (S-9).
+- **AC-N5.2** Application and reverse-proxy logs record the EAN and never the client IP address or the client user agent string (S-9, C-9).
 - **AC-N5.3** No personal data is stored anywhere.
 - **AC-N5.4** No third-party analytics or tracking scripts on the page [ASSUMPTION].
 
 #### NFR-6: Demo reliability (spec §7, §12)
 
-- **AC-N6.1** The journey works live against at least two Approved retailers with a Known EAN that both stock.
-- **AC-N6.2** A Fallback video of UJ-1 and UJ-2 against Approved retailers is recorded and stored where the presenter can play it offline.
-- **AC-N6.3** The latest Health check is green before the talk; a red one is visible to the presenter in the CI run list.
+- **AC-N6.1** The Known EANs list contains at least one EAN listed for two or more Approved retailers; a test checks the list.
+- **AC-N6.2** The end-to-end test (T-4) covers UJ-1 and UJ-2 against stubbed Retailers, including one Retailer timing out and a repeated Lookup served from the Cache.
 
-#### NFR-7: Transport and hosting security (S-10, S-13)
+The live run, the Fallback video and the green Health check before the talk are in §7.1.
+
+#### NFR-7: Transport, hosting and supply-chain security (S-10, S-12, S-13)
 
 - **AC-N7.1** The site is served only over HTTPS; port 80 only redirects to HTTPS (S-13).
-- **AC-N7.2** No secrets are committed to the repo, images or logs (S-10).
+- **AC-N7.2** No secrets are committed to the repo, images or logs; CI runs a secret scan (S-10).
+- **AC-N7.3** Dependencies are pinned and CI runs a vulnerability scan that fails on high or critical findings (S-12) [ASSUMPTION: high threshold].
 
 ## 6. Non-goals
 
@@ -297,16 +305,24 @@ When a Retailer blocks us, the system stops contacting it and flags the Block. R
 
 ## 7. First-release scope
 
-**In:** FR-1 to FR-11 and NFR-1 to NFR-7; the Known EANs list; the Fallback video.
+**In:** FR-1 to FR-11 and NFR-1 to NFR-7; the Known EANs list; the Fallback video; a disabled Altex Adapter built from saved pages only (AC-9.4), never contacting altex.ro until Altex is Approved.
 
-**Out:** everything in §6. Retailers beyond the Approved ones at release time; Altex stays Not checked on purpose so the compliance-gate demo has a Retailer to move live.
+**Out:** everything in §6. Live lookups at any Retailer that is not Approved at release time. Altex stays Not checked on purpose so the compliance-gate demo has a Retailer to move live.
+
+### 7.1 Release checklist (not ACs; checked by the owner, not by tests)
+
+- **RC-1** The owner has set at least two Retailers to Approved in the Source register (S-1).
+- **RC-2** The journey works live against at least two Approved retailers with a Known EAN that both stock.
+- **RC-3** A Fallback video of UJ-1 and UJ-2 against Approved retailers is recorded and playable offline.
+- **RC-4** The latest Health check is green before the talk.
+- **RC-5** The EAN-resolution ADR exists and is in `docs/adr/README.md` (D-2).
 
 ## 8. Success metrics
 
 **Primary (spec §12 demo criteria)**
 
 - **SM-1 EAN to comparison:** the presenter types a real EAN live and sees Prices from at least two Retailers. Validates FR-1 to FR-5, NFR-6.
-- **SM-2 Compliance gate:** a Retailer moves from Not checked to Approved before its Adapter is allowed to run. Validates FR-9.
+- **SM-2 Compliance gate:** a Retailer moves from Not checked to Approved before its Adapter is allowed to run (Altex by default; fallback in §9 question 6). Validates FR-9.
 - **SM-3 Self-healing adapter:** a simulated layout change fails the tests and the Health check; that failure starts an agent that proposes a fix; the tests pass and a human approves it. Validates FR-8.
 - **SM-4 Automated SDLC:** each phase starts from the previous phase's output and leaves a git tag and artifacts to show.
 
@@ -329,7 +345,9 @@ When a Retailer blocks us, the system stops contacting it and flags the Block. R
 1. **EAN resolution method per Retailer (spec §11).** Retailer search, external EAN catalog or curated EAN-to-URL list. Owner: Loredan (Architect), as an ADR (D-2). Not blocking: FR-10 holds for any of them.
 2. **Which Retailers get Approved (spec §11).** evoMAG and cel.ro are Proposed. Owner: Adrian (owner). Blocking for release (NFR-6), not for architecture or stories.
 3. **Is cel.ro's search route allowed by its robots.txt?** Needs a source-register check before cel.ro can use search. Owner: Veronel (Security & Compliance), drafting the row.
-4. **Where the Health check runs** (GitHub Actions against production, or on the VM) and how a failure starts the self-healing agent. Owner: Pacala (DevOps) and Loredan (Architect).
+4. **Where the Health check runs** (GitHub Actions against production, or on the VM) and how a failure starts the self-healing agent. Owner: Pacala (DevOps) and Loredan (Architect). Not blocking: AC-8.3 states only the outcome.
+5. **Amend S-7 to allow storing the product name?** Spec §6 FR-3 shows a product name; S-7 does not allow storing it, so the first release omits it (§0). If the owner wants it back, Veronel (Security & Compliance) drafts an S-7 amendment for owner approval, then FR-3 and AC-3.6 change. Owner: Adrian. Not blocking.
+6. **Altex terms and the SM-2 fallback.** The source register notes Altex affiliate terms that ban automated taking of information, so the owner may not approve Altex. Fallback for SM-2: move any other Not checked Retailer (or a Proposed one, evoMAG or cel.ro, left un-Approved until the talk) through the gate live. Owner: Adrian, with Veronel (Security & Compliance). Blocking for the demo only, not for architecture or stories.
 
 ## 10. Assumptions index
 
@@ -345,6 +363,7 @@ When a Retailer blocks us, the system stops contacting it and flags the Block. R
 - §5 AC-N1.1 — Per-Retailer timeout around 4 s.
 - §5 AC-N1.2 — Cached Lookup within 1 s.
 - §5 AC-N2.3 — An EAN mismatch on the page means `Not found`.
-- §5 AC-N3.7 — Product name is stored alongside the spec §8 facts, because FR-3 shows it.
+- §4.2 AC-2.4 — Retries after an error are capped at 2 per request.
+- §5 AC-N7.3 — The vulnerability scan fails on high or critical findings.
 - §5 AC-N5.4 — No third-party analytics.
 - §6 — No adoption or usage targets.
