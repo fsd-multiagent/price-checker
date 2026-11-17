@@ -116,6 +116,21 @@ class ArchitectureTest {
 
   @Test
   @Tag("AC-2.1.4")
+  void ac_2_1_4_extractUsingJsoupConnectFails() {
+    assertViolation("extractjsoup");
+  }
+
+  @Test
+  @Tag("AC-2.1.4")
+  void ac_2_1_4_extractResolvingUriWithoutOpeningItPasses() {
+    JavaClasses fixture = new ClassFileImporter().importPackages(FIXTURES + ".extracturi");
+    assertThatCode(() ->
+            ArchitectureRules.extractHasNoNetworkAccess(FIXTURES + ".extracturi").check(fixture))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @Tag("AC-2.1.4")
   void ac_2_1_4_realExtractHasNoNetworkAccess() {
     JavaClasses main =
         new ClassFileImporter()

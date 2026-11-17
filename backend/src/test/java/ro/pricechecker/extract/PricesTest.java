@@ -63,6 +63,52 @@ class PricesTest {
     assertThat(Prices.toMinor(text)).isNull();
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "N/A",
+        "Pret la cerere",
+        "   ",
+        " ",
+        "1e3",
+        "+5",
+        ".99",
+        ",99",
+        "0.299",
+        "01.299,99",
+        "12.5.0 lei",
+        "lei lei 5",
+        "1 2 3",
+        "1299,99 lei 5",
+        "NaN",
+        "Infinity"
+      })
+  void ac_2_1_3_moreGarbageIsNullNeverZero(String text) {
+    assertThat(Prices.toMinor(text)).isNull();
+  }
+
+  @Test
+  void ac_2_1_3_neverThrowsOnOddInput() {
+    String[] odd = {
+      "\u0000",
+      "١٢٣",
+      "1\n299",
+      "lei",
+      "ron ron",
+      "9".repeat(40),
+      "9".repeat(10_000),
+      ",",
+      ".",
+      "..,"
+    };
+    for (String text : odd) {
+      Long bani = Prices.toMinor(text);
+      assertThat(bani)
+          .as(text.length() > 20 ? "long input" : text)
+          .satisfiesAnyOf(b -> assertThat(b).isNull(), b -> assertThat(b).isPositive());
+    }
+  }
+
   @Test
   void ac_2_1_3_convertsNumericAmounts() {
     assertThat(Prices.toMinor(new BigDecimal("1299.99"))).isEqualTo(129999L);

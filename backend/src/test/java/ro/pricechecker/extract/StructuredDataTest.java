@@ -6,6 +6,9 @@ import java.lang.reflect.RecordComponent;
 import java.util.Arrays;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import ro.pricechecker.extract.ExtractedFacts.Availability;
 
 @Tag("AC-2.1.1")
@@ -129,6 +132,76 @@ class StructuredDataTest {
         "<script type=\"application/json\">{\"@type\": \"Product\"}</script>"
             + "<script>var x = {\"@type\": \"Product\"};</script>";
     assertThat(StructuredData.fromJsonLd(html)).isEmpty();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"gtin", "gtin14", "gtin12", "gtin8"})
+  void ac_2_1_1_readsOtherGtinKeys(String key) {
+    String gtin = key.equals("gtin8") ? "96385074" : "05901234123457";
+    String html = page("{\"@type\": \"Product\", \"" + key + "\": \"" + gtin + "\"}");
+    assertThat(StructuredData.fromJsonLd(html))
+        .contains(new ExtractedFacts(null, null, Availability.UNKNOWN, gtin));
+  }
+
+  @Test
+  void ac_2_1_1_prefersGtin13OverOtherKeys() {
+    String html =
+        page(
+            """
+            {"@type": "Product", "gtin8": "96385074", "gtin13": "5901234123457"}
+            """);
+    assertThat(StructuredData.fromJsonLd(html).map(ExtractedFacts::gtin)).contains("5901234123457");
+  }
+
+  @Test
+  void ac_2_1_1_acceptsJsonLdTypeWithCharsetParameter() {
+    String html =
+        "<script type=\"Application/LD+JSON; charset=utf-8\">"
+            + "{\"@type\": \"Product\", \"offers\": {\"price\": \"10\"}}</script>";
+    assertThat(StructuredData.fromJsonLd(html))
+        .contains(new ExtractedFacts(1000L, null, Availability.UNKNOWN, null));
+  }
+
+  @Test
+  void ac_2_1_1_nullPriceFallsBackToLowPrice() {
+    String html =
+        page("{\"@type\": \"Product\", \"offers\": {\"price\": null, \"lowPrice\": \"7,50\"}}");
+    assertThat(StructuredData.fromJsonLd(html).map(ExtractedFacts::priceMinor)).contains(750L);
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "https://schema.org/LimitedAvailability, IN_STOCK",
+    "https://schema.org/OnlineOnly, IN_STOCK",
+    "https://schema.org/SoldOut, OUT_OF_STOCK",
+    "https://schema.org/Discontinued, OUT_OF_STOCK",
+    "https://schema.org/PreOrder, UNKNOWN",
+    "maybe, UNKNOWN"
+  })
+  void ac_2_1_1_mapsSchemaAvailabilityTerms(String term, Availability expected) {
+    String html =
+        page("{\"@type\": \"Product\", \"offers\": {\"availability\": \"" + term + "\"}}");
+    assertThat(StructuredData.fromJsonLd(html).map(ExtractedFacts::availability))
+        .contains(expected);
+  }
+
+  @Test
+  void ac_2_1_1_productWithoutOffersHasNoPriceFacts() {
+    String html = page("{\"@type\": \"Product\", \"gtin13\": \"5901234123457\", \"offers\": []}");
+    assertThat(StructuredData.fromJsonLd(html))
+        .contains(new ExtractedFacts(null, null, Availability.UNKNOWN, "5901234123457"));
+  }
+
+  @Test
+  void ac_2_1_1_nonPriceOfferValuesAreNull() {
+    String html =
+        page(
+            """
+            {"@type": "Product", "offers": {"price": {"value": 5}, "priceCurrency": 978,
+             "availability": true}}
+            """);
+    assertThat(StructuredData.fromJsonLd(html))
+        .contains(new ExtractedFacts(null, null, Availability.UNKNOWN, null));
   }
 
   @Test

@@ -62,6 +62,59 @@ class MetaTagsTest {
   }
 
   @Test
+  void ac_2_1_2_helpersAreSeparateFunctions() {
+    String metaOnly =
+        page(
+            """
+            <meta property="product:price:amount" content="1299.99">
+            <meta property="product:price:currency" content="RON">
+            """);
+    assertThat(StructuredData.fromJsonLd(metaOnly)).isEmpty();
+    assertThat(MetaTags.fromMetaTags(metaOnly)).isPresent();
+    assertThat(MetaTags.fromMetaTags(StructuredDataTest.PRODUCT_PAGE)).isEmpty();
+  }
+
+  @Test
+  void ac_2_1_2_productTagsWinOverOgTags() {
+    String html =
+        page(
+            """
+            <meta property="og:price:amount" content="5">
+            <meta property="og:price:currency" content="EUR">
+            <meta property="product:price:amount" content="1299.99">
+            <meta property="product:price:currency" content="RON">
+            """);
+    assertThat(MetaTags.fromMetaTags(html))
+        .contains(new ExtractedFacts(129999L, "RON", Availability.UNKNOWN, null));
+  }
+
+  @Test
+  void ac_2_1_2_keysAreCaseInsensitiveAndEmptyContentIsSkipped() {
+    String html =
+        page(
+            """
+            <meta property="Product:Price:Amount" content="  ">
+            <meta property="PRODUCT:PRICE:AMOUNT" content="12,50">
+            <meta property="product:availability" content="">
+            """);
+    assertThat(MetaTags.fromMetaTags(html))
+        .contains(new ExtractedFacts(1250L, null, Availability.UNKNOWN, null));
+  }
+
+  @Test
+  void ac_2_1_2_invalidCurrencyAndGtinBecomeNull() {
+    String html =
+        page(
+            """
+            <meta property="product:price:amount" content="5">
+            <meta property="product:price:currency" content="lei">
+            <meta property="product:ean" content="12AB">
+            """);
+    assertThat(MetaTags.fromMetaTags(html))
+        .contains(new ExtractedFacts(500L, null, Availability.UNKNOWN, null));
+  }
+
+  @Test
   void ac_2_1_2_noProductMetaTagsIsEmpty() {
     assertThat(MetaTags.fromMetaTags(page("<meta name=\"description\" content=\"x\">"))).isEmpty();
     assertThat(MetaTags.fromMetaTags("")).isEmpty();
