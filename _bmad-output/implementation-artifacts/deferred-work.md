@@ -48,3 +48,6 @@
 - source_spec: none
   summary: Usage review in the epic retrospective — the orchestrator passes the run's per-stage usage (cost, rounds, model, effort) to Aglaia (Knowledge Keeper)'s `bmad-retrospective` step, which recommends `model`/`effort`/`max_turns` changes in `sdlc/pipeline.yaml` as action items.
   evidence: Owner decision 2026-11-17. No agent owns token consumption; the retrospective prompt (`sdlc/prompts/retrospective.md`) gets no cost data. Depends on the usage-visibility entry above.
+- source_spec: `_bmad-output/implementation-artifacts/spec-orchestrator-usage-ledger.md`
+  summary: Make `tests/test_real_adapters.py::test_real_no_required_checks` deterministic; it polls with a 0.01 s deadline and asserts more than one poll, so it fails now and then under load.
+  evidence: Verification Gap review of the usage-ledger build, triage row 22; failed once in a full run, passed on reruns; pre-existing.

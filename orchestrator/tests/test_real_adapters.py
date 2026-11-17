@@ -618,6 +618,7 @@ def test_real_notifier_quotes_and_never_raises():
 PIPELINE = """\
 settings:
   run_budget_usd: 5
+  agents: {T: [s, x, worker, stub-worker, judge]}
 stages:
   - id: only
     title: "One stage through the real adapters"
@@ -627,6 +628,7 @@ stages:
       - id: work
         kind: agent
         agent: stub-worker
+        agent_role: T
         prompt: work
         tools: [Read, Edit, Write]
         writes: true
@@ -668,7 +670,7 @@ def test_real_run_one_stage(sdlc_repo, stubs, capsys):
     repo = sdlc_repo
     assert main(["--repo", str(repo), "run", "--pipeline", str(repo / "sdlc/pipeline.yaml")]) == 0
     runs = repo / "_bmad-output" / "sdlc" / "runs"
-    (run_dir,) = list(runs.iterdir())
+    (run_dir,) = [p for p in runs.iterdir() if p.is_dir()]
     state = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
     assert state["status"] == "passed" and state["dry_run"] is False
     branch = f"sdlc/{run_dir.name}"
@@ -712,7 +714,7 @@ def test_real_run_escalates_then_resumes(sdlc_repo, stubs, tmp_path, monkeypatch
     )
     gh_config(tmp_path, monkeypatch, issues=[])
     assert main(["--repo", str(repo), "run"]) == 2
-    (run_dir,) = list((repo / "_bmad-output" / "sdlc" / "runs").iterdir())
+    (run_dir,) = [p for p in (repo / "_bmad-output" / "sdlc" / "runs").iterdir() if p.is_dir()]
     state = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
     assert state["status"] == "escalated" and state["escalations"][0]["issue"] == 7
     log = stubs[1]

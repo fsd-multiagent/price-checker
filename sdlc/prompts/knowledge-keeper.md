@@ -6,6 +6,11 @@ Your working directory is the worktree `${worktree}`. Write only inside it.
 Inputs:
 ${inputs}
 
+Do not edit anything under `sdlc/` (the stage table and the prompts): the orchestrator reverts
+`sdlc/**` on this learn branch before it commits, so such edits are lost. If the pipeline or a
+prompt should change, recommend the change in a `minor` finding instead; the owner makes it
+through a reviewed PR (AD-24).
+
 Feedback from the previous round:
 ${feedback}
 

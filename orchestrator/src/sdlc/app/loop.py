@@ -8,6 +8,7 @@ store before the next decision (AD-4).
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import json
 import shlex
 from collections.abc import Callable
@@ -28,9 +29,11 @@ from sdlc.core.models import (
     ExhaustBudget,
     Finish,
     GateEvaluated,
+    LearnQueue,
     Merged,
     OpenEscalation,
     Outcome,
+    PathsReverted,
     Pipeline,
     PrOpened,
     ResetScope,
@@ -62,6 +65,7 @@ from sdlc.core.models import (
     UnitStarted,
     UnitUnblocked,
     UsageLimited,
+    UsageWarning,
     Verdict,
     VerdictSource,
     Wait,
@@ -72,11 +76,13 @@ from sdlc.core.prompts import bullet_list, render_prompt
 from sdlc.core.register_parser import parse_register
 from sdlc.core.scheduler import decide, round_records
 from sdlc.core.sprint_status import render_sprint_status
-from sdlc.core.state import apply, initial_state
+from sdlc.core.state import apply, initial_state, usage_warning_due
+from sdlc.core.usage import UNKNOWN_ROLE, agent_slug, render_summary, status_line
 from sdlc.ports import Invocation, Ports, StepKey
 from sdlc.store import RunStore
 
 SPRINT_STATUS = "_bmad-output/implementation-artifacts/sprint-status.yaml"
+USAGE_SUMMARY = ".sdlc/usage-summary.md"  # AD-24: written before an epic's retrospective
 DEFAULT_EPICS = "_bmad-output/planning-artifacts/epics.md"
 MAX_TICKS = 100_000
 
@@ -164,7 +170,7 @@ class Orchestrator:
             stories = stories_for_from(self.p, kind, from_stage, reader)
         now = self.ports.clock.now()
         run_id = self._free_run_id(make_run_id(now, kind))
-        self.store = RunStore(self.runs_dir / run_id)
+        self.store = RunStore(self.runs_dir / run_id, warn=self._warn)
         self.store.create()
         self.state = RunState.model_validate(
             {
@@ -191,6 +197,9 @@ class Orchestrator:
             self._apply(StoriesLoaded(at=self.ports.clock.now(), stories=stories))
         return await self._loop()
 
+    def _warn(self, message: str) -> None:
+        self.echo(f"!! {message}")
+
     def _free_run_id(self, run_id: str) -> str:
         """Two runs started in the same second get a short suffix instead of colliding."""
         candidate, n = run_id, 1
@@ -200,8 +209,9 @@ class Orchestrator:
         return candidate
 
     async def resume(self, run_id: str) -> int:
-        self.store = RunStore(self.runs_dir / run_id)
-        self.state = self.store.load()
+        self.store = RunStore(self.runs_dir / run_id, warn=self._warn)
+        # Backfills pre-AD-24 usage records, and appends what the ledger lacks (AD-24).
+        self.state = self.store.load(self.p, reconcile=True)
         self.echo(f"resume {run_id}")
         await self.ports.git.fetch()  # the register and the merge checks read origin/main
         # AD-6: abort any rebase first, then reset interrupted steps to the scope head.
@@ -230,6 +240,25 @@ class Orchestrator:
         self.state = apply(self.p, self.state, event)
         self.store.append_event(event)
         self.store.save(self.state)
+        if not isinstance(event, UsageWarning) and usage_warning_due(self.p, self.state):
+            self._warn_usage()
+
+    def _warn_usage(self) -> None:
+        """AD-24: one event, one status line and one notification per budget value."""
+        assert self.state is not None
+        b = self.state.budget
+        self._apply(
+            UsageWarning(
+                at=self.ports.clock.now(), budget_limit=b.limit, spent=b.spent, reserved=b.reserved
+            )
+        )
+        ratio = self.p.settings.usage_warn_ratio
+        line = (
+            f"spent ${b.spent:.2f} + reserved ${b.reserved:.2f} reached {ratio:.0%} of the "
+            f"run budget ${b.limit:.2f}"
+        )
+        self.echo(f"!! usage: {line}")
+        self.ports.notifier.notify("sdlc usage warning", f"run {self.state.run_id}: {line}")
 
     async def _inputs(self) -> TickInputs:
         assert self.state is not None
@@ -399,6 +428,8 @@ class Orchestrator:
             coro = self._run_script(key, stage, step, scope.worktree)
         else:
             try:
+                if stage.learn_queue is LearnQueue.EPIC:
+                    self._write_usage_summary(key, scope.worktree)
                 inv = self._invocation(key, stage, step, scope.worktree, action.cap)
             except Exception as exc:  # a broken prompt fails the step, not the run
                 self.echo(
@@ -412,6 +443,18 @@ class Orchestrator:
                 )
                 coro = self._run_agent(key, step, scope.worktree, inv)
         self._tasks[asyncio.ensure_future(coro)] = seq
+
+    def _write_usage_summary(self, key: StepKey, worktree: str) -> None:
+        """AD-24: the epic's usage in this run, for the retrospective to read."""
+        assert self.state is not None
+        unit = self.state.unit(key.scope, key.stage)
+        subject = (unit.subject if unit else None) or ""
+        number = subject.rsplit("-", 1)[-1]  # an epic unit's subject is `epic-<n>`
+        if not number.isdigit():
+            self.echo(f"        no usage summary: '{subject}' names no epic number")
+            return
+        summary = render_summary(self.state, int(number))
+        self.ports.fs.write_text(f"{worktree}/{USAGE_SUMMARY}", summary)
 
     async def _failed(self, key: StepKey, why: str) -> list[Event]:
         return [
@@ -483,6 +526,14 @@ class Orchestrator:
                 for r in self.state.steps
                 if (r.scope, r.step, r.round) == (key.scope, key.step, key.round)
             ),
+            labels={
+                "run_id": self.state.run_id,
+                "seq": str(key.seq),
+                "agent": agent_slug(step.agent_role or UNKNOWN_ROLE),
+                "stage": key.stage,
+                "step": key.step,
+                "scope": key.scope,
+            },
         )
 
     def _epics_path(self) -> str:
@@ -532,26 +583,44 @@ class Orchestrator:
         result = flag_usage_limit(result, self.ports.clock.now())
         verdict_text = fs.read_text(verdict_path) if verdict_path else None
         head: str | None = None
+        reverted: list[str] = []
         if self._is_story_file_reviewer(key, step):
             result = await self._check_reviewer_edits(key, worktree, result)
         else:
-            head = await self._commit_if_done(key, step, worktree, result, verdict_text)
+            head, reverted = await self._commit_if_done(key, step, worktree, result, verdict_text)
         base = f"steps/{key.seq}-{key.scope}-{key.step}"
-        self.store.write_artifact(f"{base}.json", result.model_dump_json(indent=2))
+        # AD-24: the step file keeps the raw result JSON without the `result` text; `raw` is
+        # excluded from every other dump (events, state).
+        step_file = {**result.model_dump(mode="json", exclude={"result"}), "raw": result.raw}
+        self.store.write_artifact(f"{base}.json", json.dumps(step_file, indent=2) + "\n")
+        note = (
+            f"\n---\nreverted on this learn branch, not committed (AD-24): {', '.join(reverted)}\n"
+            if reverted
+            else ""
+        )
         self.store.write_artifact(
             f"{base}.log",
-            f"$ {shlex.join(inv.argv)}\n\n{inv.stdin}\n\n---\n{result.result or ''}\n",
+            f"$ {shlex.join(inv.argv)}\n\n{inv.stdin}\n\n---\n{result.result or ''}\n{note}",
         )
+        events: list[Event] = []
+        if reverted:
+            self.echo(f"        reverted on {key.scope}: {', '.join(reverted)}")
+            events.append(
+                PathsReverted(
+                    at=self.ports.clock.now(), scope=key.scope, seq=key.seq, paths=tuple(reverted)
+                )
+            )
         for d in result.permission_denials:
             self.echo(f"        permission denied: {d.tool_name} {d.detail}")
         return [
+            *events,
             StepFinished(
                 at=self.ports.clock.now(),
                 seq=key.seq,
                 result=result,
                 verdict_text=verdict_text,
                 head_sha=head,
-            )
+            ),
         ]
 
     def _after_step(self, event: StepFinished) -> None:
@@ -583,6 +652,7 @@ class Orchestrator:
         return StepResult.model_validate(
             {
                 **result.model_dump(),
+                "raw": result.raw,  # excluded from dumps; carried to the step file
                 "subtype": "error_reviewer_edited",
                 "is_error": True,
                 "errors": [*result.errors, why],
@@ -591,28 +661,38 @@ class Orchestrator:
 
     async def _commit_if_done(
         self, key: StepKey, step: Step, worktree: str, result: StepResult, verdict_text: str | None
-    ) -> str | None:
-        """AD-6, AD-21: leftovers are committed only when a writing step ends `done`."""
+    ) -> tuple[str | None, list[str]]:
+        """AD-6, AD-21: leftovers are committed only when a writing step ends `done`. Returns
+        the new head and the paths a learn branch reverted (AD-24)."""
+        reverted: list[str] = []
         if not step.writes:
-            return None
+            return None, reverted
         if step.verdict_source is VerdictSource.RESULT_BLOCK:
             verdict = core_gates.last_verdict_block(result.result)
         else:
             verdict = core_gates.parse_verdict_text(verdict_text)
         readiness = self.p.stage(key.stage).gate_of_step(step.id).kind == "readiness"
         if derive_outcome(step, result, verdict, readiness=readiness).outcome is not Outcome.DONE:
-            return None
+            return None, reverted
         try:
             if key.scope.startswith("story:"):
                 await self.ports.git.restore_paths(worktree, self.p.settings.bookkeeping_paths)
+            elif key.scope.startswith("learn:"):  # AD-24: the pipeline changes only by owner PR
+                patterns = self.p.settings.learn_revert_paths
+                reverted = [
+                    path
+                    for path in await self.ports.git.changed_paths(worktree)
+                    if any(fnmatch.fnmatchcase(path, pat) for pat in patterns)
+                ]
+                await self.ports.git.restore_paths(worktree, patterns)
             assert self.state is not None
             sha = await self.ports.git.commit_all(
                 worktree, commit_message(self.state.run_id, key.scope, key.step, key.round)
             )
-            return sha or await self.ports.git.head(worktree)
+            return sha or await self.ports.git.head(worktree), reverted
         except Exception as exc:
             self.echo(f"        commit failed: {exc!r}")
-            return None
+            return None, reverted
 
     async def _run_script(
         self, key: StepKey, stage: Stage, step: Step, worktree: str
@@ -789,6 +869,7 @@ def format_status(state: RunState, now: str | None = None) -> str:
         f"{'  dry-run' if state.dry_run else ''}",
         f"budget: spent ${b.spent:.2f} reserved ${b.reserved:.2f} of ${b.limit:.2f}"
         f"{'  (exhausted)' if b.exhausted else ''}",
+        status_line(state),
     ]
     paused = state.resume_at is not None and now is not None and now < state.resume_at
     if paused or state.limit_exceeded:

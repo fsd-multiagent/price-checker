@@ -22,7 +22,7 @@ def main() -> int:
     stdin = sys.stdin.read()
     log = os.environ.get("STUB_LOG")
     if log:
-        logged = ("SDLC_", "STUB_", "TMPDIR", "CLAUDE_CODE_", "ANTHROPIC_")
+        logged = ("SDLC_", "STUB_", "TMPDIR", "CLAUDE_CODE_", "ANTHROPIC_", "OTEL_")
         env = {k: v for k, v in os.environ.items() if k.startswith(logged)}
         env["PATH"] = os.environ.get("PATH", "")
         line = {"tool": "claude", "argv": sys.argv[1:], "cwd": os.getcwd(), "stdin": stdin}

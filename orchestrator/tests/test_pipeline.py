@@ -9,7 +9,7 @@ from sdlc.core.models import OutcomeSource, RunKind
 from sdlc.core.pipeline import PipelineError, load_pipeline
 
 MINIMAL = """
-settings: {run_budget_usd: 10}
+settings: {run_budget_usd: 10, agents: {T: [s, x, worker, stub-worker, judge]}}
 stages:
   - id: one
     entry: [full]
@@ -19,7 +19,9 @@ stages:
 {extra}
 """
 
-WRITER = """      - {id: a, kind: agent, skill: s, prompt: p, tools: [Read], writes: true}"""
+WRITER = (
+    "      - {id: a, kind: agent, agent_role: T, skill: s, prompt: p, tools: [Read], writes: true}"
+)
 
 
 def load(
@@ -27,7 +29,10 @@ def load(
 ) -> object:
     text = MINIMAL.replace("{steps}", steps).replace("{extra}", extra)
     if settings:
-        text = text.replace("settings: {run_budget_usd: 10}", settings)
+        text = text.replace(
+            "settings: {run_budget_usd: 10, agents: {T: [s, x, worker, stub-worker, judge]}}",
+            settings,
+        )
     return load_pipeline(text)
 
 
@@ -88,7 +93,8 @@ def test_unknown_step_kind_names_the_step():
 
 def test_two_writers_in_a_parallel_group():
     steps = (
-        WRITER + "\n      - {id: b, kind: agent, skill: s, prompt: p, tools: [Read], writes: true}"
+        WRITER + "\n      - {id: b, kind: agent, agent_role: T, skill: s, prompt: p, tools: [Read],"
+        " writes: true}"
     )
     with pytest.raises(PipelineError, match="stage 'one' step 'b': two writers"):
         load(steps=steps, extra="    parallel: [[a, b]]\n    gate: review_verdicts")
@@ -96,14 +102,17 @@ def test_two_writers_in_a_parallel_group():
 
 def test_one_writer_in_a_parallel_group_is_legal():
     steps = (
-        WRITER
-        + "\n      - {id: b, kind: judge, prompt: p, tools: [Read], verdict_source: result_block}"
+        WRITER + "\n      - {id: b, kind: judge, agent_role: T, prompt: p, tools: [Read],"
+        " verdict_source: result_block}"
     )
     load(steps=steps, extra="    parallel: true\n    gate: review_verdicts")
 
 
 def test_file_verdict_on_read_only_step():
-    steps = "      - {id: r, kind: agent, agent: x, prompt: p, tools: [Read], verdict_source: file}"
+    steps = (
+        "      - {id: r, kind: agent, agent_role: T, agent: x, prompt: p, tools: [Read],"
+        " verdict_source: file}"
+    )
     with pytest.raises(PipelineError, match="stage 'one' step 'r': verdict_source 'file'"):
         load(steps=steps)
 
@@ -111,11 +120,11 @@ def test_file_verdict_on_read_only_step():
 def test_judge_must_be_read_only_and_declare_a_verdict():
     with pytest.raises(PipelineError, match="judge is read-only"):
         load(
-            steps="      - {id: j, kind: judge, prompt: p, tools: [Read], writes: true,"
-            " verdict_source: file}"
+            steps="      - {id: j, kind: judge, agent_role: T, prompt: p, tools: [Read],"
+            " writes: true, verdict_source: file}"
         )
     with pytest.raises(PipelineError, match="must declare a verdict_source"):
-        load(steps="      - {id: j, kind: judge, prompt: p, tools: [Read]}")
+        load(steps="      - {id: j, kind: judge, agent_role: T, prompt: p, tools: [Read]}")
 
 
 def test_unknown_script():
@@ -125,7 +134,7 @@ def test_unknown_script():
 
 def test_on_fail_must_be_same_or_earlier_stage():
     text = """
-settings: {run_budget_usd: 10}
+settings: {run_budget_usd: 10, agents: {T: [s, x, worker, stub-worker, judge]}}
 stages:
   - id: one
     entry: [full]
@@ -200,7 +209,7 @@ def test_rounds_and_timeout_must_be_positive(field):
 
 def test_result_status_with_result_block_verdict():
     steps = (
-        "      - {id: r, kind: agent, agent: x, prompt: p, tools: [Read],"
+        "      - {id: r, kind: agent, agent_role: T, agent: x, prompt: p, tools: [Read],"
         " verdict_source: result_block, outcome_source: result_status}"
     )
     with pytest.raises(PipelineError, match="stage 'one' step 'r': outcome_source 'result_status'"):
@@ -209,4 +218,4 @@ def test_result_status_with_result_block_verdict():
 
 def test_agent_step_needs_tools():
     with pytest.raises(PipelineError, match="stage 'one' step 'a': an agent step needs a tools"):
-        load(steps="      - {id: a, kind: agent, skill: s, prompt: p}")
+        load(steps="      - {id: a, kind: agent, agent_role: T, skill: s, prompt: p}")
