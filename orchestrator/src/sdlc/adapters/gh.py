@@ -9,9 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from sdlc.adapters.proc import ProcResult, run_proc
-from sdlc.ports import AdapterError, StepKey
+from sdlc.core.proposals import OWNER_REVIEW_LABEL, proposal_marker
+from sdlc.ports import AdapterError, ProposalRef, StepKey
 
 ESCALATION_LABEL = "escalation"
+OWNER_REVIEW_COLOR = "D93F0B"
+OWNER_REVIEW_DESCRIPTION = "Factory change proposed by an agent; only the owner merges (AD-26)"
 _PASS = frozenset({"pass", "skipping"})
 _FAIL = frozenset({"fail", "cancel"})
 _NO_SHA_POLLS = 3  # polls to wait for the merge commit SHA after the PR reports MERGED
@@ -48,7 +51,7 @@ class GhCli:
         self.poll_s = poll_s
         self.merge_timeout_min = merge_timeout_min
         self.call_timeout_s = call_timeout_s
-        self._label_ready = False
+        self._labels_ready: set[str] = set()
 
     async def _gh(self, *args: str, check: bool = True) -> ProcResult:
         res = await run_proc(("gh", *args), cwd=self.repo, timeout_s=self.call_timeout_s)
@@ -108,8 +111,20 @@ class GhCli:
 
     async def _view(self, pr: int) -> dict[str, Any] | None:
         """`gh pr view`, or None when the call fails (a transient error is polled again)."""
-        view = await self._json("pr", "view", str(pr), "--json", "state,mergeCommit", check=False)
+        view = await self._json(
+            "pr", "view", str(pr), "--json", "state,mergeCommit,labels", check=False
+        )
         return view if isinstance(view, dict) else None
+
+    async def _first_view(self, pr: int) -> dict[str, Any]:
+        """The first view of a merge must succeed: it carries the labels the refusal reads."""
+        for attempt in range(_NO_SHA_POLLS + 1):
+            view = await self._view(pr)
+            if view is not None:
+                return view
+            if attempt < _NO_SHA_POLLS:
+                await asyncio.sleep(self.poll_s)
+        raise AdapterError(f"cannot read PR #{pr} before merging it")
 
     async def merge(self, pr: int, head_sha: str, key: StepKey | None = None) -> str | None:
         """Auto-merge pinned to `head_sha` (never `--admin`); the merge SHA, or None.
@@ -119,7 +134,8 @@ class GhCli:
         """
         if not head_sha:
             raise AdapterError("refusing to merge without a head SHA (AD-20)")
-        view = await self._view(pr)
+        view = await self._first_view(pr)
+        refuse_owner_review(pr, view)
         state = _state(view)
         if state != "MERGED":
             if state == "CLOSED":
@@ -145,6 +161,9 @@ class GhCli:
             await asyncio.sleep(self.poll_s)
             view = await self._view(pr)
             state = _state(view)
+            if state != "MERGED" and _labelled(view):  # labelled while auto-merge waited
+                await self._gh("pr", "merge", str(pr), "--disable-auto", check=False)
+                refuse_owner_review(pr, view)
 
     async def ensure_escalation_issue(self, run_id: str, scope: str, title: str, body: str) -> int:
         """AD-13: matched by marker in code, never through search. A reused issue is reopened
@@ -169,13 +188,82 @@ class GhCli:
         return _number_from_url(res.stdout)
 
     async def _ensure_label(self) -> None:
-        if self._label_ready:
+        await self.ensure_label(ESCALATION_LABEL, "B60205", "Zamolxe (Orchestrator) escalation")
+
+    async def ensure_label(self, name: str, color: str, description: str) -> None:
+        """Create the label, or update it when it exists (`--force`); once per adapter."""
+        if name in self._labels_ready:
             return
         await self._gh(
-            "label", "create", ESCALATION_LABEL, "--force",
-            "--color", "B60205", "--description", "Zamolxe (Orchestrator) escalation",
+            "label", "create", name, "--force", "--color", color, "--description", description
+        )
+        self._labels_ready.add(name)
+
+    async def find_proposal(self, sha256: str) -> ProposalRef | None:
+        """AD-26: the PR or issue labelled owner-review whose body carries the marker, in any
+        state (a closed or merged one is reused, never reopened). One paginated listing of the
+        labelled items; the marker is matched in code, never through search."""
+        marker = proposal_marker(sha256)
+        res = await self._gh(
+            "api", "--paginate",
+            f"repos/{{owner}}/{{repo}}/issues?labels={OWNER_REVIEW_LABEL}&state=all&per_page=100",
+            "--jq", ".[] | {number: .number, body: .body, pr: (.pull_request != null)}",
         )  # fmt: skip
-        self._label_ready = True
+        for line in res.stdout.splitlines():
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise AdapterError(f"gh api issues: a line is not JSON: {exc}") from exc
+            if isinstance(item, dict) and marker in str(item.get("body") or ""):
+                return ProposalRef(kind="pr" if item.get("pr") else "issue",
+                                   number=int(item["number"]))  # fmt: skip
+        return None
+
+    async def ensure_proposal_pr(
+        self, sha256: str, head: str, title: str, body: str, looked_up: bool = False
+    ) -> ProposalRef:
+        """AD-26: a PR from `head` to main, labelled owner-review; auto-merge is never enabled.
+        `looked_up`: the caller has just run `find_proposal` and found nothing."""
+        found = None if looked_up else await self.find_proposal(sha256)
+        if found is not None:
+            return found
+        await self._owner_review_label()
+        res = await self._gh(
+            "pr", "create", "--head", head, "--base", "main", "--title", title,
+            "--label", OWNER_REVIEW_LABEL, "--body", f"{proposal_marker(sha256)}\n{body}",
+        )  # fmt: skip
+        return ProposalRef(kind="pr", number=_number_from_url(res.stdout), created=True)
+
+    async def ensure_proposal_issue(
+        self, sha256: str, title: str, body: str, looked_up: bool = False
+    ) -> ProposalRef:
+        found = None if looked_up else await self.find_proposal(sha256)
+        if found is not None:
+            return found
+        await self._owner_review_label()
+        res = await self._gh(
+            "issue", "create", "--title", title, "--label", OWNER_REVIEW_LABEL,
+            "--body", f"{proposal_marker(sha256)}\n{body}",
+        )  # fmt: skip
+        return ProposalRef(kind="issue", number=_number_from_url(res.stdout), created=True)
+
+    async def _owner_review_label(self) -> None:
+        await self.ensure_label(OWNER_REVIEW_LABEL, OWNER_REVIEW_COLOR, OWNER_REVIEW_DESCRIPTION)
+
+
+def _labelled(view: dict[str, Any] | None) -> bool:
+    labels = (view or {}).get("labels") or []
+    names = {str(x.get("name", "")) if isinstance(x, dict) else str(x) for x in labels}
+    return OWNER_REVIEW_LABEL in names
+
+
+def refuse_owner_review(pr: int, view: dict[str, Any] | None) -> None:
+    """AD-26: the orchestrator never merges or auto-merges a PR labelled owner-review."""
+    if _labelled(view):
+        raise AdapterError(
+            f"refusing to merge PR #{pr}: it is labelled {OWNER_REVIEW_LABEL}; only the owner "
+            "merges it (AD-26)"
+        )
 
 
 def _state(view: dict[str, Any] | None) -> str:

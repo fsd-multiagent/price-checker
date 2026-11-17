@@ -20,6 +20,7 @@ PROMPT_FIELDS = (
     "story_touches",
     "epics_path",
     "feedback",
+    "factory_rules",  # AD-26: the path tiers, rendered from the settings
 )
 
 

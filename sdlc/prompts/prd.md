@@ -6,6 +6,8 @@ Your working directory is the worktree `${worktree}`. Write only inside it.
 Inputs:
 ${inputs}
 
+${factory_rules}
+
 Feedback from the previous round:
 ${feedback}
 

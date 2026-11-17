@@ -139,6 +139,42 @@ def restore_commands_block(current: str | None, base: str) -> tuple[str, str] | 
     return current[: have[0]] + block + current[have[1] :], "sdlc-commands block"
 
 
+def apply_commands_block(base: str, agent_text: str | None) -> str | None:
+    """The inverse of `restore_commands_block` (AD-26): `base` (origin/main's file) with the
+    agent's `sdlc-commands` block spliced in, every other line as in `base`. None when the
+    agent's file has no block, `base` has nowhere to splice it, or the blocks are equal."""
+    if agent_text is None:
+        return None
+    have = _block_span(agent_text)
+    wanted = _block_span(base)
+    if have is None or wanted is None:
+        return None
+    block = agent_text[have[0] : have[1]]
+    if base[wanted[0] : wanted[1]] == block:
+        return None
+    return base[: wanted[0]] + block + base[wanted[1] :]
+
+
+def commands_block(text: str | None) -> str | None:
+    """The `sdlc-commands` fenced block (fences included) under "Running and verifying", or
+    None when `text` is missing or has no block there."""
+    if text is None:
+        return None
+    span = _block_span(text)
+    return None if span is None else text[span[0] : span[1]]
+
+
+async def branch_point(worktree: str) -> str | None:
+    """`git merge-base HEAD origin/main`: the commit on main this branch started from
+    (ADR 0023). None when it cannot be found."""
+    try:
+        res = await run_proc(("git", "merge-base", "HEAD", BASE_REF), cwd=worktree, timeout_s=60)
+    except AdapterError:
+        return None
+    sha = res.stdout.strip() if res.ok else ""
+    return sha or None
+
+
 def denied(argv: list[str]) -> str | None:
     """Why the guard hook would deny this command, or None. Checked at every position, so a
     wrapper (`uv run`, `env`) does not hide the program."""
@@ -232,20 +268,11 @@ class ProjectCommands:
         return 0, _clip("\n".join(log))
 
     async def _branch_point(self, worktree: str) -> str | None:
-        """`git merge-base HEAD origin/main`: the commit on main this branch started from.
-
-        The gate compares the worktree's block with the block at this commit, not with
-        today's main, so a change to the block on main after the branch started does not
+        """The gate compares the worktree's block with the block at the branch point, not
+        with today's main, so a change to the block on main after the branch started does not
         fail the branch. The commands run are the ones at the branch point: trusted (they are
         on main) and matching the code the branch was built on."""
-        try:
-            res = await run_proc(
-                ("git", "merge-base", "HEAD", BASE_REF), cwd=worktree, timeout_s=60
-            )
-        except AdapterError:
-            return None
-        sha = res.stdout.strip() if res.ok else ""
-        return sha or None
+        return await branch_point(worktree)
 
     async def _block_at(self, worktree: str, ref: str) -> dict[str, tuple[str, ...]] | None:
         """The block as committed at `ref`; None when it cannot be read or parsed."""

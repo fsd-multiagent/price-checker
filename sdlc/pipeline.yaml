@@ -66,6 +66,18 @@ settings:
   # AD-24: a learn branch reverts these before it commits; the pipeline changes only through
   # an owner-reviewed PR.
   learn_revert_paths: ["sdlc/**"]
+  # AD-26 (ADR 0022): three path tiers, each entry a path prefix (ending in "/") or an exact
+  # file. owner_only_paths are reverted before every orchestrator commit, never proposed and
+  # never copied in from origin/main mid-run; a reviewer that changes one fails. protected_paths
+  # (and the sdlc-commands block of AGENTS.md, compared with the branch point, ADR 0023) are
+  # captured as an owner-review proposal, then reverted: a PR on proposal/<sha8>, or an issue
+  # when it does not apply on main. review_paths (workflows) are never pushed from a proposal:
+  # a learn branch's workflow edit becomes an owner-review issue. Every writing prompt gets
+  # these rules as ${factory_rules}.
+  # Zamolxe (Orchestrator) never merges or auto-merges a PR labelled owner-review.
+  owner_only_paths: [.claude/, .github/CODEOWNERS, docs/source-register.md]
+  protected_paths: [sdlc/, orchestrator/, _bmad/custom/, docs/standards/]
+  review_paths: [.github/workflows/]
 
 stages:
   - id: analysis

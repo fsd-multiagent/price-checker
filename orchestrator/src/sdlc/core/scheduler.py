@@ -10,11 +10,13 @@ from __future__ import annotations
 from sdlc.core.models import (
     Action,
     BlockUnit,
+    DeliverProposal,
     EvaluateGate,
     ExhaustBudget,
     Finish,
     OpenEscalation,
     Pipeline,
+    ProposalStatus,
     ResetScope,
     RunState,
     Stage,
@@ -117,6 +119,11 @@ def decide(pipeline: Pipeline, state: RunState, inputs: TickInputs) -> tuple[Act
     for e in state.escalations:
         if e.issue is None:
             t.actions.append(OpenEscalation(scope=e.scope, reason=e.reason))
+
+    # AD-26: proposals are delivered between ticks and never block the run.
+    for x in state.proposals:
+        if x.status is ProposalStatus.PENDING:
+            t.actions.append(DeliverProposal(sha256=x.sha256))
 
     for u in state.units:
         stage = pipeline.stage(u.stage)

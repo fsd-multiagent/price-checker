@@ -217,6 +217,22 @@ class Settings(Frozen):
     # AD-24: paths a learn branch reverts before it commits, so the pipeline changes only
     # through an owner-reviewed PR.
     learn_revert_paths: tuple[str, ...] = ()
+    # AD-26: three path tiers, each entry a path prefix (ending in "/") or an exact file.
+    # Owner-only paths are reverted before every commit and never proposed; protected paths
+    # become owner-review proposals, then are reverted (the `sdlc-commands` block of AGENTS.md
+    # is always protected); review paths (workflows) are never pushed from a proposal.
+    owner_only_paths: tuple[str, ...] = (
+        ".claude/",
+        ".github/CODEOWNERS",
+        "docs/source-register.md",
+    )
+    protected_paths: tuple[str, ...] = (
+        "sdlc/",
+        "orchestrator/",
+        "_bmad/custom/",
+        "docs/standards/",
+    )
+    review_paths: tuple[str, ...] = (".github/workflows/",)
 
 
 class Pipeline(Frozen):
@@ -435,6 +451,35 @@ class Escalation(Frozen):
     issue: int | None = None
 
 
+class ProposalStatus(StrEnum):
+    """AD-26: a proposal waits for delivery, is delivered as a PR or an issue, or failed to be
+    delivered (retried on `sdlc resume`). Not a node status of AD-5: proposals never block."""
+
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    FAILED = "failed"
+
+
+class Proposal(Frozen):
+    """AD-26: a factory change an agent made on its branch, captured before the revert."""
+
+    sha256: str  # of the patch text: the key, and the marker in the PR or issue body
+    scope: str
+    seq: int
+    agent_role: str | None = None
+    paths: tuple[str, ...]
+    patch: str  # run-dir-relative path of `steps/<seq>.proposal.patch`
+    review: bool = False  # touches review_paths: delivered as an issue, never pushed
+    status: ProposalStatus = ProposalStatus.PENDING
+    kind: Literal["pr", "issue"] | None = None
+    number: int | None = None
+    reason: str | None = None  # why it became an issue, or why delivery failed
+
+    @property
+    def branch(self) -> str:
+        return f"proposal/{self.sha256[:8]}"
+
+
 class Budget(Frozen):
     limit: float
     spent: float = 0.0
@@ -458,6 +503,7 @@ class RunState(Frozen):
     stories: tuple[Story, ...] = ()
     stories_loaded: bool = False
     escalations: tuple[Escalation, ...] = ()
+    proposals: tuple[Proposal, ...] = ()  # AD-26
     next_seq: int = 1
     next_learn_seq: int = 1
     fixtures: str | None = None
@@ -511,6 +557,12 @@ class RunState(Frozen):
         for e in self.escalations:
             if e.scope == scope:
                 return e
+        return None
+
+    def proposal(self, sha256: str) -> Proposal | None:
+        for x in self.proposals:
+            if x.sha256 == sha256:
+                return x
         return None
 
 
@@ -655,6 +707,38 @@ class PathsReverted(_Event):
     paths: tuple[str, ...]
 
 
+class ProposalCaptured(_Event):
+    """AD-26: step `seq` changed protected paths; the patch was saved before the revert. A
+    patch already recorded (same SHA-256) adds nothing."""
+
+    type: Literal["proposal_captured"] = "proposal_captured"
+    sha256: str
+    scope: str
+    seq: int
+    agent_role: str | None = None
+    paths: tuple[str, ...]
+    patch: str
+    review: bool = False
+
+
+class ProposalDelivered(_Event):
+    """AD-26: the proposal's PR or issue exists (created, or found by its marker)."""
+
+    type: Literal["proposal_delivered"] = "proposal_delivered"
+    sha256: str
+    kind: Literal["pr", "issue"]
+    number: int
+    reason: str | None = None
+
+
+class ProposalFailed(_Event):
+    """AD-26: delivery failed; the run goes on, and `sdlc resume` retries it."""
+
+    type: Literal["proposal_failed"] = "proposal_failed"
+    sha256: str
+    reason: str
+
+
 class BudgetExhausted(_Event):
     type: Literal["budget_exhausted"] = "budget_exhausted"
     reason: str
@@ -692,6 +776,9 @@ Event = Annotated[
     | UsageLimited
     | UsageWarning
     | PathsReverted
+    | ProposalCaptured
+    | ProposalDelivered
+    | ProposalFailed
     | BudgetExhausted
     | RunStopped
     | RunFinished,
@@ -749,6 +836,13 @@ class OpenEscalation(Frozen):
     reason: str
 
 
+class DeliverProposal(Frozen):
+    """AD-26: open the proposal's PR or issue, between ticks, like an escalation."""
+
+    type: Literal["deliver_proposal"] = "deliver_proposal"
+    sha256: str
+
+
 class TagStage(Frozen):
     type: Literal["tag_stage"] = "tag_stage"
     scope: str
@@ -781,6 +875,7 @@ Action = (
     | BlockUnit
     | UnblockUnit
     | OpenEscalation
+    | DeliverProposal
     | TagStage
     | ExhaustBudget
     | Wait

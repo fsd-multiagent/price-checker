@@ -8,6 +8,8 @@
 - `view`: a list of `pr view` answers, one per poll, the last one repeating; "error" fails
 - `version`: the `gh --version` output
 - `auth_exit`: the exit code of `auth status`
+- `api_items`: the items `api --paginate .../issues` prints, one JSON object per line, as the
+  `--jq` filter would (`number`, `body`, `pr`)
 """
 
 from __future__ import annotations
@@ -40,6 +42,10 @@ def main() -> int:
     cmd = args[:2]
     if args[:1] == ["--version"]:
         print(cfg.get("version", "gh version 2.96.0 (2026-01-01)"))
+        return 0
+    if args[:1] == ["api"]:
+        for item in cfg.get("api_items", []):
+            print(json.dumps(item))
         return 0
     if cmd == ["auth", "status"]:
         return int(cfg.get("auth_exit", 0))

@@ -6,10 +6,12 @@ import fnmatch
 import shutil
 from pathlib import Path
 
+from sdlc.adapters.commands import branch_point
 from sdlc.adapters.proc import ProcResult, run_proc
-from sdlc.ports import AdapterError, StepKey
+from sdlc.ports import AdapterError, StagedChange, StepKey
 
 PROTECTED = frozenset({"main", "refs/heads/main", "origin/main"})
+PROPOSAL_PREFIX = "proposal/"  # AD-26: orchestrator-owned branches, pushed with --force
 
 
 def refuse_main(branch: str) -> None:
@@ -115,15 +117,19 @@ class GitCli:
                 return True
         return False
 
-    async def diff(self, worktree: str, since: str) -> str:
-        """Changes since `since` (commits and the work tree), untracked files' content included.
+    async def diff(self, worktree: str, since: str, exclude: tuple[str, ...] = ()) -> str:
+        """Changes since `since` (commits and the work tree), untracked files' content included,
+        leaving out the tier entries in `exclude` (AD-26: the fix prompt never replays a
+        proposal).
 
         Untracked files are marked intent-to-add first; the caller resets the worktree next.
         """
         untracked = await self._untracked(worktree)
         if untracked:
             await self._git(worktree, "add", "--intent-to-add", "--", *untracked)
-        return (await self._git(worktree, "diff", "--binary", since)).stdout
+        specs = [f":(exclude,literal){e}" for e in exclude]
+        args = ["diff", "--binary", since, *(["--", ".", *specs] if specs else [])]
+        return (await self._git(worktree, *args)).stdout
 
     async def reset_hard(self, worktree: str, sha: str) -> None:
         """AD-6: `reset --hard` then `clean -fd`, never `-x`, so ignored `.sdlc/` survives."""
@@ -195,10 +201,17 @@ class GitCli:
         """Paths changed since the last commit: tracked changes and untracked files."""
         return sorted({*await self._tracked_changes(worktree), *await self._untracked(worktree)})
 
-    async def push(self, worktree: str, branch: str) -> None:
+    async def push(self, worktree: str, branch: str, force: bool = False) -> None:
         refuse_main(branch)  # AD-12: before any git call
         refspec = f"HEAD:refs/heads/{branch}"
         refuse_main(refspec)
+        if force:  # AD-26: only proposal branches, which only the orchestrator writes
+            if not branch.startswith(PROPOSAL_PREFIX):
+                raise AdapterError(f"refusing to force-push {branch}: not a proposal branch")
+            sha = await self.head(worktree)
+            await self._git(worktree, "push", "--force", self.remote, refspec)
+            self._pushed[branch] = sha
+            return
         if branch in self._pushed:
             expected = self._pushed[branch]
         elif self._fetched:
@@ -214,3 +227,56 @@ class GitCli:
     async def show(self, ref: str, path: str) -> str | None:
         res = await self._git(self.repo, "show", f"{ref}:{path}", check=False)
         return res.stdout if res.ok else None
+
+    async def staged_diff(self, worktree: str, paths: tuple[str, ...]) -> StagedChange:
+        """AD-26: `git add -A -- <paths>` (new files included), then
+        `git diff --cached --binary --full-index HEAD -- <paths>`, with each path's staged
+        mode and blob (None when deleted)."""
+        if not paths:
+            return StagedChange(patch="")
+        await self._git(worktree, "--literal-pathspecs", "add", "-A", "--", *paths)
+        res = await self._git(
+            worktree, "--literal-pathspecs", "diff", "--cached", "--binary", "--full-index",
+            "HEAD", "--", *paths,
+        )  # fmt: skip
+        staged = (
+            await self._git(worktree, "--literal-pathspecs", "ls-files", "-s", "-z", "--", *paths)
+        ).stdout
+        blobs: dict[str, str] = {}
+        for entry in staged.split("\0"):
+            meta, _, path = entry.partition("\t")
+            if path:
+                mode, blob, _stage = meta.split(" ")
+                blobs[path] = f"{mode} {blob}"
+        entries = tuple((p, blobs.get(p)) for p in sorted(set(paths)))
+        return StagedChange(patch=res.stdout, entries=entries)
+
+    async def branch_point(self, worktree: str) -> str | None:
+        return await branch_point(worktree)
+
+    async def remove_worktree(self, worktree: str, branch: str, remote: bool = False) -> None:
+        """AD-26: proposal worktrees and local branches do not pile up. Only proposal branches."""
+        if not branch.startswith(PROPOSAL_PREFIX):
+            raise AdapterError(f"refusing to remove {branch}: not a proposal branch")
+        refuse_main(branch)
+        await self._git(self.repo, "worktree", "remove", "--force", worktree, check=False)
+        if Path(worktree).exists():
+            shutil.rmtree(worktree)
+        await self._git(self.repo, "worktree", "prune", check=False)
+        await self._git(self.repo, "branch", "-D", branch, check=False)
+        if remote:
+            await self._git(
+                self.repo, "push", self.remote, "--delete", f"refs/heads/{branch}", check=False
+            )
+            self._pushed.pop(branch, None)
+
+    async def apply_3way(self, worktree: str, patch: str) -> bool:
+        """AD-26: applied only when `git apply --3way` exits 0 and no unmerged entry is left."""
+        res = await run_proc(
+            ("git", "apply", "--3way", "--whitespace=nowarn", "-"),
+            cwd=worktree,
+            stdin=patch,
+            timeout_s=self.timeout_s,
+        )
+        unmerged = (await self._git(worktree, "ls-files", "-u")).stdout.strip()
+        return res.ok and not unmerged

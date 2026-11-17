@@ -20,6 +20,10 @@ from sdlc.core.models import (
     PathsReverted,
     Pipeline,
     PrOpened,
+    ProposalCaptured,
+    ProposalDelivered,
+    ProposalFailed,
+    ProposalStatus,
     RunFinished,
     RunKind,
     RunResumed,
@@ -193,8 +197,11 @@ def _run_started(p: Pipeline, d: dict[str, Any], e: RunStarted) -> None:
 
 def _run_resumed(p: Pipeline, d: dict[str, Any], e: RunResumed) -> None:
     status = Status(d["status"])
-    if status is S.PASSED:
+    undelivered = any(x["status"] == ProposalStatus.FAILED for x in d["proposals"])
+    if status is S.PASSED and not undelivered:
         raise CoreError("run already passed; nothing to resume")
+    if status is S.PASSED:  # AD-26: only to deliver the proposals that failed
+        _move(d, S.PENDING, "run")
     if status in (S.ESCALATED, S.BLOCKED):
         _move(d, S.PENDING, "run")
     if Status(d["status"]) is S.PENDING:  # also a crash before RunStarted was saved
@@ -207,6 +214,9 @@ def _run_resumed(p: Pipeline, d: dict[str, Any], e: RunResumed) -> None:
     d["limit_exceeded"] = False
     if e.budget_limit is not None:
         d["budget"]["limit"] = e.budget_limit
+    for x in d["proposals"]:  # AD-26: a failed delivery is tried again
+        if x["status"] == ProposalStatus.FAILED:
+            x["status"] = ProposalStatus.PENDING
     for u in d["units"]:
         if u["status"] == S.ESCALATED:
             _move(u, S.PENDING, f"unit {u['scope']}/{u['stage']}")
@@ -636,6 +646,43 @@ def _paths_reverted(p: Pipeline, d: dict[str, Any], e: PathsReverted) -> None:
     """Audit only: the commit put these paths back first (AD-24, ADR 0021)."""
 
 
+def _proposal(d: dict[str, Any], sha256: str) -> dict[str, Any]:
+    for x in d["proposals"]:
+        if x["sha256"] == sha256:
+            return x
+    raise CoreError(f"no proposal {sha256[:12]}")
+
+
+def _proposal_captured(p: Pipeline, d: dict[str, Any], e: ProposalCaptured) -> None:
+    """AD-26: one record per patch; the same patch in a later round or after a resume adds
+    nothing."""
+    if any(x["sha256"] == e.sha256 for x in d["proposals"]):
+        return
+    d["proposals"].append(
+        {
+            "sha256": e.sha256,
+            "scope": e.scope,
+            "seq": e.seq,
+            "agent_role": e.agent_role,
+            "paths": list(e.paths),
+            "patch": e.patch,
+            "review": e.review,
+        }
+    )
+
+
+def _proposal_delivered(p: Pipeline, d: dict[str, Any], e: ProposalDelivered) -> None:
+    x = _proposal(d, e.sha256)
+    x.update(status=ProposalStatus.DELIVERED, kind=e.kind, number=e.number, reason=e.reason)
+
+
+def _proposal_failed(p: Pipeline, d: dict[str, Any], e: ProposalFailed) -> None:
+    x = _proposal(d, e.sha256)
+    if x["status"] == ProposalStatus.DELIVERED:
+        raise CoreError(f"proposal {e.sha256[:12]} is already delivered")
+    x.update(status=ProposalStatus.FAILED, reason=e.reason)
+
+
 def _usage_warning(p: Pipeline, d: dict[str, Any], e: UsageWarning) -> None:
     d["usage_warned_limit"] = e.budget_limit
 
@@ -684,6 +731,9 @@ _HANDLERS: dict[type, Any] = {
     UsageLimited: _usage_limited,
     UsageWarning: _usage_warning,
     PathsReverted: _paths_reverted,
+    ProposalCaptured: _proposal_captured,
+    ProposalDelivered: _proposal_delivered,
+    ProposalFailed: _proposal_failed,
     BudgetExhausted: _budget_exhausted,
     RunStopped: _run_stopped,
     RunFinished: _run_finished,

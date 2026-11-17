@@ -1,8 +1,8 @@
 # 0022. Agents propose factory changes and build them from owner issues; the owner only reviews and merges
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-18
-- **Deciders:** Loredan (Architect); owner approval pending
+- **Deciders:** Loredan (Architect); accepted by Adrian (owner), 2026-11-18
 - **Stage / story:** orchestrator update during phase 1
 - **Rules touched:** D-2, T-8; orchestrator spine AD-12, AD-22, AD-26, AD-27; extends ADR 0004 and ADR 0021
 
@@ -19,7 +19,7 @@ The repo is public, so a GitHub issue or label from a stranger must never steer 
 
 | Option | Pros | Cons |
 |---|---|---|
-| A. Three path tiers (owner-only, protected, review). Protected edits become owner-review proposals. Owner-authorised issues start runs, and `factory` stories may change protected paths behind owner review | Agents do the factory work; the owner only merges; controls stay pinned | More orchestrator code; the owner must review PRs |
+| A. Three path tiers (owner-only, protected, review). Protected edits become owner-review proposals. Owner-authorised issues start runs, and `factory` stories may change protected paths behind owner review | Agents do the factory work; the owner only merges; controls stay owner-approved | More orchestrator code; the owner must review PRs |
 | B. Keep reverting protected edits; the owner turns recommendations into PRs by hand | Simple | Owner chores; the factory does not run on its own |
 | C. Let agents change the factory freely, guarded only by CI | Fully automatic | Agents could weaken their own gates and guardrails |
 
@@ -27,7 +27,7 @@ The repo is public, so a GitHub issue or label from a stranger must never steer 
 
 Option A, as AD-26 and AD-27 of the orchestrator spine describe:
 
-- `owner_only_paths` (`.claude/`, `CODEOWNERS`, the source register) are never changed by agents, and they are restored before every agent step.
+- `owner_only_paths` (`.claude/`, `CODEOWNERS`, the source register) are never changed by agents: `Edit` of them is `ask`, which is denied headless; the guard blocks Bash; they are reverted before every commit; and a reviewer that changes one fails. *Amended 2026-11-18, before merge: an earlier draft also copied them from `origin/main` before every agent step. The build review showed that this dirties worktrees under running agents and scripts, and hides reviewer edits, so it was dropped (spine AD-26).*
 - `protected_paths` edits become `owner-review` proposals (PRs, or issues when they touch workflows).
 - `review_paths` (workflows) send a story's PR to owner review.
 - Issue runs require owner authorship, owner edits and an owner-applied `factory` label, all re-checked on resume. Their text enters prompts only as untrusted data.

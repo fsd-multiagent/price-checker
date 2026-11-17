@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
@@ -12,7 +13,8 @@ from sdlc.adapters.claude import parse_result
 from sdlc.adapters.fake.fixtures import FakeCrash, FixtureBook
 from sdlc.adapters.git import refuse_main
 from sdlc.core.models import StepResult
-from sdlc.ports import Invocation, Ports, StepKey
+from sdlc.core.proposals import OWNER_REVIEW_LABEL, in_tier, proposal_marker
+from sdlc.ports import AdapterError, Invocation, Ports, ProposalRef, StagedChange, StepKey
 
 __all__ = [
     "FakeClaude",
@@ -164,6 +166,12 @@ class FakeGit:
         self.heads: dict[str, str] = {"origin/main": _sha("origin/main")}
         self.worktrees: dict[str, str] = {}
         self.tags: dict[str, str] = {}
+        self.committed: dict[str, list[str]] = {}  # sha -> worktree-relative paths committed
+        self.applied: list[tuple[str, str]] = []  # (worktree, patch) applied with --3way
+        self.apply_ok = True  # False simulates a conflict in `apply_3way`
+        self.show_files: dict[str, str] = {}  # files `show` returns at any ref, by path
+        self.show_at: dict[tuple[str, str], str | None] = {}  # (ref, path) overrides
+        self.point = "branch-point"  # what `branch_point` returns (ADR 0023)
         self._n = 0
 
     def _branch(self, worktree: str) -> str:
@@ -194,9 +202,13 @@ class FakeGit:
         self.calls.append(("abort_rebase", worktree))
         return False
 
-    async def diff(self, worktree: str, since: str) -> str:
-        self.calls.append(("diff", worktree, since))
-        return f"# fake diff of {worktree} since {since}\n"
+    async def diff(self, worktree: str, since: str, exclude: tuple[str, ...] = ()) -> str:
+        self.calls.append(("diff", worktree, since, exclude))
+        out = f"# fake diff of {worktree} since {since}\n"
+        for rel in await self.changed_paths(worktree):
+            if not in_tier(rel, exclude) and not rel.startswith(".sdlc/"):
+                out += f"+++ b/{rel}\n"
+        return out
 
     async def reset_hard(self, worktree: str, sha: str) -> None:
         self.calls.append(("reset_hard", worktree, sha))
@@ -205,10 +217,47 @@ class FakeGit:
 
     async def restore_paths(self, worktree: str, patterns: tuple[str, ...]) -> None:
         self.calls.append(("restore_paths", worktree, patterns))
+        self._forget(worktree, lambda rel: any(fnmatch.fnmatchcase(rel, p) for p in patterns))
+
+    def _forget(self, worktree: str, match: Any) -> None:
+        """Files written in the worktree go back: the fake has no content, so they vanish."""
+        prefix = worktree.rstrip("/") + "/"
+        for path in [p for p in self.fs.files if p.startswith(prefix)]:
+            if match(path.removeprefix(prefix)):
+                del self.fs.files[path]
+
+    async def staged_diff(self, worktree: str, paths: tuple[str, ...]) -> StagedChange:
+        """A deterministic stand-in for the binary diff: each path and its content. The entries
+        hash the content alone, as the real adapter's blob ids do."""
+        self.calls.append(("staged_diff", worktree, paths))
+        out, entries = [], []
+        for rel in sorted(set(paths)):
+            text = self.fs.files.get(f"{worktree.rstrip('/')}/{rel}")
+            blob = None if text is None else f"100644 {_sha(text)}"
+            entries.append((rel, blob))
+            body = "".join(f"+{line}\n" for line in (text or "").splitlines())
+            out.append(f"diff --git a/{rel} b/{rel}\n--- a/{rel}\n+++ b/{rel}\n{body}")
+        return StagedChange(patch="".join(out), entries=tuple(entries))
+
+    async def branch_point(self, worktree: str) -> str | None:
+        self.calls.append(("branch_point", worktree))
+        return self.point
+
+    async def remove_worktree(self, worktree: str, branch: str, remote: bool = False) -> None:
+        self.calls.append(("remove_worktree", worktree, branch, remote))
+        self.worktrees.pop(worktree, None)
+
+    async def apply_3way(self, worktree: str, patch: str) -> bool:
+        self.calls.append(("apply_3way", worktree))
+        if self.apply_ok:
+            self.applied.append((worktree, patch))
+        return self.apply_ok
 
     async def commit_all(self, worktree: str, message: str) -> str | None:
         branch = self._branch(worktree)
+        committed = await self.changed_paths(worktree)
         sha = self._new_sha(branch)
+        self.committed[sha] = committed
         self.heads[branch] = sha
         self._clean_at[worktree] = len(self.fs.log)
         self.calls.append(("commit", worktree, message, sha))
@@ -222,18 +271,30 @@ class FakeGit:
         """Paths written in the worktree since its last commit or reset (gitignored or not)."""
         prefix = worktree.rstrip("/") + "/"
         since = self.fs.log[self._clean_at.get(worktree, 0) :]
-        return sorted({p.removeprefix(prefix) for p in since if p.startswith(prefix)})
+        return sorted(
+            {
+                p.removeprefix(prefix)
+                for p in since
+                if p.startswith(prefix) and p in self.fs.files  # a restored path is unchanged
+            }
+        )
 
     async def rebase(self, worktree: str, onto: str, key: StepKey | None = None) -> bool:
         self.calls.append(("rebase", worktree, onto))
         return _script_ok(self.book, key)
 
-    async def push(self, worktree: str, branch: str) -> None:
+    async def push(self, worktree: str, branch: str, force: bool = False) -> None:
         refuse_main(branch)
-        self.calls.append(("push", branch, self.heads[self._branch(worktree)]))
+        if force and not branch.startswith("proposal/"):
+            raise AdapterError(f"refusing to force-push {branch}")
+        self.calls.append(("push", branch, self.heads[self._branch(worktree)], force))
 
     async def show(self, ref: str, path: str) -> str | None:
         self.calls.append(("show", ref, path))
+        if (ref, path) in self.show_at:
+            return self.show_at[(ref, path)]
+        if path in self.show_files:
+            return self.show_files[path]
         if path.endswith("source-register.md"):
             return self.book.register_text()
         return None
@@ -245,6 +306,9 @@ class FakeGh:
         self.calls: list[tuple[Any, ...]] = []
         self.prs: dict[str, int] = {}
         self.issues: list[dict[str, Any]] = []
+        self.labels: dict[int, set[str]] = {}  # PR or issue number -> labels
+        self.label_names: set[str] = set()
+        self.proposal_items: list[dict[str, Any]] = []  # owner-review PRs and issues (AD-26)
         self._next = 100
 
     async def ensure_pr(self, head: str, base: str, title: str, body: str) -> int:
@@ -260,6 +324,8 @@ class FakeGh:
 
     async def merge(self, pr: int, head_sha: str, key: StepKey | None = None) -> str | None:
         self.calls.append(("merge", pr, head_sha))
+        if OWNER_REVIEW_LABEL in self.labels.get(pr, set()):
+            raise AdapterError(f"refusing to merge PR #{pr}: labelled {OWNER_REVIEW_LABEL}")
         if not _script_ok(self.book, key):
             return None
         return _sha(f"merge:{pr}:{head_sha}")
@@ -273,6 +339,46 @@ class FakeGh:
         self._next += 1
         self.issues.append({"number": self._next, "title": title, "body": f"{marker}\n{body}"})
         return self._next
+
+    async def ensure_label(self, name: str, color: str, description: str) -> None:
+        self.calls.append(("ensure_label", name))
+        self.label_names.add(name)
+
+    async def find_proposal(self, sha256: str) -> ProposalRef | None:
+        self.calls.append(("find_proposal", sha256))
+        marker = proposal_marker(sha256)
+        for item in self.proposal_items:  # every state: closed or merged ones count too
+            if marker in item["body"]:
+                return ProposalRef(kind=item["kind"], number=item["number"])
+        return None
+
+    async def ensure_proposal_pr(
+        self, sha256: str, head: str, title: str, body: str, looked_up: bool = False
+    ) -> ProposalRef:
+        self.calls.append(("ensure_proposal_pr", sha256, head))
+        return await self._proposal_item("pr", sha256, title, body, head, looked_up)
+
+    async def ensure_proposal_issue(
+        self, sha256: str, title: str, body: str, looked_up: bool = False
+    ) -> ProposalRef:
+        self.calls.append(("ensure_proposal_issue", sha256))
+        return await self._proposal_item("issue", sha256, title, body, None, looked_up)
+
+    async def _proposal_item(
+        self, kind: str, sha256: str, title: str, body: str, head: str | None, looked_up: bool
+    ) -> ProposalRef:
+        found = None if looked_up else await self.find_proposal(sha256)
+        if found is not None:
+            return found
+        await self.ensure_label(OWNER_REVIEW_LABEL, "D93F0B", "owner review")  # like `--force`
+        self._next += 1
+        item = {"kind": kind, "number": self._next, "title": title, "head": head,
+                "body": f"{proposal_marker(sha256)}\n{body}", "state": "OPEN"}  # fmt: skip
+        self.proposal_items.append(item)
+        self.labels[self._next] = {OWNER_REVIEW_LABEL}
+        if head is not None:
+            self.prs[head] = self._next
+        return ProposalRef(kind=kind, number=self._next, created=True)
 
 
 def _script_ok(book: FixtureBook | None, key: StepKey | None) -> bool:

@@ -21,7 +21,7 @@ from sdlc.adapters.clock import SystemClock
 from sdlc.adapters.fake import FixtureBook, fake_ports
 from sdlc.adapters.real import preflight, real_ports, telemetry_warnings
 from sdlc.app.loop import LoopError, Orchestrator, format_status
-from sdlc.core.models import CoreError, Pipeline, RunKind, Status
+from sdlc.core.models import CoreError, Pipeline, ProposalStatus, RunKind, Status
 from sdlc.core.pipeline import PipelineError, load_pipeline
 from sdlc.core.usage import BY, aggregate, format_rows, state_records, totals
 from sdlc.ports import Ports
@@ -264,7 +264,8 @@ def _usage(args: argparse.Namespace, repo: Path) -> int:
 def _resume(args: argparse.Namespace, repo: Path) -> int:
     runs_dir = _runs_dir(args, repo)
     state = RunStore(runs_dir / args.run_id).load()
-    if state.status is Status.PASSED:
+    undelivered = any(x.status is ProposalStatus.FAILED for x in state.proposals)
+    if state.status is Status.PASSED and not undelivered:  # AD-26: a resume delivers proposals
         print(f"sdlc: run {state.run_id} already passed; nothing to resume", file=sys.stderr)
         return 1
     pipeline_path = Path(state.pipeline_path or repo / "sdlc" / "pipeline.yaml")

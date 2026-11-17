@@ -9,13 +9,20 @@ from __future__ import annotations
 
 import asyncio
 import fnmatch
+import glob
 import json
 import shlex
 from collections.abc import Callable
 from pathlib import Path
 
 from sdlc.adapters.claude import build_argv, flag_usage_limit
-from sdlc.adapters.commands import AGENTS_MD, BASE_REF, restore_commands_block
+from sdlc.adapters.commands import (
+    AGENTS_MD,
+    BASE_REF,
+    apply_commands_block,
+    commands_block,
+    restore_commands_block,
+)
 from sdlc.adapters.git import commit_message
 from sdlc.core import gates as core_gates
 from sdlc.core.epics_parser import parse_epics
@@ -24,6 +31,7 @@ from sdlc.core.models import (
     BlockUnit,
     BudgetExhausted,
     CoreError,
+    DeliverProposal,
     EscalationOpened,
     EvaluateGate,
     Event,
@@ -37,6 +45,11 @@ from sdlc.core.models import (
     PathsReverted,
     Pipeline,
     PrOpened,
+    Proposal,
+    ProposalCaptured,
+    ProposalDelivered,
+    ProposalFailed,
+    ProposalStatus,
     ResetScope,
     RunFinished,
     RunKind,
@@ -74,12 +87,22 @@ from sdlc.core.models import (
 )
 from sdlc.core.outcome import derive_outcome
 from sdlc.core.prompts import bullet_list, render_prompt
+from sdlc.core.proposals import (
+    change_key,
+    factory_rules,
+    file_diff,
+    issue_text,
+    owner_review_lines,
+    proposal_text,
+    text_id,
+    tier_paths,
+)
 from sdlc.core.register_parser import parse_register
 from sdlc.core.scheduler import decide, round_records
 from sdlc.core.sprint_status import render_sprint_status
 from sdlc.core.state import apply, initial_state, usage_warning_due
 from sdlc.core.usage import UNKNOWN_ROLE, agent_slug, render_summary, status_line
-from sdlc.ports import Invocation, Ports, StepKey
+from sdlc.ports import Invocation, Ports, ProposalRef, StepKey
 from sdlc.store import RunStore
 
 SPRINT_STATUS = "_bmad-output/implementation-artifacts/sprint-status.yaml"
@@ -364,6 +387,8 @@ class Orchestrator:
                 self._apply(UnitUnblocked(at=now(), scope=action.scope, stage=action.stage))
             case OpenEscalation():
                 await self._escalate(action)
+            case DeliverProposal():
+                await self._deliver(action)
             case TagStage():
                 scope = self.state.scope(action.scope)
                 if scope is not None and scope.head_sha:
@@ -393,11 +418,28 @@ class Orchestrator:
         scope = self.state.scope(scope_id)
         if scope is None or scope.worktree is None or scope.head_sha is None:
             return None
-        diff = await self.ports.git.diff(scope.worktree, scope.head_sha)
+        diff = await self._fix_diff(scope.worktree, scope.head_sha)
         await self.ports.git.reset_hard(scope.worktree, scope.head_sha)
         if not diff.strip():
             return None
         return self.store.write_artifact(f"steps/{seq}.discarded.patch", diff)
+
+    async def _fix_diff(self, worktree: str, head_sha: str) -> str:
+        """AD-26: the discarded diff for the fix prompt leaves out all three tiers and the
+        `sdlc-commands` block, so a retry never replays a proposal. The block goes back to the
+        scope head's first; the worktree is reset right after."""
+        s = self.p.settings
+        at_head = await self.ports.git.show(head_sha, AGENTS_MD)
+        if at_head is not None:
+            path = f"{worktree}/{AGENTS_MD}"
+            restored = restore_commands_block(self.ports.fs.read_text(path), at_head)
+            if restored is not None:
+                self.ports.fs.write_text(path, restored[0])
+        return await self.ports.git.diff(
+            worktree,
+            head_sha,
+            exclude=(*s.owner_only_paths, *s.protected_paths, *s.review_paths),
+        )
 
     # ------------------------------------------------------------------ steps
 
@@ -501,6 +543,7 @@ class Orchestrator:
             "story_touches": ", ".join(story.touches) if story and story.touches else "(none)",
             "epics_path": self._epics_path(),
             "feedback": self._feedback(unit.feedback, worktree, key.round),
+            "factory_rules": factory_rules(self.p.settings),
         }
         env = {"TMPDIR": f"{worktree}/.sdlc/tmp", "SDLC_RUN_ID": self.state.run_id}
         if verdict_path:
@@ -585,26 +628,32 @@ class Orchestrator:
         verdict_text = fs.read_text(verdict_path) if verdict_path else None
         head: str | None = None
         reverted: list[str] = []
+        captured: list[Event] = []
         if self._is_story_file_reviewer(key, step):
             result = await self._check_reviewer_edits(key, worktree, result)
         else:
-            head, reverted = await self._commit_if_done(key, step, worktree, result, verdict_text)
+            head, reverted, captured = await self._commit_if_done(
+                key, step, worktree, result, verdict_text
+            )
         base = f"steps/{key.seq}-{key.scope}-{key.step}"
         # AD-24: the step file keeps the raw result JSON without the `result` text; `raw` is
         # excluded from every other dump (events, state).
         step_file = {**result.model_dump(mode="json", exclude={"result"}), "raw": result.raw}
         self.store.write_artifact(f"{base}.json", json.dumps(step_file, indent=2) + "\n")
         note = (
-            f"\n---\nreverted on this branch, not committed (AD-24, ADR 0021): "
+            f"\n---\nreverted on this branch, not committed (AD-24, AD-26, ADR 0021): "
             f"{', '.join(reverted)}\n"
             if reverted
             else ""
         )
+        for c in captured:
+            if isinstance(c, ProposalCaptured):
+                note += f"proposal for owner review (AD-26): {c.patch} ({', '.join(c.paths)})\n"
         self.store.write_artifact(
             f"{base}.log",
             f"$ {shlex.join(inv.argv)}\n\n{inv.stdin}\n\n---\n{result.result or ''}\n{note}",
         )
-        events: list[Event] = []
+        events: list[Event] = []  # a ProposalCaptured is applied when it is captured
         if reverted:
             self.echo(f"        reverted on {key.scope}: {', '.join(reverted)}")
             events.append(
@@ -663,59 +712,129 @@ class Orchestrator:
 
     async def _commit_if_done(
         self, key: StepKey, step: Step, worktree: str, result: StepResult, verdict_text: str | None
-    ) -> tuple[str | None, list[str]]:
+    ) -> tuple[str | None, list[str], list[Event]]:
         """AD-6, AD-21: leftovers are committed only when a writing step ends `done`. Returns
-        the new head and the paths a learn branch reverted (AD-24)."""
+        the new head, the paths reverted before the commit (AD-24, AD-26), and the proposal
+        captured from them (AD-26)."""
         reverted: list[str] = []
+        captured: list[Event] = []
         if not step.writes:
-            return None, reverted
+            return None, reverted, captured
         if step.verdict_source is VerdictSource.RESULT_BLOCK:
             verdict = core_gates.last_verdict_block(result.result)
         else:
             verdict = core_gates.parse_verdict_text(verdict_text)
         readiness = self.p.stage(key.stage).gate_of_step(step.id).kind == "readiness"
         if derive_outcome(step, result, verdict, readiness=readiness).outcome is not Outcome.DONE:
-            return None, reverted
+            return None, reverted, captured
         try:
-            reverted = await self._pre_commit_guards(key.scope, worktree)
+            reverted, captured = await self._pre_commit_guards(
+                key.scope, worktree, key.seq, step.agent_role
+            )
             assert self.state is not None
             sha = await self.ports.git.commit_all(
                 worktree, commit_message(self.state.run_id, key.scope, key.step, key.round)
             )
-            return sha or await self.ports.git.head(worktree), reverted
+            return sha or await self.ports.git.head(worktree), reverted, captured
         except Exception as exc:
             self.echo(f"        commit failed: {exc!r}")
-            return None, reverted
+            return None, reverted, captured
 
-    async def _pre_commit_guards(self, scope: str, worktree: str) -> list[str]:
+    async def _pre_commit_guards(
+        self, scope: str, worktree: str, seq: int, role: str | None
+    ) -> tuple[list[str], list[Event]]:
         """What every orchestrator commit on an agent branch runs first. Returns the paths it
-        put back, for the step log and the `paths_reverted` event.
+        put back, for the step log and the `paths_reverted` event, and the proposal captured
+        before the revert.
 
+        - Every branch (AD-26): changes under `protected_paths`, and on a learn branch under
+          `review_paths` too, are captured as a proposal (with a change to the
+          `sdlc-commands` block of `AGENTS.md`), then reverted with the `owner_only_paths`.
         - Story branches revert the bookkeeping paths to the scope head (AD-21), `AGENTS.md`
           included, so the gate block cannot change there.
         - Learn branches revert `learn_revert_paths` (AD-24).
         - Every scope other than a story puts the `sdlc-commands` block back as it is on
           `origin/main` (ADR 0021): planning, infra and learn PRs auto-merge.
         """
+        git, settings = self.ports.git, self.p.settings
+        changed = await git.changed_paths(worktree)
+        owner = tier_paths(changed, settings.owner_only_paths)
+        tiers = settings.protected_paths
+        if scope.startswith("learn:"):  # a learn PR auto-merges and never carries CI changes
+            tiers = (*tiers, *settings.review_paths)
+        protected = [p for p in tier_paths(changed, tiers) if p not in owner]
+        captured = await self._capture(scope, worktree, seq, role, protected)
+        reverted = [*owner, *protected]
+        if reverted:
+            await git.restore_paths(worktree, tuple(glob.escape(p) for p in reverted))
         if scope.startswith("story:"):
-            await self.ports.git.restore_paths(worktree, self.p.settings.bookkeeping_paths)
-            return []
-        reverted: list[str] = []
+            await git.restore_paths(worktree, settings.bookkeeping_paths)
+            return reverted, captured
         if scope.startswith("learn:"):
-            patterns = self.p.settings.learn_revert_paths
-            reverted = [
+            patterns = settings.learn_revert_paths
+            reverted += [
                 path
-                for path in await self.ports.git.changed_paths(worktree)
-                if any(fnmatch.fnmatchcase(path, pat) for pat in patterns)
+                for path in await git.changed_paths(worktree)
+                if any(fnmatch.fnmatchcase(path, pat) for pat in patterns) and path not in reverted
             ]
-            await self.ports.git.restore_paths(worktree, patterns)
+            await git.restore_paths(worktree, patterns)
         what = await self._restore_gate_commands(worktree)
         if what is not None:
             reverted.append(AGENTS_MD)
             self.echo(
                 f"        restored {AGENTS_MD} ({what}) from {BASE_REF} on {scope} (ADR 0021)"
             )
-        return reverted
+        return reverted, captured
+
+    async def _capture(
+        self, scope: str, worktree: str, seq: int, role: str | None, protected: list[str]
+    ) -> list[Event]:
+        """AD-26: the protected changes as one patch, saved and recorded before any revert.
+
+        For `AGENTS.md` only the `sdlc-commands` block is proposed, and only when the agent
+        changed it compared with the scope's branch point (ADR 0023): origin/main's file with
+        the agent's block spliced in. A block the agent deleted or added proposes the whole
+        file. The key is the normalised change, so the same edit from two scopes is one
+        proposal."""
+        assert self.store is not None
+        git = self.ports.git
+        parts: list[str] = []
+        entries: list[tuple[str, str | None]] = []
+        paths = list(protected)
+        if protected:
+            staged = await git.staged_diff(worktree, tuple(protected))
+            parts.append(staged.patch)
+            entries += staged.entries
+        agent = self.ports.fs.read_text(f"{worktree}/{AGENTS_MD}")
+        point = await git.branch_point(worktree)
+        at_point = await git.show(point or BASE_REF, AGENTS_MD)
+        mine, theirs = commands_block(agent), commands_block(at_point)
+        if mine != theirs:
+            base = await git.show(BASE_REF, AGENTS_MD)
+            new: str | None = agent  # a deleted or added block: the whole file
+            if mine is not None and theirs is not None and commands_block(base) is not None:
+                new = apply_commands_block(base or "", agent) or base  # base: main has it
+            if new != base:
+                parts.append(file_diff(AGENTS_MD, base, new))
+                entries.append((AGENTS_MD, text_id(new)))
+                paths.append(AGENTS_MD)
+        patch = "".join(parts)
+        if not patch.strip():
+            return []
+        rel = self.store.write_artifact(f"steps/{seq}.proposal.patch", patch)
+        event = ProposalCaptured(
+            at=self.ports.clock.now(),
+            sha256=change_key(entries),
+            scope=scope,
+            seq=seq,
+            agent_role=role,
+            paths=tuple(paths),
+            patch=rel,
+            review=bool(tier_paths(paths, self.p.settings.review_paths)),
+        )
+        self._apply(event)  # recorded before anything is reverted
+        self.echo(f"        proposal for owner review from {scope}: {', '.join(paths)} (AD-26)")
+        return [event]
 
     async def _restore_gate_commands(self, worktree: str) -> str | None:
         """ADR 0021: put the `sdlc-commands` block back as it is on `origin/main`. Returns
@@ -785,7 +904,7 @@ class Orchestrator:
                     self.ports.fs.write_text(
                         f"{worktree}/{SPRINT_STATUS}", render_sprint_status(self.p, state)
                     )
-                    reverted = await self._pre_commit_guards(key.scope, worktree)
+                    reverted, _ = await self._pre_commit_guards(key.scope, worktree, key.seq, None)
                     head = await git.commit_all(
                         worktree, commit_message(state.run_id, key.scope, key.step, key.round)
                     )
@@ -896,6 +1015,89 @@ class Orchestrator:
         self.echo(f"!! escalation issue #{number} for {action.scope}: {action.reason}")
         self._apply(EscalationOpened(at=self.ports.clock.now(), scope=action.scope, issue=number))
 
+    # ------------------------------------------------------------------ proposals
+
+    async def _deliver(self, action: DeliverProposal) -> None:
+        """AD-26: one PR or issue per proposal, found by its marker first. A failure is
+        recorded and the run goes on; `sdlc resume` tries again."""
+        assert self.state is not None
+        prop = self.state.proposal(action.sha256)
+        if prop is None or prop.status is not ProposalStatus.PENDING:
+            return
+        now = self.ports.clock.now
+        try:
+            ref, note = await self._deliver_proposal(prop)
+        except Exception as exc:
+            self.echo(f"!! proposal {prop.sha256[:8]} from {prop.scope} not delivered: {exc!r}")
+            self._apply(ProposalFailed(at=now(), sha256=prop.sha256, reason=repr(exc)[:300]))
+            self.ports.notifier.notify(  # once: a failed proposal waits for `sdlc resume`
+                "Zamolxe (Orchestrator) owner review",
+                f"proposal {prop.sha256[:8]} from {prop.scope} not delivered: {exc}"[:300],
+            )
+            return
+        self._apply(
+            ProposalDelivered(
+                at=now(), sha256=prop.sha256, kind=ref.kind, number=ref.number, reason=note
+            )
+        )
+        where = f"{'PR' if ref.kind == 'pr' else 'issue'} #{ref.number}"
+        self.echo(f"   owner review: {where} for {prop.scope} ({', '.join(prop.paths)})")
+        if ref.created:
+            self.ports.notifier.notify(
+                "Zamolxe (Orchestrator) owner review",
+                f"{where}: {prop.agent_role or prop.scope} proposes a change to "
+                f"{', '.join(prop.paths[:3])}",
+            )
+
+    async def _deliver_proposal(self, prop: Proposal) -> tuple[ProposalRef, str | None]:
+        assert self.state is not None and self.store is not None
+        git, gh, state = self.ports.git, self.ports.gh, self.state
+        found = await gh.find_proposal(prop.sha256)
+        if found is not None:  # closed or merged ones too: never reopened
+            return found, "found by its marker"
+        patch = self.store.read_artifact(prop.patch)
+        if patch is None:
+            raise LoopError(f"proposal patch {prop.patch} is missing")
+        more = f" and {len(prop.paths) - 1} more" if len(prop.paths) > 1 else ""
+        title = f"Owner review: change to {prop.paths[0]}{more} ({prop.scope}, run {state.run_id})"
+        if prop.review:
+            note = "It touches review_paths (workflows), so it is never pushed (AD-26)."
+            ref = await gh.ensure_proposal_issue(
+                prop.sha256, title, issue_text(state, prop, patch, note), looked_up=True
+            )
+            return ref, note
+        await git.fetch()
+        path, _ = await git.ensure_worktree(prop.branch, BASE_REF)
+        ended: str | None = None
+        try:
+            await git.reset_hard(path, BASE_REF)
+            if await git.apply_3way(path, patch):
+                message = f"sdlc({state.run_id}): proposal {prop.sha256[:8]} from {prop.scope}"
+                if await git.commit_all(path, f"{message} step {prop.seq}") is not None:
+                    # The branch is the orchestrator's: a retry after a failed `gh pr create`
+                    # overwrites what an earlier attempt pushed.
+                    await git.push(path, prop.branch, force=True)
+                    body = proposal_text(state, prop)
+                    ref = await gh.ensure_proposal_pr(
+                        prop.sha256, prop.branch, title, body, looked_up=True
+                    )
+                    ended = "pr"
+                    return ref, None
+                note = "The patch changes nothing on main, so there is no PR."
+            else:
+                note = "The patch does not apply on main (git apply --3way), so there is no PR."
+            await git.reset_hard(path, BASE_REF)
+            ref = await gh.ensure_proposal_issue(
+                prop.sha256, title, issue_text(state, prop, patch, note), looked_up=True
+            )
+            ended = "issue"
+            return ref, note
+        finally:
+            # No pile-up: the worktree and local branch always go. When it ends as an issue,
+            # a branch an earlier attempt pushed goes too; after a failure it stays for the
+            # retry, which force-pushes over it.
+            await git.remove_worktree(path, prop.branch, remote=ended == "issue")
+
 
 def _dump(verdict: Verdict) -> str:
     return json.dumps(verdict.model_dump(mode="json"), indent=2) + "\n"
@@ -931,6 +1133,7 @@ def format_status(state: RunState, now: str | None = None) -> str:
         )
     for e in state.escalations:
         lines.append(f"escalation: {e.scope} issue #{e.issue}: {e.reason}")
+    lines += owner_review_lines(state)  # AD-26
     return "\n".join(lines)
 
 

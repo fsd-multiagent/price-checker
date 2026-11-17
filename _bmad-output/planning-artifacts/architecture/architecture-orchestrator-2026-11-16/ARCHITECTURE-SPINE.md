@@ -447,15 +447,16 @@ stateDiagram-v2
     | `owner_only_paths` | `.claude/`, `.github/CODEOWNERS`, `docs/source-register.md` | Reverted. Never proposed, never committed | Same: reverted |
     | `protected_paths` | `sdlc/`, `orchestrator/`, `_bmad/custom/`, `docs/standards/`, and the `sdlc-commands` block of `AGENTS.md` | Captured as a proposal, then reverted | Allowed; the PR waits for owner review |
     | `review_paths` | `.github/workflows/` | Allowed; the story's PR waits for owner review instead of auto-merging | Allowed; owner review |
-  - **Pinned controls.**
-    - Before every agent or judge step starts, the orchestrator restores the worktree's `owner_only_paths` from `origin/main`. So every `claude -p` loads the guard hook and settings as they are on `main`, whatever an earlier step left behind.
-    - `.claude/settings.json` keeps `Edit` of these files as `ask`, which a headless agent cannot answer.
+  - **Controls stay owner-approved, without pinning.**
+    - Agents cannot change `owner_only_paths`: `.claude/settings.json` keeps `Edit` of them as `ask`, which is denied headless, and the guard hook blocks Bash.
+    - These paths are also reverted before every orchestrator commit, and a reviewer that changes one fails like any other reviewer edit.
+    - So a worktree only ever holds owner-approved controls, at worst the version from its branch point. They are not copied in from `origin/main` mid-run: that would dirty the worktree under running agents and scripts (review of 2026-11-18).
   - **Proposals.** On a normal branch, before `_pre_commit_guards` reverts protected paths:
     1. The orchestrator stages them with `git add -A -- <paths>`, so new files are included.
     2. It saves `git diff --cached --binary --full-index HEAD -- <paths>` as `steps/<seq>.proposal.patch`.
-    3. For `AGENTS.md`, it saves only the block: `origin/main`'s file with the agent's block spliced in, by `apply_commands_block(base, agent_text)`, the inverse of `restore_commands_block`.
-    4. The state gets a `Proposal` record, keyed by the patch's SHA-256: scope, seq, agent role, paths, status `pending`.
-    5. The discarded diff used for fix prompts (AD-6) leaves protected paths out, so a retry does not replay the proposal.
+    3. For `AGENTS.md`, it saves only the block, and only when the agent changed it compared with the scope's branch point (`git merge-base HEAD origin/main`, as in ADR 0023). The saved file is `origin/main`'s, with the agent's block spliced in by `apply_commands_block(base, agent_text)`, the inverse of `restore_commands_block`. A block the agent deleted or added proposes the whole file.
+    4. The `ProposalCaptured` event is recorded before anything is reverted. The state gets a `Proposal` record, keyed by the SHA-256 of the normalised change (each path with its new content, independent of the base it was cut from): scope, seq, agent role, paths, status `pending`.
+    5. The discarded diff used for fix prompts (AD-6) leaves out all three tiers and the `AGENTS.md` block, so a retry does not replay a proposal.
   - **Proposal delivery** is an orchestrator action between ticks, like an escalation (AD-14):
     - **Never pushed:** a patch that touches `review_paths` (workflows) becomes an `owner-review` issue with the patch text in a fenced block, so no agent-written workflow ever runs in CI from a proposal.
     - **Otherwise pushed:** the orchestrator cuts `proposal/<sha8>` from `origin/main` and applies the patch with `git apply --3way`. It counts as applied only if the exit code is 0 and no unmerged entries remain; then it commits, pushes and opens a PR labelled `owner-review` with no auto-merge.
