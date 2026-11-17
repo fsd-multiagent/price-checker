@@ -139,3 +139,4 @@ JSON-LD: numeric `price` goes through `toMinor(BigDecimal)`; textual through `to
 - Follow-up review recommended: true — two or more medium patches; risk: the whitespace-grouping rule in `Prices` is new and only covered by a few cases.
 - Verification: `backend/gradlew -p backend check` — BUILD SUCCESSFUL after patches.
 - Residual risks: real retailer pages may use JSON-LD shapes not handled (deferred list).
+- Round 2 (tests gate fix): the r1 `tests` gate failed before running any command with "sdlc-commands differ from origin/main (AGENTS.md in the worktree)" — the branch was cut from `f41f528`, before origin/main changed the AGENTS.md `sdlc-commands` block (PR #12). Fixed by merging `origin/main` into the story branch; no story code changed. Re-verified from the worktree root: `uv run --directory orchestrator pytest -q` (277 passed, 2 skipped) and `backend/gradlew -p backend check --rerun-tasks` (BUILD SUCCESSFUL) (T-8).
