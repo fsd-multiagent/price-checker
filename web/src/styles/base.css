@@ -1,0 +1,48 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--colors-background);
+  color: var(--colors-foreground);
+  font-family: var(--typography-body-font-family);
+  font-size: var(--typography-body-font-size);
+  font-weight: var(--typography-body-font-weight);
+  line-height: var(--typography-body-line-height);
+}
+
+.page {
+  max-width: var(--spacing-content-max-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding: var(--spacing-xl) var(--spacing-md) var(--spacing-lg);
+}
+
+.page-title {
+  margin: 0 0 var(--spacing-sm);
+  font-family: var(--typography-title-font-family);
+  font-size: var(--typography-title-font-size);
+  font-weight: var(--typography-title-font-weight);
+  line-height: var(--typography-title-line-height);
+}
+
+.page-intro {
+  margin: 0;
+}
+
+.page-footer {
+  margin-top: var(--spacing-lg);
+  color: var(--colors-muted-foreground);
+  font-family: var(--typography-small-font-family);
+  font-size: var(--typography-small-font-size);
+  font-weight: var(--typography-small-font-weight);
+  line-height: var(--typography-small-line-height);
+}
+
+:focus-visible {
+  outline: 2px solid var(--colors-focus-ring);
+  outline-offset: 2px;
+}
