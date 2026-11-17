@@ -1,0 +1,2957 @@
+{
+  "run_id": "20261117-174705-full",
+  "kind": "full",
+  "dry_run": false,
+  "created_at": "2026-11-17T17:47:05Z",
+  "from_stage": null,
+  "status": "running",
+  "exit_code": null,
+  "budget": {
+    "limit": 50.0,
+    "spent": 25.9142155,
+    "reserved": 15.0,
+    "exhausted": false
+  },
+  "units": [
+    {
+      "scope": "stage:analysis",
+      "stage": "analysis",
+      "subject": null,
+      "status": "passed",
+      "round": 1,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": "sdlc/20261117-174705-full/analysis",
+      "queued": null
+    },
+    {
+      "scope": "stage:requirements",
+      "stage": "requirements",
+      "subject": null,
+      "status": "passed",
+      "round": 3,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": "sdlc/20261117-174705-full/requirements",
+      "queued": null
+    },
+    {
+      "scope": "stage:design",
+      "stage": "design",
+      "subject": null,
+      "status": "passed",
+      "round": 1,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": "sdlc/20261117-174705-full/design",
+      "queued": null
+    },
+    {
+      "scope": "stage:architecture",
+      "stage": "architecture",
+      "subject": null,
+      "status": "passed",
+      "round": 2,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": "sdlc/20261117-174705-full/architecture",
+      "queued": null
+    },
+    {
+      "scope": "stage:breakdown",
+      "stage": "breakdown",
+      "subject": null,
+      "status": "passed",
+      "round": 1,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": "sdlc/20261117-174705-full/breakdown",
+      "queued": null
+    },
+    {
+      "scope": "stage:planning-pr",
+      "stage": "planning-pr",
+      "subject": null,
+      "status": "passed",
+      "round": 2,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": "sdlc/20261117-174705-full/planning-pr",
+      "queued": null
+    },
+    {
+      "scope": "stage:infra",
+      "stage": "infra",
+      "subject": null,
+      "status": "escalated",
+      "round": 1,
+      "reason": "step 'devops': blocking open question: The `terraform_plan` gate reads `terraform_plan` from the `sdlc-commands` block in AGENTS.md on origin/main, which has no such entry, so the gate will fail closed. A worktree may not change the block (ADR 0004). Owner: add an entry through a PR to main, for example `terraform -chdir=infra fmt -check -recursive`, `terraform -chdir=infra init -backend=false -input=false` and `terraform -chdir=infra validate`. A real `terraform plan` needs Azure OIDC credentials, which only the `terraform-plan` workflow has.",
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-1-backend-scaffold",
+      "stage": "build",
+      "subject": "1-1-backend-scaffold",
+      "status": "running",
+      "round": 1,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-2-web-scaffold",
+      "stage": "build",
+      "subject": "1-2-web-scaffold",
+      "status": "running",
+      "round": 1,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-3-api-contract",
+      "stage": "build",
+      "subject": "1-3-api-contract",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-4-server-ean-validation",
+      "stage": "build",
+      "subject": "1-4-server-ean-validation",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-5-register-and-retailer-config",
+      "stage": "build",
+      "subject": "1-5-register-and-retailer-config",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-6-lookup-skeleton",
+      "stage": "build",
+      "subject": "1-6-lookup-skeleton",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-7-web-ean-form",
+      "stage": "build",
+      "subject": "1-7-web-ean-form",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-8-web-results-table",
+      "stage": "build",
+      "subject": "1-8-web-results-table",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-9-ci-backend-web",
+      "stage": "build",
+      "subject": "1-9-ci-backend-web",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-1-extract-helpers",
+      "stage": "build",
+      "subject": "2-1-extract-helpers",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-2-page-stripper",
+      "stage": "build",
+      "subject": "2-2-page-stripper",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-3-runtime-kill-switch",
+      "stage": "build",
+      "subject": "2-3-runtime-kill-switch",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-4-fetch-client",
+      "stage": "build",
+      "subject": "2-4-fetch-client",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-5-robots-txt",
+      "stage": "build",
+      "subject": "2-5-robots-txt",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-6-block-store",
+      "stage": "build",
+      "subject": "2-6-block-store",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-7-retry-after",
+      "stage": "build",
+      "subject": "2-7-retry-after",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-8-lookup-execution-cache",
+      "stage": "build",
+      "subject": "2-8-lookup-execution-cache",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-9-status-endpoint",
+      "stage": "build",
+      "subject": "2-9-status-endpoint",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-10-adapter-celro",
+      "stage": "build",
+      "subject": "2-10-adapter-celro",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-11-adapter-evomagro",
+      "stage": "build",
+      "subject": "2-11-adapter-evomagro",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-12-celro-live-enable",
+      "stage": "build",
+      "subject": "2-12-celro-live-enable",
+      "status": "blocked",
+      "round": 0,
+      "reason": "sources not Approved in the register: cel.ro",
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-13-evomagro-live-enable",
+      "stage": "build",
+      "subject": "2-13-evomagro-live-enable",
+      "status": "blocked",
+      "round": 0,
+      "reason": "sources not Approved in the register: evomag.ro",
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-14-e2e-uj1-uj2",
+      "stage": "build",
+      "subject": "2-14-e2e-uj1-uj2",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:3-1-terraform-vm",
+      "stage": "build",
+      "subject": "3-1-terraform-vm",
+      "status": "running",
+      "round": 1,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:3-2-containers-compose-caddy",
+      "stage": "build",
+      "subject": "3-2-containers-compose-caddy",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:3-3-deploy-workflow",
+      "stage": "build",
+      "subject": "3-3-deploy-workflow",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:3-4-kill-switch-workflow",
+      "stage": "build",
+      "subject": "3-4-kill-switch-workflow",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:3-5-health-profile",
+      "stage": "build",
+      "subject": "3-5-health-profile",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:3-6-health-check-workflow",
+      "stage": "build",
+      "subject": "3-6-health-check-workflow",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:4-1-adapter-altexro-disabled",
+      "stage": "build",
+      "subject": "4-1-adapter-altexro-disabled",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:4-2-simulated-layout-change",
+      "stage": "build",
+      "subject": "4-2-simulated-layout-change",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:4-3-demo-ean-list-check",
+      "stage": "build",
+      "subject": "4-3-demo-ean-list-check",
+      "status": "blocked",
+      "round": 0,
+      "reason": "depends on story 2-12-celro-live-enable, which is blocked",
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-1-backend-scaffold",
+      "stage": "integrate",
+      "subject": "1-1-backend-scaffold",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-2-web-scaffold",
+      "stage": "integrate",
+      "subject": "1-2-web-scaffold",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-3-api-contract",
+      "stage": "integrate",
+      "subject": "1-3-api-contract",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-4-server-ean-validation",
+      "stage": "integrate",
+      "subject": "1-4-server-ean-validation",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-5-register-and-retailer-config",
+      "stage": "integrate",
+      "subject": "1-5-register-and-retailer-config",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-6-lookup-skeleton",
+      "stage": "integrate",
+      "subject": "1-6-lookup-skeleton",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-7-web-ean-form",
+      "stage": "integrate",
+      "subject": "1-7-web-ean-form",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-8-web-results-table",
+      "stage": "integrate",
+      "subject": "1-8-web-results-table",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:1-9-ci-backend-web",
+      "stage": "integrate",
+      "subject": "1-9-ci-backend-web",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-1-extract-helpers",
+      "stage": "integrate",
+      "subject": "2-1-extract-helpers",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-2-page-stripper",
+      "stage": "integrate",
+      "subject": "2-2-page-stripper",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-3-runtime-kill-switch",
+      "stage": "integrate",
+      "subject": "2-3-runtime-kill-switch",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-4-fetch-client",
+      "stage": "integrate",
+      "subject": "2-4-fetch-client",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-5-robots-txt",
+      "stage": "integrate",
+      "subject": "2-5-robots-txt",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-6-block-store",
+      "stage": "integrate",
+      "subject": "2-6-block-store",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-7-retry-after",
+      "stage": "integrate",
+      "subject": "2-7-retry-after",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-8-lookup-execution-cache",
+      "stage": "integrate",
+      "subject": "2-8-lookup-execution-cache",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-9-status-endpoint",
+      "stage": "integrate",
+      "subject": "2-9-status-endpoint",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-10-adapter-celro",
+      "stage": "integrate",
+      "subject": "2-10-adapter-celro",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-11-adapter-evomagro",
+      "stage": "integrate",
+      "subject": "2-11-adapter-evomagro",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-12-celro-live-enable",
+      "stage": "integrate",
+      "subject": "2-12-celro-live-enable",
+      "status": "blocked",
+      "round": 0,
+      "reason": "sources not Approved in the register: cel.ro",
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-13-evomagro-live-enable",
+      "stage": "integrate",
+      "subject": "2-13-evomagro-live-enable",
+      "status": "blocked",
+      "round": 0,
+      "reason": "sources not Approved in the register: evomag.ro",
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:2-14-e2e-uj1-uj2",
+      "stage": "integrate",
+      "subject": "2-14-e2e-uj1-uj2",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:3-1-terraform-vm",
+      "stage": "integrate",
+      "subject": "3-1-terraform-vm",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:3-2-containers-compose-caddy",
+      "stage": "integrate",
+      "subject": "3-2-containers-compose-caddy",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:3-3-deploy-workflow",
+      "stage": "integrate",
+      "subject": "3-3-deploy-workflow",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:3-4-kill-switch-workflow",
+      "stage": "integrate",
+      "subject": "3-4-kill-switch-workflow",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:3-5-health-profile",
+      "stage": "integrate",
+      "subject": "3-5-health-profile",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:3-6-health-check-workflow",
+      "stage": "integrate",
+      "subject": "3-6-health-check-workflow",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:4-1-adapter-altexro-disabled",
+      "stage": "integrate",
+      "subject": "4-1-adapter-altexro-disabled",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:4-2-simulated-layout-change",
+      "stage": "integrate",
+      "subject": "4-2-simulated-layout-change",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "story:4-3-demo-ean-list-check",
+      "stage": "integrate",
+      "subject": "4-3-demo-ean-list-check",
+      "status": "blocked",
+      "round": 0,
+      "reason": "depends on story 2-12-celro-live-enable, which is blocked",
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:1-1-backend-scaffold",
+      "stage": "learn",
+      "subject": "1-1-backend-scaffold",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:1-2-web-scaffold",
+      "stage": "learn",
+      "subject": "1-2-web-scaffold",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:1-3-api-contract",
+      "stage": "learn",
+      "subject": "1-3-api-contract",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:1-4-server-ean-validation",
+      "stage": "learn",
+      "subject": "1-4-server-ean-validation",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:1-5-register-and-retailer-config",
+      "stage": "learn",
+      "subject": "1-5-register-and-retailer-config",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:1-6-lookup-skeleton",
+      "stage": "learn",
+      "subject": "1-6-lookup-skeleton",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:1-7-web-ean-form",
+      "stage": "learn",
+      "subject": "1-7-web-ean-form",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:1-8-web-results-table",
+      "stage": "learn",
+      "subject": "1-8-web-results-table",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:1-9-ci-backend-web",
+      "stage": "learn",
+      "subject": "1-9-ci-backend-web",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-1-extract-helpers",
+      "stage": "learn",
+      "subject": "2-1-extract-helpers",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-2-page-stripper",
+      "stage": "learn",
+      "subject": "2-2-page-stripper",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-3-runtime-kill-switch",
+      "stage": "learn",
+      "subject": "2-3-runtime-kill-switch",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-4-fetch-client",
+      "stage": "learn",
+      "subject": "2-4-fetch-client",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-5-robots-txt",
+      "stage": "learn",
+      "subject": "2-5-robots-txt",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-6-block-store",
+      "stage": "learn",
+      "subject": "2-6-block-store",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-7-retry-after",
+      "stage": "learn",
+      "subject": "2-7-retry-after",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-8-lookup-execution-cache",
+      "stage": "learn",
+      "subject": "2-8-lookup-execution-cache",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-9-status-endpoint",
+      "stage": "learn",
+      "subject": "2-9-status-endpoint",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-10-adapter-celro",
+      "stage": "learn",
+      "subject": "2-10-adapter-celro",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-11-adapter-evomagro",
+      "stage": "learn",
+      "subject": "2-11-adapter-evomagro",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-12-celro-live-enable",
+      "stage": "learn",
+      "subject": "2-12-celro-live-enable",
+      "status": "blocked",
+      "round": 0,
+      "reason": "waiting on story:2-12-celro-live-enable/integrate, which is blocked",
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-13-evomagro-live-enable",
+      "stage": "learn",
+      "subject": "2-13-evomagro-live-enable",
+      "status": "blocked",
+      "round": 0,
+      "reason": "waiting on story:2-13-evomagro-live-enable/integrate, which is blocked",
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:2-14-e2e-uj1-uj2",
+      "stage": "learn",
+      "subject": "2-14-e2e-uj1-uj2",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:3-1-terraform-vm",
+      "stage": "learn",
+      "subject": "3-1-terraform-vm",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:3-2-containers-compose-caddy",
+      "stage": "learn",
+      "subject": "3-2-containers-compose-caddy",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:3-3-deploy-workflow",
+      "stage": "learn",
+      "subject": "3-3-deploy-workflow",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:3-4-kill-switch-workflow",
+      "stage": "learn",
+      "subject": "3-4-kill-switch-workflow",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:3-5-health-profile",
+      "stage": "learn",
+      "subject": "3-5-health-profile",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:3-6-health-check-workflow",
+      "stage": "learn",
+      "subject": "3-6-health-check-workflow",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:4-1-adapter-altexro-disabled",
+      "stage": "learn",
+      "subject": "4-1-adapter-altexro-disabled",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:4-2-simulated-layout-change",
+      "stage": "learn",
+      "subject": "4-2-simulated-layout-change",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:4-3-demo-ean-list-check",
+      "stage": "learn",
+      "subject": "4-3-demo-ean-list-check",
+      "status": "blocked",
+      "round": 0,
+      "reason": "waiting on story:4-3-demo-ean-list-check/integrate, which is blocked",
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:epic-1",
+      "stage": "retro",
+      "subject": "epic-1",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:epic-2",
+      "stage": "retro",
+      "subject": "epic-2",
+      "status": "blocked",
+      "round": 0,
+      "reason": "waiting on story:2-12-celro-live-enable/integrate, which is blocked",
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:epic-3",
+      "stage": "retro",
+      "subject": "epic-3",
+      "status": "pending",
+      "round": 0,
+      "reason": null,
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    },
+    {
+      "scope": "learn:epic-4",
+      "stage": "retro",
+      "subject": "epic-4",
+      "status": "blocked",
+      "round": 0,
+      "reason": "waiting on story:4-3-demo-ean-list-check/integrate, which is blocked",
+      "invalidated_by": null,
+      "escalated_gate": null,
+      "feedback": [],
+      "tagged": null,
+      "queued": null
+    }
+  ],
+  "scopes": [
+    {
+      "id": "stage:analysis",
+      "branch": "sdlc/20261117-174705-full",
+      "worktree": "/repo-worktrees/sdlc__20261117-174705-full",
+      "head_sha": "b0ba6ab695b196005819ccc4bb93cffcb0e8a889",
+      "needs_reset": false,
+      "reset_without_feedback": false,
+      "pr": null,
+      "merged_sha": null
+    },
+    {
+      "id": "stage:requirements",
+      "branch": "sdlc/20261117-174705-full",
+      "worktree": "/repo-worktrees/sdlc__20261117-174705-full",
+      "head_sha": "03b497e3eed88c9a357981203a8c6d9908b19028",
+      "needs_reset": false,
+      "reset_without_feedback": false,
+      "pr": null,
+      "merged_sha": null
+    },
+    {
+      "id": "stage:design",
+      "branch": "sdlc/20261117-174705-full",
+      "worktree": "/repo-worktrees/sdlc__20261117-174705-full",
+      "head_sha": "8f548181469264a1556373616a85e8978aee436b",
+      "needs_reset": false,
+      "reset_without_feedback": false,
+      "pr": null,
+      "merged_sha": null
+    },
+    {
+      "id": "stage:architecture",
+      "branch": "sdlc/20261117-174705-full",
+      "worktree": "/repo-worktrees/sdlc__20261117-174705-full",
+      "head_sha": "1fb8100d43232a348a1faa84d4ad0e61f13a10a3",
+      "needs_reset": false,
+      "reset_without_feedback": false,
+      "pr": null,
+      "merged_sha": null
+    },
+    {
+      "id": "stage:breakdown",
+      "branch": "sdlc/20261117-174705-full",
+      "worktree": "/repo-worktrees/sdlc__20261117-174705-full",
+      "head_sha": "580522058ab3972f24719664e771e0cd8c350869",
+      "needs_reset": false,
+      "reset_without_feedback": false,
+      "pr": null,
+      "merged_sha": null
+    },
+    {
+      "id": "stage:planning-pr",
+      "branch": "sdlc/20261117-174705-full",
+      "worktree": "/repo-worktrees/sdlc__20261117-174705-full",
+      "head_sha": "580522058ab3972f24719664e771e0cd8c350869",
+      "needs_reset": false,
+      "reset_without_feedback": false,
+      "pr": 5,
+      "merged_sha": "f7ec8cf8dad712430554513604a3b1d589d674f9"
+    },
+    {
+      "id": "stage:infra",
+      "branch": "infra/20261117-174705-full",
+      "worktree": "/repo-worktrees/infra__20261117-174705-full",
+      "head_sha": "f7ec8cf8dad712430554513604a3b1d589d674f9",
+      "needs_reset": true,
+      "reset_without_feedback": false,
+      "pr": null,
+      "merged_sha": null
+    },
+    {
+      "id": "story:1-1-backend-scaffold",
+      "branch": "story/1-1-backend-scaffold",
+      "worktree": "/repo-worktrees/story__1-1-backend-scaffold",
+      "head_sha": "e4213089a4aed566b113a3e8cb1a9a8075c879e6",
+      "needs_reset": false,
+      "reset_without_feedback": false,
+      "pr": null,
+      "merged_sha": null
+    },
+    {
+      "id": "story:1-2-web-scaffold",
+      "branch": "story/1-2-web-scaffold",
+      "worktree": "/repo-worktrees/story__1-2-web-scaffold",
+      "head_sha": "f7ec8cf8dad712430554513604a3b1d589d674f9",
+      "needs_reset": false,
+      "reset_without_feedback": false,
+      "pr": null,
+      "merged_sha": null
+    },
+    {
+      "id": "story:3-1-terraform-vm",
+      "branch": "story/3-1-terraform-vm",
+      "worktree": "/repo-worktrees/story__3-1-terraform-vm",
+      "head_sha": "a53934ea682367541b4fc369f82a3edcbeebb773",
+      "needs_reset": false,
+      "reset_without_feedback": false,
+      "pr": null,
+      "merged_sha": null
+    }
+  ],
+  "steps": [
+    {
+      "seq": 1,
+      "scope": "stage:analysis",
+      "stage": "analysis",
+      "step": "brief",
+      "round": 1,
+      "status": "passed",
+      "cap": 2.0,
+      "base_sha": "a8a73ed367bdc4cd1fbb6b5c6cb5470d3c4a089d",
+      "started_at": "2026-11-17T17:47:07Z",
+      "finished_at": "2026-11-17T17:48:21Z",
+      "outcome": "done",
+      "cost": 0.6054499999999999,
+      "reason": null,
+      "status_value": "done",
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 2,
+      "scope": "stage:analysis",
+      "stage": "analysis",
+      "step": "coverage",
+      "round": 1,
+      "status": "passed",
+      "cap": 2.0,
+      "base_sha": "b0ba6ab695b196005819ccc4bb93cffcb0e8a889",
+      "started_at": "2026-11-17T17:48:21Z",
+      "finished_at": "2026-11-17T17:48:41Z",
+      "outcome": "done",
+      "cost": 0.1988736,
+      "reason": null,
+      "status_value": null,
+      "verdict": {
+        "reviewer": "judge:stage-analysis:coverage",
+        "target": "_bmad-output/planning-artifacts/briefs/brief-price-checker-2026-11-17/ @ b0ba6ab",
+        "verdict": "pass",
+        "findings": [
+          {
+            "id": "COV-1",
+            "severity": "minor",
+            "rule": "D-4",
+            "file": "_bmad-output/planning-artifacts/briefs/brief-price-checker-2026-11-17/brief.md",
+            "line": 105,
+            "summary": "The Infrastructure decision drops the spec §10 detail that Terraform lives in this repo and covers the VM, the network and DNS",
+            "fix": "Change the line to: 'Terraform in this repo for the VM, network and DNS, with a plan on every PR and an apply only after a human approves it.'"
+          },
+          {
+            "id": "COV-2",
+            "severity": "minor",
+            "rule": "D-4",
+            "file": "_bmad-output/planning-artifacts/briefs/brief-price-checker-2026-11-17/brief.md",
+            "line": 106,
+            "summary": "The CI/CD decision drops the spec §10 detail that a merge to main builds the images before deploying them",
+            "fix": "Change the line to: 'GitHub Actions builds the images and deploys them to the VM on every merge to main.'"
+          }
+        ]
+      },
+      "interrupted": false
+    },
+    {
+      "seq": 3,
+      "scope": "stage:requirements",
+      "stage": "requirements",
+      "step": "prd",
+      "round": 1,
+      "status": "passed",
+      "cap": 3.0,
+      "base_sha": "b0ba6ab695b196005819ccc4bb93cffcb0e8a889",
+      "started_at": "2026-11-17T17:48:43Z",
+      "finished_at": "2026-11-17T17:51:36Z",
+      "outcome": "done",
+      "cost": 0.9851382000000002,
+      "reason": null,
+      "status_value": "done",
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 4,
+      "scope": "stage:requirements",
+      "stage": "requirements",
+      "step": "prd_validate",
+      "round": 1,
+      "status": "passed",
+      "cap": 3.0,
+      "base_sha": "7a10249e8022391f317c83bddaa42a7854950b2e",
+      "started_at": "2026-11-17T17:51:36Z",
+      "finished_at": "2026-11-17T17:52:45Z",
+      "outcome": "done",
+      "cost": 0.6144265999999999,
+      "reason": null,
+      "status_value": null,
+      "verdict": {
+        "reviewer": "prd-validator",
+        "target": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md @ 7a10249",
+        "verdict": "fail",
+        "findings": [
+          {
+            "id": "PV-1",
+            "severity": "blocker",
+            "rule": "S-7",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 258,
+            "summary": "AC-N3.7 stores product name, which S-7 does not allow (S-7 permits only price, currency, availability, timestamp and URL). AC-6.1/AC-6.2 cache whole Result rows, so the name is stored. A PRD [ASSUMPTION] cannot widen a security standard.",
+            "fix": "Remove product name from the stored facts, or move the point to §9 Open questions as an owner decision to amend S-7 (Veronel (Security & Compliance) with owner approval), and keep the AC aligned with S-7 until the amendment lands."
+          },
+          {
+            "id": "PV-2",
+            "severity": "major",
+            "rule": "S-3",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 117,
+            "summary": "AC-2.4 allows at most one product-page fetch per Retailer per EAN, but AC-N3.4 requires retries with exponential backoff on errors. The two ACs contradict each other.",
+            "fix": "State in AC-2.4 that retries of the same page after an error, within the per-Retailer timeout, do not count as extra fetches, or cap retries explicitly."
+          },
+          {
+            "id": "PV-3",
+            "severity": "major",
+            "rule": "S-4",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 80,
+            "summary": "The Glossary defines a Block to include a robots.txt change that disallows our path, but no AC requires detecting robots.txt changes. AC-11.1 lists only HTTP 403 and CAPTCHA/bot-challenge pages, and AC-10.2 is a static check.",
+            "fix": "Add an AC (e.g. in FR-11 or FR-8) requiring robots.txt to be re-checked on a schedule or by the Health check and treated as a Block when it disallows our path, or remove that case from the Block definition."
+          },
+          {
+            "id": "PV-4",
+            "severity": "major",
+            "rule": "D-2",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 220,
+            "summary": "AC-8.3 ('a failed CI job run') and AC-N6.3 ('visible in the CI run list') decide where the Health check runs, while §9 Open question 4 says that is still open for Pacala (DevOps) and Loredan (Architect).",
+            "fix": "Phrase AC-8.3/AC-N6.3 as an outcome (a failure visible to the presenter and owner, naming Retailer and EAN), or close Open question 4."
+          },
+          {
+            "id": "PV-5",
+            "severity": "major",
+            "rule": "S-1",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 302,
+            "summary": "UJ-3 and SM-2 need an Altex adapter that can be turned on live after approval, but §7 puts every Retailer beyond the Approved ones out of scope. No FR covers building an adapter for a Retailer that is not yet Approved. The source register also notes Altex affiliate terms that ban automated taking of information, a demo risk the PRD does not mention.",
+            "fix": "State whether the first release includes a disabled Altex adapter (built offline from saved pages, never contacting altex.ro until Approved), and add the Altex terms risk plus a fallback Retailer for SM-2 to §9."
+          },
+          {
+            "id": "PV-6",
+            "severity": "major",
+            "rule": "T-1",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 128,
+            "summary": "T-1 requires a test per acceptance criterion, but AC-9.4 (owner sets Approved), AC-10.1 (ADR exists), AC-N6.2 (fallback video recorded) and AC-N6.3 (Health check green before the talk) are process checks no test can verify.",
+            "fix": "Move process items to a release checklist or Definition of Done outside the AC numbering, or say how each will be verified (e.g. a CI check that the ADR exists)."
+          },
+          {
+            "id": "PV-7",
+            "severity": "minor",
+            "rule": "S-12",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 24,
+            "summary": "§0 says the NFRs cite S-1 to S-13, but S-12 (pinned dependencies, vulnerability scan) is cited nowhere.",
+            "fix": "Add S-12 under NFR-7, or say in §0 that S-12 is covered by architecture and CI rather than the PRD."
+          },
+          {
+            "id": "PV-8",
+            "severity": "minor",
+            "rule": "C-9",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 272,
+            "summary": "AC-N5.2 bans client IPs in logs but not the client user agent string, which C-9 also bans.",
+            "fix": "Extend AC-N5.2: logs never contain the client IP or the client user agent string (S-9, C-9)."
+          },
+          {
+            "id": "PV-9",
+            "severity": "minor",
+            "rule": "D-4",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 3,
+            "summary": "Frontmatter says status: final before validation round 1 has finished.",
+            "fix": "Keep status as draft or in-review until the validation gate passes."
+          }
+        ]
+      },
+      "interrupted": false
+    },
+    {
+      "seq": 5,
+      "scope": "stage:requirements",
+      "stage": "requirements",
+      "step": "fr_ac",
+      "round": 1,
+      "status": "passed",
+      "cap": 0.0,
+      "base_sha": "7a10249e8022391f317c83bddaa42a7854950b2e",
+      "started_at": "2026-11-17T17:52:45Z",
+      "finished_at": "2026-11-17T17:52:45Z",
+      "outcome": "done",
+      "cost": 0.0,
+      "reason": null,
+      "status_value": null,
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 6,
+      "scope": "stage:requirements",
+      "stage": "requirements",
+      "step": "prd",
+      "round": 2,
+      "status": "passed",
+      "cap": 3.0,
+      "base_sha": "7a10249e8022391f317c83bddaa42a7854950b2e",
+      "started_at": "2026-11-17T17:52:45Z",
+      "finished_at": "2026-11-17T17:54:43Z",
+      "outcome": "done",
+      "cost": 0.8641506,
+      "reason": null,
+      "status_value": "done",
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 7,
+      "scope": "stage:requirements",
+      "stage": "requirements",
+      "step": "prd_validate",
+      "round": 2,
+      "status": "passed",
+      "cap": 3.0,
+      "base_sha": "2c1ce69b6c47c250fd70a9405747e5308612d16c",
+      "started_at": "2026-11-17T17:54:43Z",
+      "finished_at": "2026-11-17T17:55:34Z",
+      "outcome": "done",
+      "cost": 0.5071623999999999,
+      "reason": null,
+      "status_value": null,
+      "verdict": {
+        "reviewer": "prd-validate",
+        "target": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md @ 2c1ce69 (run 20261117-174705-full, stage:requirements, prd_validate r2)",
+        "verdict": "fail",
+        "findings": [
+          {
+            "id": "PV-2",
+            "severity": "blocker",
+            "rule": "C-9",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 264,
+            "summary": "AC-N3.7 says only price, currency, availability, timestamp and URL are kept in the Cache and logs. That conflicts with C-9 and AC-N5.2 (logs contain the EAN, retailer, outcome and timing), with AC-11.2 (a Block is logged with the Retailer), and with AC-3.6 and the Glossary (the cached row holds Row status and the Cache is keyed by EAN and Retailer). No implementation can pass a literal test of AC-N3.7 and also meet C-9.",
+            "fix": "Reword AC-N3.7 to limit the restriction to data taken from retailer pages, for example: 'Of the data taken from a retailer page, only price, currency, availability, Fetch time and URL are kept in the Cache or written to logs; no product names, descriptions or images (S-7). Logs otherwise follow C-9.'"
+          },
+          {
+            "id": "PV-3",
+            "severity": "major",
+            "rule": "S-13",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 291,
+            "summary": "NFR-7 cites S-13, but AC-N7.1 covers only HTTPS and the port-80 redirect. There is no AC for 'the VM exposes only ports 80 and 443 publicly' or 'SSH access is restricted to the deploy key'.",
+            "fix": "Add AC-N7.4 (only 80 and 443 are open publicly) and AC-N7.5 (SSH is restricted to the deploy key), each checkable by a test of the network rules or the Terraform plan, or state that S-13's infrastructure parts are checked at stage 4."
+          },
+          {
+            "id": "PV-4",
+            "severity": "major",
+            "rule": "T-3",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 143,
+            "summary": "AC-10.4 ('Every Known EAN resolves to a product page') needs live retailer contact. T-3 forbids that in CI, and the AC does not say that its test is the Health check, so T-1 traceability is unclear.",
+            "fix": "State that AC-10.4 is verified by the Health check (FR-8), or by a fixture test for curated EAN-to-URL lists."
+          },
+          {
+            "id": "PV-5",
+            "severity": "major",
+            "rule": "T-1",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 129,
+            "summary": "AC-9.3 ('No code path, flag or environment variable lets a Lookup contact a Retailer that is not Approved') is a universal negative with no stated test, and a test of it is hard to write.",
+            "fix": "Restate AC-9.3 as checkable behaviour, for example: 'With a Retailer set to not Approved in the register and its Adapter and Kill switch enabled through any configuration source, the shared fetch client refuses every request to that Retailer's domain.'"
+          },
+          {
+            "id": "PV-6",
+            "severity": "minor",
+            "rule": "D-2",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 226,
+            "summary": "AC-8.7 sits between AC-8.3 and AC-8.4, and the §10 Assumptions index is not in document order (AC-2.4, AC-N7.3 and AC-N5.4 are out of place).",
+            "fix": "Move AC-8.7 after AC-8.6 and sort §10 by section."
+          },
+          {
+            "id": "PV-7",
+            "severity": "minor",
+            "rule": "S-6",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 237,
+            "summary": "AC-11.1 says a Block lasts 'until an operator clears the flag' but does not say how the flag is cleared (for example, through the Kill switch config) or whether clearing it needs a deploy.",
+            "fix": "Say that the Block flag is cleared through the same reloadable config as the Kill switch (S-8), with no deploy."
+          }
+        ]
+      },
+      "interrupted": false
+    },
+    {
+      "seq": 8,
+      "scope": "stage:requirements",
+      "stage": "requirements",
+      "step": "fr_ac",
+      "round": 2,
+      "status": "passed",
+      "cap": 0.0,
+      "base_sha": "2c1ce69b6c47c250fd70a9405747e5308612d16c",
+      "started_at": "2026-11-17T17:55:34Z",
+      "finished_at": "2026-11-17T17:55:34Z",
+      "outcome": "done",
+      "cost": 0.0,
+      "reason": null,
+      "status_value": null,
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 9,
+      "scope": "stage:requirements",
+      "stage": "requirements",
+      "step": "prd",
+      "round": 3,
+      "status": "passed",
+      "cap": 3.0,
+      "base_sha": "2c1ce69b6c47c250fd70a9405747e5308612d16c",
+      "started_at": "2026-11-17T17:55:34Z",
+      "finished_at": "2026-11-17T17:56:07Z",
+      "outcome": "done",
+      "cost": 0.39300299999999994,
+      "reason": null,
+      "status_value": "done",
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 10,
+      "scope": "stage:requirements",
+      "stage": "requirements",
+      "step": "prd_validate",
+      "round": 3,
+      "status": "passed",
+      "cap": 3.0,
+      "base_sha": "03b497e3eed88c9a357981203a8c6d9908b19028",
+      "started_at": "2026-11-17T17:56:07Z",
+      "finished_at": "2026-11-17T17:56:48Z",
+      "outcome": "done",
+      "cost": 0.4332302,
+      "reason": null,
+      "status_value": null,
+      "verdict": {
+        "reviewer": "prd-validate",
+        "target": "stage:requirements/prd_validate r3 @ 03b497e (_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md)",
+        "verdict": "pass",
+        "findings": [
+          {
+            "id": "PV-3",
+            "severity": "major",
+            "rule": "C-9",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 264,
+            "summary": "AC-N3.7 says log lines hold only EAN, Retailer, outcome, timing and time. C-9 only requires that logs contain these fields, and AC-7.5 (an error log for a config file that cannot be parsed, with no EAN or Retailer) is a log line outside that list. A strict test of AC-N3.7 could fail on that line.",
+            "fix": "Scope the 'only' clause to Lookup/fetch log lines, or reword it as 'never hold page data beyond the outcome, and never an IP or a client user agent (C-9, S-9)'."
+          },
+          {
+            "id": "PV-4",
+            "severity": "major",
+            "rule": "AC-11.1",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 237,
+            "summary": "AC-11.1 says a Block lasts until an operator clears the flag, but no FR or AC defines how an operator clears it (for example the config file, as for the Kill switch), so this cannot be tested end to end.",
+            "fix": "Add an AC that defines the clear mechanism, for example a per-Retailer flag in the reloadable config file (same 60 s rule as AC-7.3)."
+          },
+          {
+            "id": "PV-5",
+            "severity": "minor",
+            "rule": "AC-6.3",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 156,
+            "summary": "AC-6.3 does not say whether Disabled rows are cached, or whether a cached Found row is still served after the Retailer is Blocked (AC-11.1 says rows show Unavailable) or Disabled (AC-7.2).",
+            "fix": "State that Disabled rows are not cached, and that Kill-switch and Block state override any cached row."
+          },
+          {
+            "id": "PV-6",
+            "severity": "minor",
+            "rule": "D-2",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 226,
+            "summary": "AC-8.7 is placed between AC-8.3 and AC-8.4, and AC-2.4 is listed out of order in the §10 Assumptions index, which makes the lists harder to read.",
+            "fix": "Move AC-8.7 after AC-8.6 and sort the assumptions index by section."
+          },
+          {
+            "id": "PV-7",
+            "severity": "minor",
+            "rule": "D-2",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 7,
+            "summary": "The frontmatter 'author' still says round 2, although the document was revised in round 3; status is 'in-review'.",
+            "fix": "Update the author/round note, and set the status when the stage closes."
+          },
+          {
+            "id": "PV-8",
+            "severity": "minor",
+            "rule": "T-1",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 225,
+            "summary": "In AC-8.3, 'visible without logging in to the VM' can only be tested once the ADR on where the Health check runs exists (§9 question 4); until then the test target is undefined.",
+            "fix": "When the ADR lands, reword AC-8.3 to name the observable signal (for example a failed GitHub Actions run naming the Retailer and EAN)."
+          }
+        ]
+      },
+      "interrupted": false
+    },
+    {
+      "seq": 11,
+      "scope": "stage:requirements",
+      "stage": "requirements",
+      "step": "fr_ac",
+      "round": 3,
+      "status": "passed",
+      "cap": 0.0,
+      "base_sha": "03b497e3eed88c9a357981203a8c6d9908b19028",
+      "started_at": "2026-11-17T17:56:48Z",
+      "finished_at": "2026-11-17T17:56:48Z",
+      "outcome": "done",
+      "cost": 0.0,
+      "reason": null,
+      "status_value": null,
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 12,
+      "scope": "stage:design",
+      "stage": "design",
+      "step": "ux",
+      "round": 1,
+      "status": "passed",
+      "cap": 2.0,
+      "base_sha": "03b497e3eed88c9a357981203a8c6d9908b19028",
+      "started_at": "2026-11-17T17:56:50Z",
+      "finished_at": "2026-11-17T17:58:48Z",
+      "outcome": "done",
+      "cost": 0.7805291999999999,
+      "reason": null,
+      "status_value": "done",
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 13,
+      "scope": "stage:design",
+      "stage": "design",
+      "step": "security_prd",
+      "round": 1,
+      "status": "passed",
+      "cap": 2.0,
+      "base_sha": "03b497e3eed88c9a357981203a8c6d9908b19028",
+      "started_at": "2026-11-17T17:56:50Z",
+      "finished_at": "2026-11-17T17:57:59Z",
+      "outcome": "done",
+      "cost": 0.4129036,
+      "reason": null,
+      "status_value": null,
+      "verdict": {
+        "reviewer": "security-compliance-reviewer",
+        "target": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/ (prd.md, addendum.md) @ run 20261117-174705-full, stage design, step security_prd, round 1",
+        "verdict": "pass",
+        "findings": [
+          {
+            "id": "SEC-1",
+            "severity": "major",
+            "rule": "S-1",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 130,
+            "summary": "AC-9.4, UJ-3 and §7 require a disabled Altex Adapter built from saved pages, but nothing says how those pages are obtained. Altex is Not checked, and its affiliate terms ban automated taking of information. Recording fixtures with code or an agent would contact a domain that is not Approved (S-1, guard rule G4); T-2 calls fixtures 'recorded'.",
+            "fix": "Add to AC-9.4: fixtures for a Retailer that is not Approved are never fetched by code or agents. They are either written by hand or synthetic, or saved by hand in a browser by the owner. Record the source in the fixture directory."
+          },
+          {
+            "id": "SEC-2",
+            "severity": "major",
+            "rule": "S-4",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 226,
+            "summary": "robots.txt is re-read only by the Health check (AC-8.7), which runs at least daily (AC-8.1). Live Lookups could request a newly disallowed path for up to a day, so AC-10.2 holds only at the time of the last check.",
+            "fix": "Add an AC that the shared fetch client checks the cached robots.txt of each Retailer before every request. The cache lifetime should be at most 24 h, and a newly disallowed path triggers the Block in FR-11."
+          },
+          {
+            "id": "SEC-3",
+            "severity": "major",
+            "rule": "S-5",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 228,
+            "summary": "AC-8.5 says the Health check obeys the rate and concurrency limits, but open question 4 allows it to run from GitHub Actions. A separate process cannot share the app's per-Retailer limiter, so the combined traffic could exceed the register limit (for example, cel.ro allows 1 request every 2 s with concurrency 1).",
+            "fix": "Make AC-8.5 say that the register limits apply to all traffic from the product taken together, the app and the Health check. Ask the ADR for question 4 to show how this is enforced, for example by running the Health check through the app's own fetch client."
+          },
+          {
+            "id": "SEC-4",
+            "severity": "major",
+            "rule": "S-1",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 127,
+            "summary": "The register is checked only by CI (AC-9.1). If the owner sets a Retailer to Retired, the deployed app keeps contacting it until the next deploy, unless someone also turns off its kill switch by hand (register step 5). No AC covers revoking an approval at runtime.",
+            "fix": "Add an AC: when a Retailer's register Status stops being Approved, the running app stops contacting it within the kill-switch window (60 s), with no deploy. Either the app reloads the register status, or a documented operation turns off the kill switch with a test behind it."
+          },
+          {
+            "id": "SEC-5",
+            "severity": "major",
+            "rule": "S-13",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 289,
+            "summary": "NFR-7 covers HTTPS and the redirect, a secret scan and pinned dependencies. It has no AC for exposing only ports 80 and 443, restricting SSH to the deploy key (S-13), CI reaching Azure through OIDC, or keeping secrets out of Terraform state committed to git (S-10). These rules are outside spec §7–§8, so this does not block stage 3.",
+            "fix": "Add AC-N7.4: the Terraform plan opens only 80 and 443 publicly, and SSH accepts only the deploy key. Add AC-N7.5: CI authenticates to Azure through OIDC, and no tfstate or tfvars file is committed."
+          },
+          {
+            "id": "SEC-6",
+            "severity": "major",
+            "rule": "S-11",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 144,
+            "summary": "AC-10.5 requires URL-encoding only when the resolution method is search. S-11 says no input is ever placed into a retailer URL without being encoded. That includes an external catalog, which needs its own review in the source register.",
+            "fix": "Change AC-10.5 to: whatever the resolution method, any value that comes from user input is URL-encoded before it is placed into an outbound URL. Enforce this in the shared fetch client (AC-N3.8, C-12)."
+          },
+          {
+            "id": "SEC-7",
+            "severity": "minor",
+            "rule": "S-6",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 262,
+            "summary": "The test in AC-N3.5 checks only the banned substrings. It does not check that the user agent contains a contact URL, or that the same user agent is sent on robots.txt and Health check requests. The source register also lists the contact URL as still needed.",
+            "fix": "Extend AC-N3.5: the test asserts that a contact URL is present and that one user agent is used for every outbound request, robots.txt and Health check included."
+          },
+          {
+            "id": "SEC-8",
+            "severity": "minor",
+            "rule": "S-3",
+            "file": "_bmad-output/planning-artifacts/prds/prd-price-checker-2026-11-17/prd.md",
+            "line": 119,
+            "summary": "AC-2.4 allows one product-page fetch plus one resolution request per Retailer per EAN, but does not count robots.txt fetches (AC-8.7, and SEC-2 if adopted). That leaves the limit on requests per Lookup unclear.",
+            "fix": "State in AC-2.4 that robots.txt fetches are cached per Retailer and are not part of any Lookup's request count."
+          }
+        ]
+      },
+      "interrupted": false
+    },
+    {
+      "seq": 14,
+      "scope": "stage:architecture",
+      "stage": "architecture",
+      "step": "architect",
+      "round": 1,
+      "status": "passed",
+      "cap": 5.0,
+      "base_sha": "8f548181469264a1556373616a85e8978aee436b",
+      "started_at": "2026-11-17T17:58:51Z",
+      "finished_at": "2026-11-17T18:08:26Z",
+      "outcome": "done",
+      "cost": 3.9002577,
+      "reason": null,
+      "status_value": "done",
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 15,
+      "scope": "stage:architecture",
+      "stage": "architecture",
+      "step": "security_arch",
+      "round": 1,
+      "status": "passed",
+      "cap": 5.0,
+      "base_sha": "a6f2e0b14fa9525648a8eaa2159be65187ae1045",
+      "started_at": "2026-11-17T18:08:26Z",
+      "finished_at": "2026-11-17T18:09:52Z",
+      "outcome": "done",
+      "cost": 0.5275559999999999,
+      "reason": null,
+      "status_value": null,
+      "verdict": {
+        "reviewer": "security-compliance-reviewer",
+        "target": "stage:architecture @ run 20261117-174705-full, round 1 (_bmad-output/planning-artifacts/architecture/architecture-price-checker-2026-11-17/ARCHITECTURE-SPINE.md, docs/adr/0006-0017)",
+        "verdict": "fail",
+        "findings": [
+          {
+            "id": "SEC-1",
+            "severity": "blocker",
+            "rule": "S-6",
+            "file": "docs/adr/0016-health-check-on-runner.md",
+            "line": 23,
+            "summary": "The Health check runner starts every run with an empty blocks.json, and a Block it sees is never stored anywhere that later runs or production read. Production /api/status still reports the retailer as not blocked, so the next daily run sends requests again to a retailer that blocked us, with no operator clearing the flag. This breaks S-6 ('if a retailer blocks us, stop') and AC-11.1 ('stops sending requests to that Retailer until an operator clears the flag'). See also spine AD-16 and the ADR 0016 Consequences ('production learns of it only when the operator runs kill-switch off').",
+            "fix": "Make a runner Block persist until an operator clears it. For example, the workflow could skip and fail any retailer with an open adapter-broken issue labelled 'blocked', or a runner Block could trigger the kill-switch workflow with 'stop' for that retailer, so production and later runs stop until an operator uses 'clear-block'/'allow'. Record the choice in ADR 0016 and AD-16."
+          },
+          {
+            "id": "SEC-2",
+            "severity": "blocker",
+            "rule": "S-5",
+            "file": "_bmad-output/planning-artifacts/architecture/architecture-price-checker-2026-11-17/ARCHITECTURE-SPINE.md",
+            "line": 104,
+            "summary": "Retry-After is honored only 'within the deadline'. On a 429 whose Retry-After is longer than deadlineMs (default 4000), the row becomes UNAVAILABLE and is not cached (AD-10), and nothing in the fetch client or limiter stops the next Lookup from sending a request at once, before the Retry-After time. This breaks S-5 ('Honor Retry-After') and AC-11.4.",
+            "fix": "In AD-6 and ADR 0008, store a per-retailer 'not before' time in the fetch client's limiter when a Retry-After is received. Until then, refuse permits without sending anything (row UNAVAILABLE, not a Block). Add a refusal test with a stub server."
+          },
+          {
+            "id": "SEC-3",
+            "severity": "major",
+            "rule": "S-5",
+            "file": "docs/adr/0016-health-check-on-runner.md",
+            "line": 27,
+            "summary": "Runner and production limiters are independent. A Health check run can overlap with production Lookups, giving 2 concurrent requests to a retailer whose register limit is 'concurrency 1' and briefly more than 1 request per 2 s. The ADR argues only the average daily rate.",
+            "fix": "Either leave the cache and limiter in place and accept the overlap with explicit owner sign-off, or schedule the health check at a quiet hour and space Known-EAN fetches at twice the register interval to leave room for production traffic. State the residual risk in ADR 0016."
+          },
+          {
+            "id": "SEC-4",
+            "severity": "major",
+            "rule": "S-13",
+            "file": "docs/adr/0015-deployment-topology.md",
+            "line": 29,
+            "summary": "'SSH from the deploy source only' with GitHub-hosted runners means port 22 is open to GitHub's very large and changing IP ranges, so in practice it is public. The ADR leaves the mechanism open.",
+            "fix": "Pacala (DevOps) should state the mechanism at stage 6: key-only sshd (no passwords, no root), a deploy user restricted to the deploy and kill-switch commands (forced command), and either an NSG rule opened just in time by the workflow through OIDC and then closed, or a documented accepted risk."
+          },
+          {
+            "id": "SEC-5",
+            "severity": "major",
+            "rule": "S-1",
+            "file": "_bmad-output/planning-artifacts/architecture/architecture-price-checker-2026-11-17/ARCHITECTURE-SPINE.md",
+            "line": 127,
+            "summary": "The register test compares only the rate limit against the register Limits column. Concurrency (also in Limits, e.g. 'concurrency 1') is not listed, so retailers.yaml could set a looser concurrency limit without the test failing (S-5, AC-N3.3).",
+            "fix": "Extend the AD-8 / ADR 0009 test so it also fails when concurrency in retailers.yaml is greater than the register's Limits value, and when Limits cannot be parsed."
+          },
+          {
+            "id": "SEC-6",
+            "severity": "minor",
+            "rule": "S-6",
+            "file": "docs/adr/0008-shared-fetch-client.md",
+            "line": 30,
+            "summary": "The fetch client refuses to start without a contact URL, but the forbidden-substring check (bot, robot, crawl, spider, any case, which covers cel.ro's 'bot-'/'bot/') is only a test (AC-N3.5). A contact URL supplied by config could add one of those substrings at runtime.",
+            "fix": "Also check the full user agent at startup, contact URL included, and refuse to start if it contains a forbidden substring."
+          },
+          {
+            "id": "SEC-7",
+            "severity": "minor",
+            "rule": "S-7",
+            "file": "docs/adr/0016-health-check-on-runner.md",
+            "line": 23,
+            "summary": "The 'stripped page' uploaded as an artifact and later committed as a fixture (T-2, T-6) has no defined stripping step in code. It relies on whoever writes the health story.",
+            "fix": "Name one function in health or fetch that removes images, scripts and long descriptions before upload, and test it, so S-7 and T-2 are met by construction."
+          },
+          {
+            "id": "SEC-8",
+            "severity": "minor",
+            "rule": "S-12",
+            "file": "_bmad-output/planning-artifacts/architecture/architecture-price-checker-2026-11-17/ARCHITECTURE-SPINE.md",
+            "line": 201,
+            "summary": "The Stack table lists version lines, not pinned versions. Pinning is deferred to the scaffold story. Container base images (Temurin, Node, Caddy) are not mentioned.",
+            "fix": "The scaffold story pins exact library versions and container images by digest or exact tag. Stage 7 checks this."
+          },
+          {
+            "id": "SEC-9",
+            "severity": "minor",
+            "rule": "S-9",
+            "file": "docs/adr/0017-logging-and-privacy.md",
+            "line": 22,
+            "summary": "The privacy design covers the app, Tomcat and Caddy logs, but not platform-level logs that can hold client IPs (Azure NSG flow logs, boot diagnostics).",
+            "fix": "Pacala (DevOps) keeps NSG flow logs and similar off in Terraform, or records them as accepted platform telemetry outside the app."
+          }
+        ]
+      },
+      "interrupted": false
+    },
+    {
+      "seq": 16,
+      "scope": "stage:architecture",
+      "stage": "architecture",
+      "step": "architect",
+      "round": 2,
+      "status": "passed",
+      "cap": 5.0,
+      "base_sha": "a6f2e0b14fa9525648a8eaa2159be65187ae1045",
+      "started_at": "2026-11-17T18:09:53Z",
+      "finished_at": "2026-11-17T18:17:10Z",
+      "outcome": "done",
+      "cost": 2.5184978,
+      "reason": null,
+      "status_value": "done",
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 17,
+      "scope": "stage:architecture",
+      "stage": "architecture",
+      "step": "security_arch",
+      "round": 2,
+      "status": "passed",
+      "cap": 5.0,
+      "base_sha": "1fb8100d43232a348a1faa84d4ad0e61f13a10a3",
+      "started_at": "2026-11-17T18:17:10Z",
+      "finished_at": "2026-11-17T18:17:52Z",
+      "outcome": "done",
+      "cost": 0.4135474,
+      "reason": null,
+      "status_value": null,
+      "verdict": {
+        "reviewer": "security-compliance-reviewer",
+        "target": "stage:architecture @ run 20261117-174705-full, round 2 (_bmad-output/planning-artifacts/architecture/architecture-price-checker-2026-11-17/ARCHITECTURE-SPINE.md, docs/adr/0006-0017)",
+        "verdict": "pass",
+        "findings": [
+          {
+            "id": "SEC-3",
+            "severity": "major",
+            "rule": "S-5",
+            "file": "docs/adr/0016-health-check-on-runner.md",
+            "line": 31,
+            "summary": "Carried from round 1, now mitigated: the runner uses double the rate interval, concurrency 1 and a quiet hour. The residual overlap with production (two requests at once to a retailer with concurrency 1) is still an open question waiting for the owner's sign-off, not an accepted risk.",
+            "fix": "The owner either accepts the residual overlap in writing (compliance register) or asks for a shared limiter. Track it as deferred work until decided."
+          },
+          {
+            "id": "SEC-4",
+            "severity": "major",
+            "rule": "S-13",
+            "file": "docs/adr/0015-deployment-topology.md",
+            "line": 29,
+            "summary": "Carried from round 1: the mechanism that limits SSH for GitHub-hosted runners is still deferred to Pacala (DevOps) at stage 6. The options are concrete (key-only sshd, forced-command deploy user, NSG opened just in time through OIDC, or an accepted risk recorded by the owner) but none is chosen yet.",
+            "fix": "At stage 6, Pacala (DevOps) records the chosen mechanism in an ADR. Veronel (Security & Compliance) checks it against S-13 and I-3 at stage 7."
+          },
+          {
+            "id": "SEC-10",
+            "severity": "minor",
+            "rule": "S-6",
+            "file": "_bmad-output/planning-artifacts/architecture/architecture-price-checker-2026-11-17/ARCHITECTURE-SPINE.md",
+            "line": 186,
+            "summary": "If both the runner-block hand-off and the gh issue creation fail, production never learns of the runner's Block. It still records its own Block on its next 403 or challenge page, and the failed job is visible.",
+            "fix": "Optional: have the health-check job send an alert outside GitHub (or retry the hand-off) when both the hand-off and the issue creation fail."
+          }
+        ]
+      },
+      "interrupted": false
+    },
+    {
+      "seq": 18,
+      "scope": "stage:breakdown",
+      "stage": "breakdown",
+      "step": "epics",
+      "round": 1,
+      "status": "passed",
+      "cap": 3.0,
+      "base_sha": "1fb8100d43232a348a1faa84d4ad0e61f13a10a3",
+      "started_at": "2026-11-17T18:17:54Z",
+      "finished_at": "2026-11-17T18:22:50Z",
+      "outcome": "done",
+      "cost": 1.6776451999999997,
+      "reason": null,
+      "status_value": "done",
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 19,
+      "scope": "stage:breakdown",
+      "stage": "breakdown",
+      "step": "readiness",
+      "round": 1,
+      "status": "passed",
+      "cap": 3.0,
+      "base_sha": "580522058ab3972f24719664e771e0cd8c350869",
+      "started_at": "2026-11-17T18:22:50Z",
+      "finished_at": "2026-11-17T18:28:20Z",
+      "outcome": "done",
+      "cost": 0.7593721999999999,
+      "reason": null,
+      "status_value": "CONCERNS",
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 20,
+      "scope": "stage:planning-pr",
+      "stage": "planning-pr",
+      "step": "open_pr",
+      "round": 1,
+      "status": "passed",
+      "cap": 0.0,
+      "base_sha": "580522058ab3972f24719664e771e0cd8c350869",
+      "started_at": "2026-11-17T18:28:22Z",
+      "finished_at": "2026-11-17T18:28:28Z",
+      "outcome": "done",
+      "cost": 0.0,
+      "reason": null,
+      "status_value": null,
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 21,
+      "scope": "stage:planning-pr",
+      "stage": "planning-pr",
+      "step": "ci_green",
+      "round": 1,
+      "status": "passed",
+      "cap": 0.0,
+      "base_sha": "580522058ab3972f24719664e771e0cd8c350869",
+      "started_at": "2026-11-17T18:28:28Z",
+      "finished_at": "2026-11-17T18:29:30Z",
+      "outcome": "done",
+      "cost": 0.0,
+      "reason": null,
+      "status_value": null,
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 22,
+      "scope": "stage:planning-pr",
+      "stage": "planning-pr",
+      "step": "merge_pr",
+      "round": 1,
+      "status": "failed",
+      "cap": 0.0,
+      "base_sha": "580522058ab3972f24719664e771e0cd8c350869",
+      "started_at": "2026-11-17T18:29:30Z",
+      "finished_at": "2026-11-17T18:29:33Z",
+      "outcome": "error",
+      "cost": 0.0,
+      "reason": "exit code 1",
+      "status_value": null,
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 23,
+      "scope": "stage:planning-pr",
+      "stage": "planning-pr",
+      "step": "open_pr",
+      "round": 2,
+      "status": "passed",
+      "cap": 0.0,
+      "base_sha": "580522058ab3972f24719664e771e0cd8c350869",
+      "started_at": "2026-11-17T18:29:33Z",
+      "finished_at": "2026-11-17T18:29:35Z",
+      "outcome": "done",
+      "cost": 0.0,
+      "reason": null,
+      "status_value": null,
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 24,
+      "scope": "stage:planning-pr",
+      "stage": "planning-pr",
+      "step": "ci_green",
+      "round": 2,
+      "status": "passed",
+      "cap": 0.0,
+      "base_sha": "580522058ab3972f24719664e771e0cd8c350869",
+      "started_at": "2026-11-17T18:29:35Z",
+      "finished_at": "2026-11-17T18:29:37Z",
+      "outcome": "done",
+      "cost": 0.0,
+      "reason": null,
+      "status_value": null,
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 25,
+      "scope": "stage:planning-pr",
+      "stage": "planning-pr",
+      "step": "merge_pr",
+      "round": 2,
+      "status": "passed",
+      "cap": 0.0,
+      "base_sha": "580522058ab3972f24719664e771e0cd8c350869",
+      "started_at": "2026-11-17T18:29:37Z",
+      "finished_at": "2026-11-17T18:30:43Z",
+      "outcome": "done",
+      "cost": 0.0,
+      "reason": null,
+      "status_value": null,
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 26,
+      "scope": "stage:infra",
+      "stage": "infra",
+      "step": "devops",
+      "round": 1,
+      "status": "escalated",
+      "cap": 3.0,
+      "base_sha": "f7ec8cf8dad712430554513604a3b1d589d674f9",
+      "started_at": "2026-11-17T18:30:59Z",
+      "finished_at": "2026-11-17T18:39:39Z",
+      "outcome": "ambiguous",
+      "cost": 2.0601632,
+      "reason": "blocking open question: The `terraform_plan` gate reads `terraform_plan` from the `sdlc-commands` block in AGENTS.md on origin/main, which has no such entry, so the gate will fail closed. A worktree may not change the block (ADR 0004). Owner: add an entry through a PR to main, for example `terraform -chdir=infra fmt -check -recursive`, `terraform -chdir=infra init -backend=false -input=false` and `terraform -chdir=infra validate`. A real `terraform plan` needs Azure OIDC credentials, which only the `terraform-plan` workflow has.",
+      "status_value": "done",
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 27,
+      "scope": "story:1-1-backend-scaffold",
+      "stage": "build",
+      "step": "dev",
+      "round": 1,
+      "status": "passed",
+      "cap": 5.0,
+      "base_sha": "f7ec8cf8dad712430554513604a3b1d589d674f9",
+      "started_at": "2026-11-17T18:30:59Z",
+      "finished_at": "2026-11-17T18:40:54Z",
+      "outcome": "done",
+      "cost": 4.260603700000001,
+      "reason": null,
+      "status_value": "done",
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 28,
+      "scope": "story:1-2-web-scaffold",
+      "stage": "build",
+      "step": "dev",
+      "round": 1,
+      "status": "running",
+      "cap": 5.0,
+      "base_sha": "f7ec8cf8dad712430554513604a3b1d589d674f9",
+      "started_at": "2026-11-17T18:30:59Z",
+      "finished_at": null,
+      "outcome": null,
+      "cost": 0.0,
+      "reason": null,
+      "status_value": null,
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 29,
+      "scope": "story:3-1-terraform-vm",
+      "stage": "build",
+      "step": "dev",
+      "round": 1,
+      "status": "passed",
+      "cap": 5.0,
+      "base_sha": "f7ec8cf8dad712430554513604a3b1d589d674f9",
+      "started_at": "2026-11-17T18:30:59Z",
+      "finished_at": "2026-11-17T18:40:09Z",
+      "outcome": "done",
+      "cost": 4.001704900000002,
+      "reason": null,
+      "status_value": "done",
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 30,
+      "scope": "story:3-1-terraform-vm",
+      "stage": "build",
+      "step": "qa",
+      "round": 1,
+      "status": "running",
+      "cap": 5.0,
+      "base_sha": "a53934ea682367541b4fc369f82a3edcbeebb773",
+      "started_at": "2026-11-17T18:40:09Z",
+      "finished_at": null,
+      "outcome": null,
+      "cost": 0.0,
+      "reason": null,
+      "status_value": null,
+      "verdict": null,
+      "interrupted": false
+    },
+    {
+      "seq": 31,
+      "scope": "story:1-1-backend-scaffold",
+      "stage": "build",
+      "step": "qa",
+      "round": 1,
+      "status": "running",
+      "cap": 5.0,
+      "base_sha": "e4213089a4aed566b113a3e8cb1a9a8075c879e6",
+      "started_at": "2026-11-17T18:40:54Z",
+      "finished_at": null,
+      "outcome": null,
+      "cost": 0.0,
+      "reason": null,
+      "status_value": null,
+      "verdict": null,
+      "interrupted": false
+    }
+  ],
+  "counters": [
+    {
+      "scope": "stage:requirements",
+      "gate": "prd_validate_and_fr_ac",
+      "fails": 2
+    },
+    {
+      "scope": "stage:architecture",
+      "gate": "review_verdicts",
+      "fails": 1
+    },
+    {
+      "scope": "stage:planning-pr",
+      "gate": "ci_green",
+      "fails": 1
+    }
+  ],
+  "stories": [
+    {
+      "key": "1-1-backend-scaffold",
+      "title": "Backend scaffold with enforced package structure",
+      "depends_on": [],
+      "touches": [
+        "backend/",
+        "docs/adr/0014-backend-build-and-gate-commands.md",
+        "_bmad-output/planning-artifacts/architecture/architecture-price-checker-2026-11-17/ARCHITECTURE-SPINE.md"
+      ],
+      "sources": []
+    },
+    {
+      "key": "1-2-web-scaffold",
+      "title": "Web scaffold with design tokens",
+      "depends_on": [],
+      "touches": [
+        "web/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "1-3-api-contract",
+      "title": "API contract and shared EAN cases",
+      "depends_on": [
+        "1-1-backend-scaffold",
+        "1-2-web-scaffold"
+      ],
+      "touches": [
+        "api/openapi.yaml",
+        "api/ean-cases.json",
+        "backend/build.gradle.kts",
+        "web/package.json"
+      ],
+      "sources": []
+    },
+    {
+      "key": "1-4-server-ean-validation",
+      "title": "Server-side EAN validation and lookup logging",
+      "depends_on": [
+        "1-3-api-contract"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/ean/",
+        "backend/src/main/java/ro/pricechecker/api/",
+        "backend/src/main/java/ro/pricechecker/lookup/LookupLog.java"
+      ],
+      "sources": []
+    },
+    {
+      "key": "1-5-register-and-retailer-config",
+      "title": "Source register gate and retailer config",
+      "depends_on": [
+        "1-1-backend-scaffold"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/registry/",
+        "backend/build.gradle.kts",
+        "config/retailers.yaml",
+        "config/known-eans.yaml"
+      ],
+      "sources": []
+    },
+    {
+      "key": "1-6-lookup-skeleton",
+      "title": "Lookup skeleton with row order and lowest price",
+      "depends_on": [
+        "1-4-server-ean-validation",
+        "1-5-register-and-retailer-config"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/adapter/",
+        "backend/src/main/java/ro/pricechecker/lookup/",
+        "backend/src/main/java/ro/pricechecker/api/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "1-7-web-ean-form",
+      "title": "EAN form with client-side validation and URL state",
+      "depends_on": [
+        "1-3-api-contract"
+      ],
+      "touches": [
+        "web/src/ean.ts",
+        "web/src/EanForm.tsx",
+        "web/src/App.tsx"
+      ],
+      "sources": []
+    },
+    {
+      "key": "1-8-web-results-table",
+      "title": "Results table, status line and notices",
+      "depends_on": [
+        "1-7-web-ean-form"
+      ],
+      "touches": [
+        "web/src/ResultsTable.tsx",
+        "web/src/StatusLine.tsx",
+        "web/src/Notice.tsx",
+        "web/src/format.ts",
+        "web/src/App.tsx",
+        "web/src/styles/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "1-9-ci-backend-web",
+      "title": "CI for backend and web with secret and vulnerability scans",
+      "depends_on": [
+        "1-1-backend-scaffold",
+        "1-2-web-scaffold"
+      ],
+      "touches": [
+        ".github/workflows/ci.yml"
+      ],
+      "sources": []
+    },
+    {
+      "key": "2-1-extract-helpers",
+      "title": "Extraction helpers for structured data, meta tags and prices",
+      "depends_on": [
+        "1-1-backend-scaffold"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/extract/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "2-2-page-stripper",
+      "title": "Page stripper for fixtures and reports",
+      "depends_on": [
+        "1-1-backend-scaffold"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/fetch/PageStripper.java"
+      ],
+      "sources": []
+    },
+    {
+      "key": "2-3-runtime-kill-switch",
+      "title": "Runtime kill-switch config read by the backend",
+      "depends_on": [
+        "1-6-lookup-skeleton"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/registry/",
+        "backend/src/main/java/ro/pricechecker/lookup/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "2-4-fetch-client",
+      "title": "Shared fetch client with the approval gate and limits",
+      "depends_on": [
+        "1-5-register-and-retailer-config",
+        "2-3-runtime-kill-switch"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/fetch/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "2-5-robots-txt",
+      "title": "robots.txt enforcement in the fetch client",
+      "depends_on": [
+        "2-4-fetch-client"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/fetch/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "2-6-block-store",
+      "title": "BlockStore and Block handling",
+      "depends_on": [
+        "2-5-robots-txt"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/registry/BlockStore.java",
+        "backend/src/main/java/ro/pricechecker/fetch/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "2-7-retry-after",
+      "title": "429 and Retry-After handling",
+      "depends_on": [
+        "2-6-block-store"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/fetch/",
+        "backend/src/main/java/ro/pricechecker/registry/BlockStore.java"
+      ],
+      "sources": []
+    },
+    {
+      "key": "2-8-lookup-execution-cache",
+      "title": "Parallel Lookup execution, normalization and cache",
+      "depends_on": [
+        "2-6-block-store",
+        "2-1-extract-helpers"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/lookup/",
+        "backend/src/main/java/ro/pricechecker/cache/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "2-9-status-endpoint",
+      "title": "Status endpoint",
+      "depends_on": [
+        "2-7-retry-after"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/api/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "2-10-adapter-celro",
+      "title": "cel.ro Adapter from synthetic fixtures",
+      "depends_on": [
+        "1-6-lookup-skeleton",
+        "2-1-extract-helpers"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/retailer/celro/",
+        "fixtures/cel.ro/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "2-11-adapter-evomagro",
+      "title": "evoMAG Adapter from synthetic fixtures",
+      "depends_on": [
+        "1-6-lookup-skeleton",
+        "2-1-extract-helpers"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/retailer/evomagro/",
+        "fixtures/evomag.ro/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "2-12-celro-live-enable",
+      "title": "Record cel.ro fixtures, curate Known EANs and enable the Adapter",
+      "depends_on": [
+        "2-2-page-stripper",
+        "2-7-retry-after",
+        "2-8-lookup-execution-cache",
+        "2-10-adapter-celro"
+      ],
+      "touches": [
+        "fixtures/cel.ro/",
+        "config/known-eans.yaml",
+        "config/retailers.yaml",
+        "backend/src/main/java/ro/pricechecker/retailer/celro/"
+      ],
+      "sources": [
+        "cel.ro"
+      ]
+    },
+    {
+      "key": "2-13-evomagro-live-enable",
+      "title": "Record evoMAG fixtures, curate Known EANs and enable the Adapter",
+      "depends_on": [
+        "2-2-page-stripper",
+        "2-7-retry-after",
+        "2-8-lookup-execution-cache",
+        "2-11-adapter-evomagro"
+      ],
+      "touches": [
+        "fixtures/evomag.ro/",
+        "config/known-eans.yaml",
+        "config/retailers.yaml",
+        "backend/src/main/java/ro/pricechecker/retailer/evomagro/"
+      ],
+      "sources": [
+        "evomag.ro"
+      ]
+    },
+    {
+      "key": "2-14-e2e-uj1-uj2",
+      "title": "End-to-end test of UJ-1 and UJ-2 against stubbed retailers",
+      "depends_on": [
+        "1-8-web-results-table",
+        "2-8-lookup-execution-cache",
+        "2-10-adapter-celro",
+        "2-11-adapter-evomagro"
+      ],
+      "touches": [
+        "web/e2e/",
+        "backend/src/test/",
+        ".github/workflows/ci.yml"
+      ],
+      "sources": []
+    },
+    {
+      "key": "3-1-terraform-vm",
+      "title": "Terraform for the production VM",
+      "depends_on": [],
+      "touches": [
+        "infra/",
+        ".github/workflows/terraform-plan.yml",
+        "docs/adr/",
+        "docs/adr/README.md"
+      ],
+      "sources": []
+    },
+    {
+      "key": "3-2-containers-compose-caddy",
+      "title": "Container images, Compose and Caddy",
+      "depends_on": [
+        "1-8-web-results-table",
+        "2-8-lookup-execution-cache"
+      ],
+      "touches": [
+        "backend/Dockerfile",
+        "web/Dockerfile",
+        "deploy/compose.yaml",
+        "deploy/Caddyfile"
+      ],
+      "sources": []
+    },
+    {
+      "key": "3-3-deploy-workflow",
+      "title": "Image build and deploy workflow",
+      "depends_on": [
+        "1-9-ci-backend-web",
+        "3-1-terraform-vm",
+        "3-2-containers-compose-caddy"
+      ],
+      "touches": [
+        ".github/workflows/deploy.yml",
+        "deploy/scripts/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "3-4-kill-switch-workflow",
+      "title": "Kill-switch workflow",
+      "depends_on": [
+        "2-7-retry-after",
+        "3-3-deploy-workflow"
+      ],
+      "touches": [
+        ".github/workflows/kill-switch.yml",
+        "deploy/scripts/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "3-5-health-profile",
+      "title": "Backend health profile",
+      "depends_on": [
+        "2-2-page-stripper",
+        "2-8-lookup-execution-cache"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/health/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "3-6-health-check-workflow",
+      "title": "Health-check workflow and hand-off",
+      "depends_on": [
+        "2-9-status-endpoint",
+        "3-4-kill-switch-workflow",
+        "3-5-health-profile"
+      ],
+      "touches": [
+        ".github/workflows/health-check.yml"
+      ],
+      "sources": []
+    },
+    {
+      "key": "4-1-adapter-altexro-disabled",
+      "title": "Disabled Altex Adapter from synthetic fixtures",
+      "depends_on": [
+        "1-6-lookup-skeleton",
+        "2-1-extract-helpers"
+      ],
+      "touches": [
+        "backend/src/main/java/ro/pricechecker/retailer/altexro/",
+        "fixtures/altex.ro/",
+        "config/retailers.yaml"
+      ],
+      "sources": []
+    },
+    {
+      "key": "4-2-simulated-layout-change",
+      "title": "Simulated layout change fails tests and the Health check",
+      "depends_on": [
+        "2-10-adapter-celro",
+        "2-11-adapter-evomagro",
+        "3-5-health-profile"
+      ],
+      "touches": [
+        "fixtures/",
+        "backend/src/test/"
+      ],
+      "sources": []
+    },
+    {
+      "key": "4-3-demo-ean-list-check",
+      "title": "Demo EAN list check",
+      "depends_on": [
+        "2-12-celro-live-enable",
+        "2-13-evomagro-live-enable"
+      ],
+      "touches": [
+        "backend/src/test/",
+        "config/known-eans.yaml"
+      ],
+      "sources": []
+    }
+  ],
+  "stories_loaded": true,
+  "escalations": [
+    {
+      "scope": "stage:infra",
+      "reason": "step 'devops': blocking open question: The `terraform_plan` gate reads `terraform_plan` from the `sdlc-commands` block in AGENTS.md on origin/main, which has no such entry, so the gate will fail closed. A worktree may not change the block (ADR 0004). Owner: add an entry through a PR to main, for example `terraform -chdir=infra fmt -check -recursive`, `terraform -chdir=infra init -backend=false -input=false` and `terraform -chdir=infra validate`. A real `terraform plan` needs Azure OIDC credentials, which only the `terraform-plan` workflow has.",
+      "issue": 6
+    }
+  ],
+  "next_seq": 32,
+  "next_learn_seq": 1,
+  "fixtures": null,
+  "scenario": null,
+  "pipeline_path": "/repo/sdlc/pipeline.yaml",
+  "pipeline_sha256": "74ed1c699265e4ad580dc1c8a1fae54c6cd2fb503a9d4a3a6913997eb8bc6405",
+  "resume_at": null,
+  "limit_episode_start": null,
+  "limit_exceeded": false
+}
