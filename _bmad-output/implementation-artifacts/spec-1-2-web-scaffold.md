@@ -150,3 +150,5 @@ Status: done
 **Verification:** `npm --prefix web ci` exits 0; `npm --prefix web run build` exits 0; `npm --prefix web run check` exits 0 (13 of 13 tests pass, lint, Prettier and tsc clean).
 
 **Residual risks:** the deferred items above. TypeScript is held at 6.0.3 because typescript-eslint 8.73 supports only TypeScript below 6.1.
+
+**Round 2 (run 20261117-174705-full):** the r1 `ci_green` gate failed because the `rebase` step exited 1 (AD-18): `_bmad-output/implementation-artifacts/epic-1-context.md` was added both here and on `origin/main` by story 1-1. Marghioala (Developer) rebased the branch onto `origin/main` (`2e332aef3c96a95b92ba83f35edefa7c37c627dd`) and kept main's version of that shared file, so this story's diff now touches only `web/` and its own spec. After the rebase, `npm --prefix web run check` exits 0 (22 of 22 tests pass), `npm --prefix web run build` exits 0, and `uv run --directory orchestrator pytest -q` passes (277 passed, 2 skipped). The `open_pr`, `ci_green` and `merge_pr` steps that did not run are orchestrator steps; they run after this step.
