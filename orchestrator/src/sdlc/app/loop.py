@@ -13,7 +13,7 @@ import shlex
 from collections.abc import Callable
 from pathlib import Path
 
-from sdlc.adapters.claude import build_argv
+from sdlc.adapters.claude import build_argv, flag_usage_limit
 from sdlc.adapters.git import commit_message
 from sdlc.core import gates as core_gates
 from sdlc.core.epics_parser import parse_epics
@@ -30,6 +30,7 @@ from sdlc.core.models import (
     GateEvaluated,
     Merged,
     OpenEscalation,
+    Outcome,
     Pipeline,
     PrOpened,
     ResetScope,
@@ -60,8 +61,10 @@ from sdlc.core.models import (
     UnitBlocked,
     UnitStarted,
     UnitUnblocked,
+    UsageLimited,
     Verdict,
     VerdictSource,
+    Wait,
     WorktreeReady,
 )
 from sdlc.core.outcome import derive_outcome
@@ -139,6 +142,7 @@ class Orchestrator:
         self.state: RunState | None = None
         self.store: RunStore | None = None
         self._tasks: dict[asyncio.Task[list[Event]], int] = {}
+        self._paused_until: str | None = None
 
     # ------------------------------------------------------------------ entry points
 
@@ -229,10 +233,11 @@ class Orchestrator:
 
     async def _inputs(self) -> TickInputs:
         assert self.state is not None
+        now = self.ports.clock.now()
         if not any(s.sources for s in self.state.stories):
-            return TickInputs()
+            return TickInputs(now=now)
         text = await self.ports.git.show("origin/main", self.p.settings.register_path)
-        return TickInputs(approved_domains=parse_register(text).approved)
+        return TickInputs(approved_domains=parse_register(text).approved, now=now)
 
     async def _loop(self) -> int:
         try:
@@ -282,6 +287,8 @@ class Orchestrator:
                         continue
                     for event in events:
                         self._apply(event)
+                        if isinstance(event, StepFinished):
+                            self._after_step(event)
                 if failure is not None:  # the other finished steps are recorded first
                     raise failure
         raise LoopError(f"loop exceeded {MAX_TICKS} ticks")
@@ -337,6 +344,16 @@ class Orchestrator:
             case ExhaustBudget():
                 self.echo(f"!! budget: {action.reason}")
                 self._apply(BudgetExhausted(at=now(), reason=action.reason))
+            case Wait():
+                # AD-18: a plan usage limit pauses the run; the dry-run clock returns at once.
+                self.echo(f".. plan usage limit: paused until {action.until}")
+                if action.until != self._paused_until:  # notify once per pause
+                    self._paused_until = action.until
+                    self.ports.notifier.notify(
+                        "sdlc paused", f"plan usage limit: until {action.until}"
+                    )
+                await self.ports.clock.sleep_until(action.until)
+                self.echo(f".. resumed at {now()}")
             case _:
                 raise LoopError(f"unknown action {action!r}")
 
@@ -449,7 +466,9 @@ class Orchestrator:
             allowed_tools=step.tools,
             restrict_tools=not step.writes,
             agent=step.agent,
-            model=stage.model,
+            model=stage.model or self.p.settings.default_model,
+            effort=stage.effort or self.p.settings.default_effort,
+            max_turns=stage.max_turns,
         )
         return Invocation(
             key=key,
@@ -459,6 +478,11 @@ class Orchestrator:
             env=env,
             timeout_s=float((stage.timeout_min or self.p.settings.timeout_min) * 60),
             verdict_source=step.verdict_source.value if step.verdict_source else None,
+            attempt=sum(
+                1
+                for r in self.state.steps
+                if (r.scope, r.step, r.round) == (key.scope, key.step, key.round)
+            ),
         )
 
     def _epics_path(self) -> str:
@@ -501,8 +525,11 @@ class Orchestrator:
             fs.remove(verdict_path)  # never read a verdict left by an earlier round
         try:
             result = await self.ports.claude.run(inv)
-        except Exception as exc:
+        except Exception as exc:  # AD-8: an adapter failure or unreadable output is an `error`
             result = StepResult(subtype="error_adapter", is_error=True, errors=(repr(exc),))
+        # AD-18: the only place a usage limit is recognised, with the clock port's time (T-5);
+        # it also reads the text of an `error_adapter` result (a non-JSON limit message).
+        result = flag_usage_limit(result, self.ports.clock.now())
         verdict_text = fs.read_text(verdict_path) if verdict_path else None
         head: str | None = None
         if self._is_story_file_reviewer(key, step):
@@ -526,6 +553,18 @@ class Orchestrator:
                 head_sha=head,
             )
         ]
+
+    def _after_step(self, event: StepFinished) -> None:
+        """Record the audit `UsageLimited` for a step the core closed as superseded (AD-18)."""
+        assert self.state is not None
+        rec = self.state.step_record(event.seq)
+        if rec.status is Status.SUPERSEDED:
+            self.echo(f"        plan usage limit hit by {rec.scope}/{rec.step}: superseded")
+            self._apply(
+                UsageLimited(
+                    at=self.ports.clock.now(), seq=rec.seq, resets_at=event.result.resets_at
+                )
+            )
 
     async def _check_reviewer_edits(
         self, key: StepKey, worktree: str, result: StepResult
@@ -561,7 +600,7 @@ class Orchestrator:
         else:
             verdict = core_gates.parse_verdict_text(verdict_text)
         readiness = self.p.stage(key.stage).gate_of_step(step.id).kind == "readiness"
-        if derive_outcome(step, result, verdict, readiness=readiness).outcome.value != "done":
+        if derive_outcome(step, result, verdict, readiness=readiness).outcome is not Outcome.DONE:
             return None
         try:
             if key.scope.startswith("story:"):
@@ -740,7 +779,9 @@ def _dump(verdict: Verdict) -> str:
     return json.dumps(verdict.model_dump(mode="json"), indent=2) + "\n"
 
 
-def format_status(state: RunState) -> str:
+def format_status(state: RunState, now: str | None = None) -> str:
+    """The run's status. The plan-usage-limit line shows while the run is paused (`now` before
+    `resume_at`) or after a limit episode escalated the run."""
     b = state.budget
     lines = [
         f"run {state.run_id}  kind={state.kind.value}  status={state.status.value}"
@@ -748,6 +789,15 @@ def format_status(state: RunState) -> str:
         f"{'  dry-run' if state.dry_run else ''}",
         f"budget: spent ${b.spent:.2f} reserved ${b.reserved:.2f} of ${b.limit:.2f}"
         f"{'  (exhausted)' if b.exhausted else ''}",
+    ]
+    paused = state.resume_at is not None and now is not None and now < state.resume_at
+    if paused or state.limit_exceeded:
+        lines.append(
+            f"plan usage limit: resume_at {state.resume_at or '-'}  "
+            f"episode since {state.limit_episode_start or '-'}"
+            f"{'  (exceeded usage_limit_max_wait_h)' if state.limit_exceeded else ''}"
+        )
+    lines += [
         "",
         f"{'scope':<28} {'stage':<14} {'status':<10} {'round':>5}  reason",
     ]

@@ -31,6 +31,9 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
   - Lint and format: `cd orchestrator && uv run ruff check && uv run ruff format --check`
   - Dry-run of the whole stage table with fake adapters: `cd orchestrator && uv run sdlc run --dry-run` (exit 0; prints every `claude -p` it would start and a temporary run dir)
   - Real run: `cd orchestrator && uv run sdlc run` runs real `claude -p`, `git` and `gh` (paid). A preflight first checks that `claude`, `git` and `gh` are on PATH, `gh auth status` passes, `origin` exists and the main checkout is clean; it exits 1 naming what is missing. State goes to `_bmad-output/sdlc/runs`; worktrees go to `../price-checker-worktrees/`.
+  - Real runs bill the Claude subscription: the preflight also exits 1 when `ANTHROPIC_API_KEY` or another API-key or provider credential is set (environment, or `env`/`apiKeyHelper` in a Claude settings file) unless `allow_api_key: true` (AD-23); keep "extra usage" credits off so a plan limit pauses the run instead of buying credits.
+  - Settings in `sdlc/pipeline.yaml` for subscription runs: `default_model`, `default_effort` (per stage: `model`, `effort`, `max_turns`), `usage_limit_wait_min`, `usage_limit_max_wait_h`, `allow_api_key`. A plan usage limit pauses the run; while paused, `sdlc status` prints `plan usage limit: resume_at …` (also after an episode escalated the run).
+  - Dry-run limit scenarios: `uv run sdlc run --dry-run --scenario usage-limit` (one pause, then exit 0) and `--scenario usage-limit-forever` (escalates with scope `run`, exit 2).
   - `uv run sdlc status [<run-id>]` and `uv run sdlc resume <run-id>`; pass `--runs-dir <dir>` for a dry-run's temporary dir.
   - Opt-in live test of one real `claude -p` call (about $0.05): `cd orchestrator && SDLC_LIVE=1 uv run pytest -q -m live`.
   - The stage table is `sdlc/pipeline.yaml`; prompts are `sdlc/prompts/*.md`; dry-run fixtures are `orchestrator/tests/fixtures/dryrun/`.

@@ -16,6 +16,7 @@ import tempfile
 from collections.abc import Awaitable, Sequence
 from pathlib import Path
 
+from sdlc.adapters.clock import SystemClock
 from sdlc.adapters.fake import FixtureBook, fake_ports
 from sdlc.adapters.real import preflight, real_ports
 from sdlc.app.loop import LoopError, Orchestrator, format_status
@@ -75,7 +76,9 @@ def _runs_dir(args: argparse.Namespace, repo: Path) -> Path:
 
 
 # Per-stage limits a resume may change; together with `settings` they are left out of the digest.
-LIMITS = frozenset({"title", "max_rounds", "timeout_min", "budget_usd", "model"})
+LIMITS = frozenset(
+    {"title", "max_rounds", "timeout_min", "budget_usd", "model", "effort", "max_turns"}
+)
 
 
 def stage_table_digest(pipeline: Pipeline) -> str:
@@ -129,13 +132,13 @@ def _run(args: argparse.Namespace, repo: Path) -> int:
     )
     assert orch.state is not None
     print()
-    print(format_status(orch.state))
+    print(format_status(orch.state, orch.ports.clock.now()))
     print(f"\nstatus: sdlc --runs-dir {runs_dir} status {orch.state.run_id}")
     return code
 
 
-def _preflight(repo: Path) -> bool:
-    problems = asyncio.run(preflight(repo))
+def _preflight(repo: Path, pipeline: Pipeline) -> bool:
+    problems = asyncio.run(preflight(repo, allow_api_key=pipeline.settings.allow_api_key))
     for problem in problems:
         print(f"sdlc: preflight: {problem}", file=sys.stderr)
     return not problems
@@ -152,10 +155,10 @@ async def _drive(ports: Ports, run: Awaitable[int]) -> int:
 def _run_real(
     args: argparse.Namespace, repo: Path, pipeline: Pipeline, pipeline_path: Path, digest: str
 ) -> int:
-    if not _preflight(repo):  # before the run dir exists
+    if not _preflight(repo, pipeline):  # before the run dir exists
         return 1
     runs_dir = _runs_dir(args, repo)
-    ports = real_ports(repo)
+    ports = real_ports(repo, pipeline.settings.allow_api_key)
     orch = Orchestrator(pipeline, ports, runs_dir, repo, repo / "sdlc" / "prompts")
     code = asyncio.run(
         _drive(
@@ -171,7 +174,7 @@ def _run_real(
     )
     assert orch.state is not None
     print()
-    print(format_status(orch.state))
+    print(format_status(orch.state, ports.clock.now()))
     print(f"\nstatus: sdlc status {orch.state.run_id}")
     return code
 
@@ -183,7 +186,7 @@ def _status(args: argparse.Namespace, repo: Path) -> int:
         print(f"sdlc: no runs in {runs_dir}", file=sys.stderr)
         return 1
     state = RunStore(runs_dir / run_id).load()
-    print(format_status(state))
+    print(format_status(state, SystemClock().now()))
     return 0
 
 
@@ -215,14 +218,14 @@ def _resume(args: argparse.Namespace, repo: Path) -> int:
         book = FixtureBook.from_scenario(state.fixtures or _fixtures(repo), state.scenario)
         ports = fake_ports(book, str(runs_dir))
     else:
-        if not _preflight(repo):
+        if not _preflight(repo, pipeline):
             return 1
-        ports = real_ports(repo)
+        ports = real_ports(repo, pipeline.settings.allow_api_key)
     orch = Orchestrator(pipeline, ports, runs_dir, repo, repo / "sdlc" / "prompts")
     code = asyncio.run(_drive(ports, orch.resume(args.run_id)))
     assert orch.state is not None
     print()
-    print(format_status(orch.state))
+    print(format_status(orch.state, ports.clock.now()))
     return code
 
 

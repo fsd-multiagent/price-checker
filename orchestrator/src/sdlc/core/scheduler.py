@@ -1,7 +1,8 @@
 """`decide(pipeline, state, inputs) -> actions`: what the loop does next. Pure (AD-1).
 
 Every action it returns changes the state once the app has carried it out, so the loop always
-makes progress. When nothing is runnable or running it returns `Finish` (AD-11).
+makes progress. When nothing is runnable, running or waiting it returns `Finish`; when the run
+only waits for `resume_at` it returns `Wait(until)` (AD-1, AD-11, AD-18).
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from sdlc.core.models import (
     TickInputs,
     UnblockUnit,
     Unit,
+    Wait,
 )
 from sdlc.core.stories import block_reason, serial_touches, waits_on
 
@@ -38,12 +40,13 @@ def step_cap(stage: Stage, kind: StepKind) -> float:
 
 
 def round_records(state: RunState, unit: Unit) -> dict[str, StepRecord]:
-    """The latest record of each step in the unit's current round; interrupted ones drop out."""
+    """The latest record of each step in the unit's current round. Interrupted and superseded
+    attempts drop out, so the step runs again in the same round (AD-6, AD-18)."""
     out: dict[str, StepRecord] = {}
     for r in state.steps:
         if r.scope == unit.scope and r.stage == unit.stage and r.round == unit.round:
             out[r.step] = r
-    return {k: r for k, r in out.items() if not r.interrupted}
+    return {k: r for k, r in out.items() if not r.interrupted and r.status is not Status.SUPERSEDED}
 
 
 def branch_for(stage: Stage, run_id: str, subject: str | None) -> str:
@@ -58,7 +61,13 @@ class _Tick:
         self.actions: list[Action] = []
         b = state.budget
         self.committed = b.spent + b.reserved
-        self.no_more_starts = b.exhausted
+        self.no_more_starts = state.halted
+        # AD-18: no step starts before resume_at.
+        self.limit_wait = (
+            state.resume_at is not None and inputs.now is not None and inputs.now < state.resume_at
+        )
+        # AD-11: once a step waits for budget, nothing queued after it starts in this tick.
+        self.budget_wait = False
         self.running_steps = {r.scope for r in state.steps if r.status is Status.RUNNING}
         self.story_slots = {
             u.scope
@@ -70,23 +79,34 @@ class _Tick:
             for u in state.units
         )
 
+    @property
+    def holding(self) -> bool:
+        """No step may start in this tick."""
+        return self.no_more_starts or self.limit_wait or self.budget_wait
+
     def fits(self, cap: float) -> bool:
-        if self.no_more_starts:
+        """AD-11: start, wait for running steps to release their reservations, or escalate."""
+        if self.holding:
             return False
-        if self.committed + cap > self.s.budget.limit + 1e-9:
-            self.no_more_starts = True
-            self.actions.append(
-                ExhaustBudget(
-                    reason=(
-                        f"run_budget_usd {self.s.budget.limit:.2f} reached: spent "
-                        f"{self.s.budget.spent:.2f}, reserved {self.s.budget.reserved:.2f}, "
-                        f"next cap {cap:.2f}"
-                    )
+        limit = self.s.budget.limit + 1e-9
+        if self.committed + cap <= limit:
+            self.committed += cap
+            return True
+        if self.s.budget.spent + cap <= limit:
+            # Only reservations block it, so some step is running (or starts in this tick).
+            self.budget_wait = True
+            return False
+        self.no_more_starts = True
+        self.actions.append(
+            ExhaustBudget(
+                reason=(
+                    f"run_budget_usd {self.s.budget.limit:.2f} reached: spent "
+                    f"{self.s.budget.spent:.2f}, reserved {self.s.budget.reserved:.2f}, "
+                    f"next cap {cap:.2f}"
                 )
             )
-            return False
-        self.committed += cap
-        return True
+        )
+        return False
 
 
 def decide(pipeline: Pipeline, state: RunState, inputs: TickInputs) -> tuple[Action, ...]:
@@ -116,9 +136,18 @@ def decide(pipeline: Pipeline, state: RunState, inputs: TickInputs) -> tuple[Act
             _running(t, u)
 
     if not t.actions and not t.running_steps:
-        all_done = all(u.status in DONE for u in state.units) and not state.budget.exhausted
-        t.actions.append(Finish(exit_code=0 if all_done else 2))
+        if t.limit_wait and not state.halted and _has_work(state):
+            assert state.resume_at is not None
+            t.actions.append(Wait(until=state.resume_at))  # waiting is not finished (AD-11)
+        else:
+            all_done = all(u.status in DONE for u in state.units) and not state.halted
+            t.actions.append(Finish(exit_code=0 if all_done else 2))
     return tuple(t.actions)
+
+
+def _has_work(state: RunState) -> bool:
+    """Some unit could still start or continue once the wait is over."""
+    return any(u.status in (Status.PENDING, Status.RUNNING) for u in state.units)
 
 
 def _next_learn(t: _Tick) -> Unit | None:
@@ -142,7 +171,7 @@ def _pending(t: _Tick, u: Unit, learn_next: Unit | None) -> None:
     if reason is not None:
         t.actions.append(BlockUnit(scope=u.scope, stage=u.stage, reason=reason))
         return
-    if t.no_more_starts or waits_on(t.p, t.s, u):
+    if t.holding or waits_on(t.p, t.s, u):
         return
     stage = t.p.stage(u.stage)
     if stage.family == "learn" and u is not learn_next:

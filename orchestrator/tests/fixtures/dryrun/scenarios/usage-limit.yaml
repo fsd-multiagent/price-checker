@@ -1,0 +1,4 @@
+# The first Developer attempt hits a plan usage limit (AD-18). The attempt is superseded, the
+# worktree is reset, the run pauses until resume_at, and a new attempt in the same round passes.
+steps:
+  "story:1-1-ean-input/dev/r1/a1": {result: results/usage-limit.json}

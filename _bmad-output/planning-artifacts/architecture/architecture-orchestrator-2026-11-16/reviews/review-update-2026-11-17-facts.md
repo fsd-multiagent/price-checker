@@ -75,8 +75,9 @@ Installed CLI is **2.1.326**, not 2.1.325 as the spine says (`claude --version`)
   - `You've hit your Opus limit` and `You've hit your Sonnet limit` matter when stages pin `--model`.
   - The usage-credits or org `… spend limit` / `… usage limit` variants.
 - The docs do not say whether a `-p` JSON result carries the text in `result` (with `is_error: true` on a `success` subtype) or in `errors` (with `error_during_execution`). The spine checks both, which is right. The case-insensitive pattern `hit your .* limit` is safer than a list of exact strings.
+- Binary check (2.1.326 `strings`): the message is built from a template, `` `You've hit your ${e}${n}` `` with an optional ` · progress saved` suffix. The binary also contains `You've hit your limit`, `You've hit your Fable limit` and `You've hit your fast limit`, and the usage-limit wait reads the `anthropic-ratelimit-unified-status: rejected` header. A fixed list of strings will miss variants.
 - **Fix:**
-  - Match case-insensitively on `you've hit your (session|weekly|opus|sonnet) limit` plus `hit your .*(spend|usage) limit`, across `result` and every `errors[]` entry.
+  - Prefer a generic case-insensitive `you've hit your .*limit`. Otherwise match on `you've hit your (session|weekly|opus|sonnet) limit` plus `hit your .*(spend|usage) limit`, across `result` and every `errors[]` entry.
   - Treat Opus or Sonnet limits as `limited`, or optionally retry on another model family.
   - Keep the live check in the open question, and add a recorded fixture once seen.
 

@@ -208,7 +208,9 @@ def with_budget(text: str, usd: int) -> str:
 
 
 async def test_matrix_budget_cap(tmp_path):
-    text = with_budget(pipeline_text(), 9)
+    # AD-11 (amended): reservations alone only make a step wait. A $4 ceiling escalates once a
+    # step's own cap ($5, architecture) cannot fit even with nothing running.
+    text = with_budget(pipeline_text(), 4)
     pipeline = load_pipeline(text)
     dr = make_dry_run(tmp_path, pipeline=pipeline)
     assert await run_dry(dr) == 2
@@ -222,7 +224,7 @@ async def test_matrix_budget_cap(tmp_path):
         if e["type"] == "step_started":
             caps[e["seq"]] = e["cap"]
             reserved += e["cap"]
-            assert spent + reserved <= 9 + 1e-9
+            assert spent + reserved <= 4 + 1e-9
         elif e["type"] == "step_finished":
             reserved -= caps[e["seq"]]
             spent += e["result"]["total_cost_usd"]
@@ -368,7 +370,7 @@ def test_cli_resume_refuses_a_renamed_stage(tmp_path, capsys):
 def test_cli_resume_refuses_an_exhausted_budget(tmp_path, capsys):
     runs = tmp_path / "runs"
     pipe = tmp_path / "pipeline.yaml"
-    pipe.write_text(with_budget(pipeline_text(), 9), "utf-8")
+    pipe.write_text(with_budget(pipeline_text(), 4), "utf-8")
     base = ["--repo", str(REPO), "--runs-dir", str(runs)]
     assert cli.main([*base, "run", "--dry-run", "--pipeline", str(pipe)]) == 2
     run_id = next(p.name for p in runs.iterdir())
@@ -382,7 +384,7 @@ def test_cli_resume_refuses_an_exhausted_budget(tmp_path, capsys):
 def test_cli_resume_after_raising_the_budget_proceeds(tmp_path, capsys):
     runs = tmp_path / "runs"
     pipe = tmp_path / "pipeline.yaml"
-    pipe.write_text(with_budget(pipeline_text(), 9), "utf-8")
+    pipe.write_text(with_budget(pipeline_text(), 4), "utf-8")
     base = ["--repo", str(REPO), "--runs-dir", str(runs)]
     assert cli.main([*base, "run", "--dry-run", "--pipeline", str(pipe)]) == 2
     run_id = next(p.name for p in runs.iterdir())

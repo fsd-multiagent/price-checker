@@ -2,9 +2,10 @@
 title: 'Zamolxe (Orchestrator) subscription limits, budget wait and credential preflight'
 type: 'feature'
 created: '2026-11-17'
-status: 'draft'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
+baseline_commit: 'eebae1f38fc0a970828f99792d2e6db6a49e8db0'
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-orchestrator-2026-11-16/ARCHITECTURE-SPINE.md'
   - '{project-root}/docs/adr/0005-orchestrator-subscription-limits-and-budget.md'
@@ -90,15 +91,15 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `core/models.py`, `core/pipeline.py` -- the new fields, enums, event and action; load validation for `effort` and `max_turns` (> 0).
-- [ ] `core/outcome.py`, `adapters/claude.py` -- `limited` detection; `--effort` and `--max-turns`; env stripping.
-- [ ] `core/state.py`, `core/scheduler.py` -- budget wait and FIFO, superseded records, `resume_at` and the episode, the waiting exit rule.
-- [ ] `ports.py`, `adapters/clock.py`, `adapters/fake/` -- `sleep_until`; the fake advances at once.
-- [ ] `app/loop.py` -- `Wait` handling, unparseable output as a step `error`, now in tick inputs.
-- [ ] `adapters/real.py`, `cli.py` -- the AD-23 preflight; resume digest; resume clears `resume_at`.
-- [ ] `sdlc/pipeline.yaml`, `tests/fixtures/dryrun/` -- the settings and the `usage-limit` scenario.
-- [ ] `orchestrator/tests/` -- one test per matrix row (`test_limits_<row>`); update tests whose expectation the amendments change.
-- [ ] `AGENTS.md` -- one line on the credential preflight and keeping extra-usage credits off.
+- [x] `core/models.py`, `core/pipeline.py` -- the new fields, enums, event and action; load validation for `effort` and `max_turns` (> 0).
+- [x] `core/outcome.py`, `adapters/claude.py` -- `limited` detection; `--effort` and `--max-turns`; env stripping.
+- [x] `core/state.py`, `core/scheduler.py` -- budget wait and FIFO, superseded records, `resume_at` and the episode, the waiting exit rule.
+- [x] `ports.py`, `adapters/clock.py`, `adapters/fake/` -- `sleep_until`; the fake advances at once.
+- [x] `app/loop.py` -- `Wait` handling, unparseable output as a step `error`, now in tick inputs.
+- [x] `adapters/real.py`, `cli.py` -- the AD-23 preflight; resume digest; resume clears `resume_at`.
+- [x] `sdlc/pipeline.yaml`, `tests/fixtures/dryrun/` -- the settings and the `usage-limit` scenario.
+- [x] `orchestrator/tests/` -- one test per matrix row (`test_limits_<row>`); update tests whose expectation the amendments change.
+- [x] `AGENTS.md` -- one line on the credential preflight and keeping extra-usage credits off.
 
 **Acceptance Criteria:**
 - AC-1: Given `uv run sdlc run --dry-run --scenario usage-limit`, when it runs, then it pauses once, resumes, and exits 0 with no escalation.
@@ -107,9 +108,44 @@ context:
 
 ## Implementation Notes
 
+- Detection: `adapters/claude.py` `flag_usage_limit` sets `StepResult.usage_limited` (and `resets_at`, parsed from "resets 3pm (Zone)") only on an error result; `core/outcome.py` returns `limited` first when that flag is set on an error result. The loop flags every agent result, including `error_adapter` ones, with the clock's `now`.
+- The app emits `UsageLimited(seq, resets_at)` after the `StepFinished` of a `limited` step. `StepFinished` closes the record as `superseded` and marks the scope for reset; `UsageLimited` sets `resume_at` and the episode.
+- Episode check: the run escalates (scope `run`, `RunState.limit_exceeded`) when `resume_at - limit_episode_start > usage_limit_max_wait_h`, because the episode lasts at least until `resume_at`.
+- Budget: `apply` recomputes `reserved` as the sum of running caps after every event. A step that does not fit only because of reservations waits; FIFO holds within the tick (units order), as AD-11 states.
+- Scenario attempts: fixture keys accept `/r<n>/a<k>` (k-th attempt in the round) for the `usage-limit` scenario.
+- `test_matrix_budget_cap` now uses a $4 ceiling (architecture's $5 cap cannot fit), because $9 no longer escalates under the amended AD-11.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+Pass 1 (2026-11-17). Reviewers: BH = Blind Hunter, VG = Verification Gap, EC = Edge Case Hunter.
+
+| # | Finding | Verdict | Evidence | Route |
+|---|---|---|---|---|
+| 1 | BH1, EC1: limit flagged in the adapters with the wall clock; the loop's flag is a no-op | medium | The early return in `flag_usage_limit` skips the loop call (T-5) | patch |
+| 2 | BH2, EC3: dated (weekly) resets misread; a bare hour is read as a time | high | `_RESETS` reads only hour and minute; "resets Nov 20, 3pm" becomes tomorrow | patch |
+| 3 | BH3, EC5: other limit wordings and the `\|<epoch>` form not matched | medium | Only "hit your <model> limit"; misses become failed rounds | patch |
+| 4 | EC4, VG-o2: an unknown or missing zone uses the machine's zone | medium | The VM is UTC; the message is in the user's zone | patch (return None, use the default wait) |
+| 5 | BH4: `sdlc resume` drops a wait that is still in force | low | Matches the agreed rule (spec matrix "Crash while waiting", AD-18, ADR 0005): resume is a deliberate owner action | reject (flagged to the owner) |
+| 6 | EC2: the fake attempt counter resets on resume | low | Dry-run only; seeding from state is a direct fix | patch |
+| 7 | BH5: any non-limited outcome should end the episode | false | AD-18 says the episode ends at the next `done` | reject |
+| 8 | EC6: a done step that started before the limit closes the episode | medium | Pushes back the max-wait escalation | patch |
+| 9 | BH6: no notification on pause; status line stays forever | medium | `notifier` is used only on escalation | patch |
+| 10 | BH7, EC10, EC11, EC12: preflight misses `CLAUDE_CONFIG_DIR` and managed settings; `USE_*=0` refused; env strip misses `inv.env`; credentials not stripped from agents | medium | `settings_files` paths; the strip applies to the parent env only | patch |
+| 11 | BH8: SUPERSEDED reachable by units and the run; a run escalation reason is overwritten | medium | A shared `TRANSITIONS` table; `_escalate_record` replaces the reason | patch |
+| 12 | BH9: a crash between StepFinished and UsageLimited loses the wait | medium | Two separate events | patch |
+| 13 | BH10: `_outcome` duplicates the outcome derivation for every step | low | Drift risk between two paths | patch |
+| 14 | EC8: a sibling's commit captures the limited attempt's files | false | AD-16 allows one writer per worktree in a parallel group | reject |
+| 15 | EC9: the limited attempt's patch is fed back as feedback | medium | `_scope_reset` appends every patch | patch |
+| 16 | EC7: a second run escalation opens no issue | medium | `_escalate_record` keeps the old issue | patch |
+| 17 | VG1: limit text on the unparseable-output path untested | high | Pre-verified | patch |
+| 18 | VG2: `SystemClock.sleep_until` untested | medium | Pre-verified | patch |
+| 19 | VG3: CLI-level `allow_api_key: true` untested | medium | Pre-verified | patch |
+| 20 | VG4, BH11: `parse_reset` branches untested; HOME not isolated in one test | medium | Pre-verified | patch |
+| 21 | VG5: status line during a pause untested | low | A cheap assertion | patch |
+| 22 | BH12: docs miss the new scenarios and settings | low | `AGENTS.md`, `pipeline.yaml` header | patch |
+| 23 | BH12b: the budget test change lacks an ADR in the diff | false | ADR 0005 and the spine amendment are committed in `5d654ee` and `2e8f09f` | reject |
 
 ## Verification
 

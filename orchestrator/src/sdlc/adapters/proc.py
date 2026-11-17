@@ -47,10 +47,12 @@ async def run_proc(
     *,
     cwd: str | os.PathLike[str] | None = None,
     env: Mapping[str, str] | None = None,
+    inherit_env: bool = True,
     stdin: str | None = None,
     timeout_s: float | None = None,
 ) -> ProcResult:
-    """Run `argv` and capture its output. `env` is merged over the parent environment.
+    """Run `argv` and capture its output. `env` is merged over the parent environment, or, with
+    `inherit_env=False`, is the whole environment.
 
     Raises AdapterError when the executable is missing. A timeout returns `timed_out=True`
     after the process group is killed.
@@ -58,7 +60,7 @@ async def run_proc(
     args = tuple(str(a) for a in argv)
     if not args:
         raise AdapterError("empty command")
-    full_env = {**os.environ, **(env or {})}
+    full_env = {**(os.environ if inherit_env else {}), **(env or {})}
     try:
         proc = await asyncio.create_subprocess_exec(
             *args,

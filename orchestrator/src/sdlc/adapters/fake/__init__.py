@@ -33,14 +33,23 @@ def _sha(seed: str) -> str:
 
 
 class FakeClock:
-    """Starts at a fixed instant and moves one second per call (T-5)."""
+    """Starts at a fixed instant and moves one second per call (T-5).
+
+    `sleep_until` returns at once and moves the clock to `until` (AD-1).
+    """
 
     def __init__(self, start: str = "2026-11-16T09:00:00Z") -> None:
         self._t = datetime.strptime(start, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        self.sleeps: list[str] = []
 
     def now(self) -> str:
         self._t += timedelta(seconds=1)
         return self._t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    async def sleep_until(self, until: str) -> None:
+        self.sleeps.append(until)
+        target = datetime.strptime(until, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        self._t = max(self._t, target)
 
 
 class FakeFs:
@@ -94,7 +103,10 @@ class FakeClaude:
         k = inv.key
         verdict_path = inv.env.get("SDLC_VERDICT_PATH")
         reviewer = inv.verdict_source is not None
-        entry = self.book.lookup(k.scope, k.step, k.round, "reviewer" if reviewer else "agent")
+        # The attempt comes from the run state, so a resumed run does not replay attempt 1.
+        entry = self.book.lookup(
+            k.scope, k.step, k.round, "reviewer" if reviewer else "agent", attempt=inv.attempt
+        )
         if entry.get("crash"):
             raise FakeCrash(f"simulated kill during {k.scope}/{k.step} r{k.round}")
         for rel, fixture in (entry.get("writes") or {}).items():

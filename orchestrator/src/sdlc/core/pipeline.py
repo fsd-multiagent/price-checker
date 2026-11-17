@@ -116,7 +116,7 @@ def _resolve_stage(raw: Any, index: int, earlier: list[Stage], settings: Setting
         raise PipelineError(f"{where}: stories_file is only allowed on a run-level stage")
     if not stage.entry:
         raise PipelineError(f"{where}: entry must list at least one run kind")
-    for field in ("max_rounds", "timeout_min"):
+    for field in ("max_rounds", "timeout_min", "max_turns"):
         value = getattr(stage, field)
         if value is not None and value <= 0:
             raise PipelineError(f"{where}: {field} must be greater than 0")
