@@ -31,6 +31,16 @@ tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
 }
 
+// AC 1.5.1, ADR 0009: the register and retailer config ship inside the artifact, so approval
+// cannot change without a build.
+tasks.processResources {
+    from("../docs/source-register.md") { into("registry") }
+    from("../config") {
+        include("*.yaml")
+        into("registry")
+    }
+}
+
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
 }
