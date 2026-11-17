@@ -1,0 +1,5 @@
+# Terraform working files and plan outputs (state and tfvars are ignored at the root).
+.terraform/
+crash.log
+tfplan
+tfplan.*
