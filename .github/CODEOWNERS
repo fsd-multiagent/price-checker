@@ -1,0 +1,11 @@
+# Files that decide what the agents may do and how their work is gated (ADR 0004, ADR 0021).
+# The owner chose to add this file; it takes effect only if "Require review from Code Owners" is
+# turned on in the ruleset for main. Turning it on stops auto-merge for every agent PR that
+# touches these paths until the owner approves it.
+/.github/CODEOWNERS @aserban-dev
+/.github/workflows/ @aserban-dev
+/AGENTS.md @aserban-dev
+/CLAUDE.md @aserban-dev
+/.claude/ @aserban-dev
+/sdlc/ @aserban-dev
+/orchestrator/ @aserban-dev

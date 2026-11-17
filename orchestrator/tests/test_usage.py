@@ -823,7 +823,7 @@ async def test_usage_learn_revert_is_recorded(tmp_path):
     log = (
         dr.runs_dir / dr.state.run_id / f"steps/{rec.seq}-{rec.scope}-{rec.step}.log"
     ).read_text()
-    assert "reverted on this learn branch" in log and "sdlc/pipeline.yaml" in log
+    assert "reverted on this branch" in log and "sdlc/pipeline.yaml" in log
     prompt = (PROMPTS / "knowledge-keeper.md").read_text()
     assert "sdlc/**" in prompt and "recommend" in prompt
 

@@ -633,7 +633,7 @@ def _limit_wait(p: Pipeline, d: dict[str, Any], at: str, resets_at: str | None) 
 
 
 def _paths_reverted(p: Pipeline, d: dict[str, Any], e: PathsReverted) -> None:
-    """Audit only: the learn branch's commit left these paths out (AD-24)."""
+    """Audit only: the commit put these paths back first (AD-24, ADR 0021)."""
 
 
 def _usage_warning(p: Pipeline, d: dict[str, Any], e: UsageWarning) -> None:

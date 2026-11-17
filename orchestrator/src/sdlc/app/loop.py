@@ -15,6 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from sdlc.adapters.claude import build_argv, flag_usage_limit
+from sdlc.adapters.commands import AGENTS_MD, BASE_REF, restore_commands_block
 from sdlc.adapters.git import commit_message
 from sdlc.core import gates as core_gates
 from sdlc.core.epics_parser import parse_epics
@@ -594,7 +595,8 @@ class Orchestrator:
         step_file = {**result.model_dump(mode="json", exclude={"result"}), "raw": result.raw}
         self.store.write_artifact(f"{base}.json", json.dumps(step_file, indent=2) + "\n")
         note = (
-            f"\n---\nreverted on this learn branch, not committed (AD-24): {', '.join(reverted)}\n"
+            f"\n---\nreverted on this branch, not committed (AD-24, ADR 0021): "
+            f"{', '.join(reverted)}\n"
             if reverted
             else ""
         )
@@ -675,16 +677,7 @@ class Orchestrator:
         if derive_outcome(step, result, verdict, readiness=readiness).outcome is not Outcome.DONE:
             return None, reverted
         try:
-            if key.scope.startswith("story:"):
-                await self.ports.git.restore_paths(worktree, self.p.settings.bookkeeping_paths)
-            elif key.scope.startswith("learn:"):  # AD-24: the pipeline changes only by owner PR
-                patterns = self.p.settings.learn_revert_paths
-                reverted = [
-                    path
-                    for path in await self.ports.git.changed_paths(worktree)
-                    if any(fnmatch.fnmatchcase(path, pat) for pat in patterns)
-                ]
-                await self.ports.git.restore_paths(worktree, patterns)
+            reverted = await self._pre_commit_guards(key.scope, worktree)
             assert self.state is not None
             sha = await self.ports.git.commit_all(
                 worktree, commit_message(self.state.run_id, key.scope, key.step, key.round)
@@ -693,6 +686,50 @@ class Orchestrator:
         except Exception as exc:
             self.echo(f"        commit failed: {exc!r}")
             return None, reverted
+
+    async def _pre_commit_guards(self, scope: str, worktree: str) -> list[str]:
+        """What every orchestrator commit on an agent branch runs first. Returns the paths it
+        put back, for the step log and the `paths_reverted` event.
+
+        - Story branches revert the bookkeeping paths to the scope head (AD-21), `AGENTS.md`
+          included, so the gate block cannot change there.
+        - Learn branches revert `learn_revert_paths` (AD-24).
+        - Every scope other than a story puts the `sdlc-commands` block back as it is on
+          `origin/main` (ADR 0021): planning, infra and learn PRs auto-merge.
+        """
+        if scope.startswith("story:"):
+            await self.ports.git.restore_paths(worktree, self.p.settings.bookkeeping_paths)
+            return []
+        reverted: list[str] = []
+        if scope.startswith("learn:"):
+            patterns = self.p.settings.learn_revert_paths
+            reverted = [
+                path
+                for path in await self.ports.git.changed_paths(worktree)
+                if any(fnmatch.fnmatchcase(path, pat) for pat in patterns)
+            ]
+            await self.ports.git.restore_paths(worktree, patterns)
+        what = await self._restore_gate_commands(worktree)
+        if what is not None:
+            reverted.append(AGENTS_MD)
+            self.echo(
+                f"        restored {AGENTS_MD} ({what}) from {BASE_REF} on {scope} (ADR 0021)"
+            )
+        return reverted
+
+    async def _restore_gate_commands(self, worktree: str) -> str | None:
+        """ADR 0021: put the `sdlc-commands` block back as it is on `origin/main`. Returns
+        what was restored (`"sdlc-commands block"` or `"whole file"`), or None."""
+        base = await self.ports.git.show(BASE_REF, AGENTS_MD)
+        if base is None:
+            return None
+        path = f"{worktree}/{AGENTS_MD}"
+        restored = restore_commands_block(self.ports.fs.read_text(path), base)
+        if restored is None:
+            return None
+        text, what = restored
+        self.ports.fs.write_text(path, text)
+        return what
 
     async def _run_script(
         self, key: StepKey, stage: Stage, step: Step, worktree: str
@@ -748,10 +785,15 @@ class Orchestrator:
                     self.ports.fs.write_text(
                         f"{worktree}/{SPRINT_STATUS}", render_sprint_status(self.p, state)
                     )
+                    reverted = await self._pre_commit_guards(key.scope, worktree)
                     head = await git.commit_all(
                         worktree, commit_message(state.run_id, key.scope, key.step, key.round)
                     )
-                    code, out = 0, f"rendered {SPRINT_STATUS}"
+                    code, out = (
+                        0,
+                        f"rendered {SPRINT_STATUS}"
+                        + (f"; reverted {', '.join(reverted)}" if reverted else ""),
+                    )
                 case _:
                     code, out = 1, f"unknown script {step.script}"
         except Exception as exc:

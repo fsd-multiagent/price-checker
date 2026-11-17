@@ -645,7 +645,9 @@ class UsageWarning(_Event):
 
 
 class PathsReverted(_Event):
-    """Audit: paths a learn branch reverted before committing step `seq` (AD-24)."""
+    """Audit: real paths put back before committing step `seq` on an agent branch: learn
+    branches revert `learn_revert_paths` (AD-24), and every non-story scope restores the
+    `sdlc-commands` block of `AGENTS.md` (ADR 0021)."""
 
     type: Literal["paths_reverted"] = "paths_reverted"
     scope: str

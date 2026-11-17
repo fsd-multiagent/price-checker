@@ -51,3 +51,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-orchestrator-usage-ledger.md`
   summary: Make `tests/test_real_adapters.py::test_real_no_required_checks` deterministic; it polls with a 0.01 s deadline and asserts more than one poll, so it fails now and then under load.
   evidence: Verification Gap review of the usage-ledger build, triage row 22; failed once in a full run, passed on reruns; pre-existing.
+- source_spec: `_bmad-output/implementation-artifacts/spec-gate-commands-owner-only.md`
+  summary: Non-story agent branches (planning, infra, learn) can still change what a gate command does without touching the `sdlc-commands` block, by editing `orchestrator/` (including the ADR 0021 guard), the test configuration or `.github/workflows/`, and their PRs auto-merge. Revert those paths on non-story branches, or accept the code-owner switch and its escalation cost.
+  evidence: Blind Hunter review of the gate guard; ADR 0021, Consequences, "Remaining gap".

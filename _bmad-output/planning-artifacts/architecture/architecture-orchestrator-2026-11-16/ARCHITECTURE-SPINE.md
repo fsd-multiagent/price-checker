@@ -345,6 +345,7 @@ stateDiagram-v2
   - Before every commit on a story branch, the orchestrator reverts changes to these paths.
   - Stage 9 runs one scope at a time, on `learn/<key>` cut from `origin/main` after the story is merged. Aglaia (Knowledge Keeper) works there, the orchestrator renders `sprint-status.yaml` from the state into the same branch, and the branch gets its own PR.
   - The epic retrospective joins the same queue once every story in the epic is merged.
+  - Before each orchestrator commit on a planning, infra or learn branch, including the sprint-status commit, the `sdlc-commands` block in `AGENTS.md` is put back as it is on `origin/main`. If the file, its section or the block is gone, the whole file is restored. The restore is recorded as the reverted path `AGENTS.md` (ADR 0021).
 
 ### AD-22 — One run at a time, and runs started from issues
 
