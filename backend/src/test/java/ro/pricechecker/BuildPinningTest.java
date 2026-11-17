@@ -113,6 +113,13 @@ class BuildPinningTest {
   }
 
   @Test
+  @Tag("S-12")
+  void s12_jsoupVersionIsPinnedAndListed() throws IOException {
+    String jsoup = group(read(BUILD), "\"org.jsoup:jsoup:([0-9.]+)\"");
+    assertThat(group(stackTable(), "\\| jsoup \\| ([^ |]+)")).isEqualTo(jsoup);
+  }
+
+  @Test
   void ac_1_1_1_foojayResolverVersionIsPinnedAndListed() throws IOException {
     String foojay =
         group(
