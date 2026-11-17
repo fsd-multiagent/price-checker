@@ -1,8 +1,8 @@
 # 0005. Run on the subscription: pause on plan limits, wait on budget reservations, refuse per-token credentials
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-17
-- **Deciders:** Loredan (Architect); owner approval pending
+- **Deciders:** Loredan (Architect); accepted by Adrian (owner), 2026-11-17
 - **Stage / story:** setup, orchestrator update before phase 1
 - **Rules touched:** D-2; orchestrator spine AD-1, AD-5, AD-6, AD-7, AD-8, AD-11, AD-18, AD-23; amends ADR 0002 (adds the `superseded` step status)
 
