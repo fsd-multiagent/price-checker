@@ -202,3 +202,9 @@ The round-3 `tests` gate failed with exit 1 (AD-18). Its step log showed `uv run
 - Follow-up review recommended: false (follow-up pass; no `high` patched; patched counts high 0, medium 0, low 1).
 - Verification: `uv run --directory orchestrator pytest -q` 286 passed, 2 skipped; `backend/gradlew -p backend check` exit 0; `npm --prefix web ci` exit 0; `npm --prefix web run check` exit 0 (30/30); after the patch `tests/test_real_adapters.py` 53 passed, 1 skipped, `ruff check` and `ruff format --check` clean.
 - Residual risk: the diff now touches an orchestrator test outside the story's listed files; `origin/main` may fix the same flake separately, which would produce a trivial merge conflict.
+
+### Round 5 (rebase fix)
+
+The round-4 `ci_green` gate failed: step `rebase` ended with exit 1, so `open_pr`, `ci_green` and `merge_pr` never ran (AD-18). Cause: `origin/main` had moved on to `d2ac9d2` (#18 to #24, among them story 2.1 adding the jsoup pin test). The story commit and #20 both appended a test at the same point in `BuildPinningTest.java`, so the rebase hit a content conflict there. The round-3 merge commit could not help, because a rebase replays the linear commits and drops merges. Fix: rebased the story branch onto `origin/main` and kept both tests (`s12_jsoupVersionIsPinnedAndListed` and `ac_1_3_2_spineStackTableListsThePinnedOpenApiGenerator`). The branch is now linear with no merge commit, and the orchestrator's rebase is a no-op. `ARCHITECTURE-SPINE.md` and `build.gradle.kts` merged on their own; the spine lists both jsoup 1.24.1 and OpenAPI Generator 7.27.0. No story logic changed.
+
+- Verification on the rebased branch: `uv run --directory orchestrator pytest -q` 325 passed, 2 skipped; `backend/gradlew -p backend check` exit 0; `npm --prefix web ci` exit 0; `npm --prefix web run check` exit 0 (30/30).
