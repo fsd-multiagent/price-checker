@@ -5,6 +5,7 @@ invariant that the ledger's cost sum equals `budget.spent`."""
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from urllib.parse import quote
 
@@ -373,7 +374,9 @@ def test_usage_every_agent_step_has_its_role(pipeline):
 
 
 def test_usage_warning(tmp_path):
-    text = pipeline_text().replace("run_budget_usd: 100", "run_budget_usd: 10", 1)
+    # Set the budget by pattern, whatever the owner configured (it changes over time).
+    text, n = re.subn(r"(?m)^(\s*run_budget_usd:\s*)\S+", r"\g<1>10", pipeline_text())
+    assert n == 1
     p = load_pipeline(text)
     runs = tmp_path / "runs"
     ports = fake_ports(FixtureBook(FIXTURES), str(runs))
