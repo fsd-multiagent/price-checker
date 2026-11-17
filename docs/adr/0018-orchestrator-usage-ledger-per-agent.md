@@ -1,4 +1,4 @@
-# 0006. Measure every agent step's usage in a ledger derived from the run state, with optional OpenTelemetry export
+# 0018. Measure every agent step's usage in a ledger derived from the run state, with optional OpenTelemetry export
 
 - **Status:** Proposed
 - **Date:** 2026-11-17
