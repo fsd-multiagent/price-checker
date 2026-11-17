@@ -92,6 +92,73 @@ run "ac_3_1_1_nsg_allows_only_80_and_443_and_no_ssh_from_internet" {
   }
 }
 
+run "ac_3_1_1_accepts_another_eu_region" {
+  command = plan
+
+  variables {
+    location = "northeurope"
+  }
+
+  assert {
+    condition     = azurerm_linux_virtual_machine.app.location == "northeurope" && azurerm_resource_group.main.location == "northeurope"
+    error_message = "The VM and resource group must follow the chosen EU region."
+  }
+}
+
+run "ac_3_1_1_custom_dns_label_reaches_public_ip" {
+  command = plan
+
+  variables {
+    dns_label = "pc-demo"
+  }
+
+  assert {
+    condition     = azurerm_public_ip.app.domain_name_label == "pc-demo"
+    error_message = "The dns_label variable must set the public IP DNS label Caddy gets a certificate for."
+  }
+}
+
+run "ac_3_1_1_rejects_invalid_dns_label" {
+  command = plan
+
+  variables {
+    dns_label = "Price_Checker"
+  }
+
+  expect_failures = [var.dns_label]
+}
+
+run "ac_3_1_1_web_ports_open_to_internet_over_tcp" {
+  command = plan
+
+  assert {
+    condition = length([
+      for r in azurerm_network_security_group.app.security_rule : r
+      if r.access == "Allow" && r.direction == "Inbound" && r.protocol == "Tcp" && r.source_address_prefix == "Internet" && contains(["80", "443"], r.destination_port_range)
+    ]) == 2
+    error_message = "NSG must allow inbound TCP 80 and 443 from the Internet for Caddy and ACME (S-13)."
+  }
+
+  assert {
+    condition = alltrue([
+      for r in azurerm_network_security_group.app.security_rule : r.priority < 4000
+      if r.access == "Allow"
+    ])
+    error_message = "Allow rules must sit above the SSH deny rule (priority 4000) so a JIT rule can be inserted (ADR 0018)."
+  }
+}
+
+# Resource IDs are unknown at plan time, so the subnet/NSG/NIC wiring is
+# checked statically in orchestrator/tests/test_infra_story_3_1.py.
+run "ac_3_1_1_vm_runs_ubuntu" {
+  command = plan
+
+  assert {
+    condition     = azurerm_linux_virtual_machine.app.source_image_reference[0].publisher == "Canonical"
+    error_message = "The VM must run Ubuntu (Linux)."
+  }
+}
+
 run "ac_3_1_2_vm_has_no_boot_diagnostics" {
   command = plan
 
