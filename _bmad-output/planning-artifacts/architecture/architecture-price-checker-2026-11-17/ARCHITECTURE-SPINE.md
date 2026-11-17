@@ -22,7 +22,7 @@ companions:
 
 # Architecture Spine — price-checker
 
-Author: Loredan (Architect), headless, run 20261117-174705-full, stage 4, round 1. Each AD names the ADR that records it (D-2).
+Author: Loredan (Architect), headless, run 20261117-174705-full, stage 4, round 2. Each AD names the ADR that records it (D-2).
 
 ## Design Paradigm
 
@@ -72,7 +72,7 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
 
 - **Binds:** FR-1 to FR-5, AD-16, api, web
 - **Prevents:** hand-written clients or handlers drifting from the contract.
-- **Rule:** `api/openapi.yaml` is the only contract: `GET /api/lookup?ean={ean}` → `LookupResponse`; `GET /api/status` → `StatusResponse` (per Approved retailer: `retailerId`, `retailerName`, `enabled` (adapter enabled and fetching allowed), `blocked`; no prices). Spring interfaces and the TypeScript client are generated in the build, never committed or edited. Generated DTOs live in `api` only; `lookup` returns domain types that `api` maps.
+- **Rule:** `api/openapi.yaml` is the only contract: `GET /api/lookup?ean={ean}` → `LookupResponse`; `GET /api/status` → `StatusResponse` (per Approved retailer: `retailerId`, `retailerName`, `enabled` (adapter enabled and fetching allowed), `blocked`, optional `notBefore` (AD-6); no prices). Spring interfaces and the TypeScript client are generated in the build, never committed or edited. Generated DTOs live in `api` only; `lookup` returns domain types that `api` maps.
 
 ### AD-4 — The server decides; the web app formats (ADR 0007)
 
@@ -99,9 +99,10 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
   2. fetching is `allowed` in `runtime.yaml` and `BlockStore` reports no active Block (AD-9);
   3. the URL is `https` on the retailer's register domain or `www.` of it (redirects to any other host refused);
   4. robots.txt allows the path for our user agent — robots.txt is loaded single-flight, cached 24 h, and a 5xx or unparseable file disallows everything (RFC 9309);
-  5. a rate-limit and concurrency permit is free before the deadline; every attempt, redirect and robots.txt fetch takes a permit; otherwise fail fast → `UNAVAILABLE` (S-5).
+  5. `BlockStore.notBefore(retailer)` is not in the future (see 429 below);
+  6. a rate-limit and concurrency permit is free before the deadline; every attempt, redirect and robots.txt fetch takes a permit; otherwise fail fast → `UNAVAILABLE` (S-5).
 
-  It sends one fixed user agent containing the contact URL (no `bot`, `robot`, `crawl`, `spider`), no cookies, no login. It retries only timeouts and 5xx, at most 2 times, with exponential backoff inside the deadline; on 429 it honors `Retry-After` within the deadline; on 403 or a recognized challenge page it calls `BlockStore.record` and does not retry. It stamps `fetchedAt` from the injected `Clock`.
+  It sends one fixed user agent containing the contact URL, no cookies, no login. At start it builds the full user agent (contact URL from config included) and refuses to start if the contact URL is missing or the string contains `bot`, `robot`, `crawl` or `spider` in any case. It retries only timeouts and 5xx, at most 2 times, with exponential backoff inside the deadline. On 429 it calls `BlockStore.recordRetryAfter(retailer, now + Retry-After)` (delta-seconds or HTTP-date; missing or unparseable → 60 s); if that time is within the request's deadline it waits and retries once, otherwise the row is `UNAVAILABLE`. `BlockStore.notBefore(retailer)` is the later of the value persisted in `blocks.json` (survives restarts) and `runtime.yaml` `notBefore` (a 429 the Health check runner saw, AD-16); a later 429 never moves it earlier. Until it passes, every request to that retailer, from any Lookup or the Health check, is refused without sending (`UNAVAILABLE`, not cached, not a Block). On 403 or a recognized challenge page it calls `BlockStore.record` and does not retry. It stamps `fetchedAt` and computes `notBefore` from the injected `Clock`. A stub-server test covers each refusal, including a second Lookup inside a long `Retry-After` sending nothing.
 
   Outcome mapping (one table for all adapters):
 
@@ -110,9 +111,10 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
   | 200, product facts found | adapter → `Found` | `FOUND` (no price if price missing, null or non-RON) |
   | 200, page has no recognizable product facts | adapter → `Unavailable(UNPARSEABLE)` | `UNAVAILABLE` |
   | 404 or 410 on the curated URL | fetch → adapter → `NotFound` | `NOT_FOUND` |
-  | timeout, 5xx after retries, refused permit, 429 past the deadline | fetch → `Unavailable` | `UNAVAILABLE` |
+  | timeout, 5xx after retries, refused permit | fetch → `Unavailable` | `UNAVAILABLE` |
   | 403, challenge page (generic markers in `fetch`), robots.txt disallows the path | fetch → `BlockStore.record` | `UNAVAILABLE` (Block, AC-11.1) |
-  | 429 within the deadline | fetch backs off; not a Block (AC-11.4) | as the retry ends |
+  | 429 | fetch sets `notBefore`; waits and retries once only if `notBefore` is within the deadline; not a Block (AC-11.4) | as the retry ends, else `UNAVAILABLE` |
+  | any request while `notBefore` is in the future | fetch refuses, sends nothing | `UNAVAILABLE` |
 
 ### AD-7 — Adapter contract (ADR 0012)
 
@@ -124,7 +126,7 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
 
 - **Binds:** FR-9, AC-2.1, AC-9.1 to 9.4, AC-10.1, S-1
 - **Prevents:** a runtime file, flag or env var enabling a non-Approved retailer (AC-9.3).
-- **Rule:** The build copies `docs/source-register.md` into the backend artifact. One parser in `registry` reads `Domain` and `Status`; Approved only if Status matches `Approved YYYY-MM-DD`; any parse error approves nothing. The Result rows of a Lookup are exactly the `retailers.yaml` entries whose domain is Approved; an Approved retailer whose adapter is disabled gets a `DISABLED` row. A backend test fails when an entry with `adapter: enabled` is not Approved, an Approved retailer has no entry, `resolution` is missing or not in {`search`, `catalog`, `curated`}, or the rate limit is looser than the register's Limits column. Approval or retirement takes effect at the next deploy; the Kill switch is the immediate stop.
+- **Rule:** The build copies `docs/source-register.md` into the backend artifact. One parser in `registry` reads `Domain` and `Status`; Approved only if Status matches `Approved YYYY-MM-DD`; any parse error approves nothing. The Result rows of a Lookup are exactly the `retailers.yaml` entries whose domain is Approved; an Approved retailer whose adapter is disabled gets a `DISABLED` row. A backend test fails when an entry with `adapter: enabled` is not Approved, an Approved retailer has no entry, `resolution` is missing or not in {`search`, `catalog`, `curated`}, the rate limit or the concurrency is looser than the register's Limits column, or that Limits value cannot be parsed. Approval or retirement takes effect at the next deploy; the Kill switch is the immediate stop.
 
 ### AD-9 — Three config files, one writer each (ADR 0009)
 
@@ -136,10 +138,10 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
   |---|---|---|---|---|
   | `config/retailers.yaml` | repo, in the artifact | developers, by PR | per retailer: `id` (register domain), `name`, `adapter: enabled\|disabled`, `resolution`, rate limit, concurrency, `deadlineMs` | start |
   | `config/known-eans.yaml` | repo, in the artifact | developers, by PR | per retailer id: list of `{ ean, url }` | start |
-  | `runtime.yaml` | VM `/opt/price-checker/config/` | `kill-switch` workflow (write temp file, then `mv`) | per retailer: `fetching: allowed\|stopped`, `clearGeneration` (integer) | polled every 15 s |
-  | `blocks.json` | VM volume `/opt/price-checker/state/` | backend `registry.BlockStore` only (whole-map atomic write) | per retailer: `blockGeneration`, `blockedAt`, reason | start; then in memory |
+  | `runtime.yaml` | VM `/opt/price-checker/config/` | `kill-switch` workflow (write temp file, then `mv`) | per retailer: `fetching: allowed\|stopped`, `clearGeneration` (integer), optional `runnerBlock: { blockedAt, reason }`, optional `notBefore` (runner 429) | polled every 15 s |
+  | `blocks.json` | VM volume `/opt/price-checker/state/` | backend `registry.BlockStore` only (whole-map atomic write) | per retailer: `blockGeneration`, `blockedAt`, reason, `notBefore` | start; then in memory |
 
-  "Kill switch off" in the PRD means `fetching: stopped`. A retailer missing from `runtime.yaml` is stopped. An unparseable `runtime.yaml` keeps the last good settings and logs an error; with none since start, all are stopped. `BlockStore.record` sets `blockGeneration` = current `clearGeneration`; a Block is active while `blockGeneration >= clearGeneration`; `clear-block` increments `clearGeneration`. Only `BlockStore` reads or writes `blocks.json`.
+  "Kill switch off" in the PRD means `fetching: stopped`. A retailer missing from `runtime.yaml` is stopped. An unparseable `runtime.yaml` keeps the last good settings and logs an error; with none since start, all are stopped. `BlockStore.record` re-reads `runtime.yaml` and sets `blockGeneration` = the larger of the polled and the file's `clearGeneration`, so a `clear-block` that has not been polled yet cannot cancel a new Block. Each `kill-switch` action changes only its own field for its own retailer and keeps every other field (`runnerBlock`, `clearGeneration`, `notBefore` included); the kill-switch script holds `flock` on the VM around read, edit and `mv`, then re-reads to verify its write; deploy never writes `runtime.yaml` (script tests check all three, including two concurrent actions). A Block is active while `blockGeneration >= clearGeneration` **or** `runnerBlock` is present for the retailer (a Block the Health check saw, AD-16); `BlockStore.isBlocked` answers both, so the fetch client, `lookup` and `/api/status` see one flag. `clear-block` increments `clearGeneration` and removes `runnerBlock`; it is the only way either kind of Block ends (AC-11.1). Only `BlockStore` reads or writes `blocks.json`.
 
 ### AD-10 — Row status precedence and normalization (ADR 0011)
 
@@ -169,19 +171,20 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
 
 - **Binds:** NFR-5, AC-N3.7, AC-N5.2, AC-11.2, C-9, S-7, S-9
 - **Prevents:** IPs, client user agents, raw user input or page content reaching a log.
-- **Rule:** Application events go through `LookupLog` only: JSON lines on stdout with `ts`, `level`, `event`, `ean` (a validated `Ean` only), `retailer`, `outcome` (enum), `durationMs`. A rejected input logs `event=ean_rejected` and the `code`, never the input. Exceptions log their type, not their message. Tomcat access logs off; Caddy has no access log and its own logs drop `remote_ip`, headers and URI. Blocks log at `WARN`.
+- **Rule:** Application events go through `LookupLog` only: JSON lines on stdout with `ts`, `level`, `event`, `ean` (a validated `Ean` only), `retailer`, `outcome` (enum), `durationMs`. A rejected input logs `event=ean_rejected` and the `code`, never the input. Exceptions log their type, not their message. Tomcat access logs off; Caddy has no access log and its own logs drop `remote_ip`, headers and URI. Blocks log at `WARN`. Platform logs that could hold client IPs stay off: no NSG flow logs, and no network diagnostics on the VM (Pacala (DevOps), stage 6).
 
 ### AD-15 — Deployment and operations (ADR 0015) [ADOPTED spec §10, I-1 to I-9]
 
 - **Binds:** NFR-7, FR-7, I-1 to I-9, S-8, S-10, S-13
 - **Prevents:** a second environment, hand changes, or ops actions needing SSH by a person or agent.
-- **Rule:** One `prod` environment: one Azure Linux VM in an EU region with Docker Compose services `proxy` (Caddy 2, automatic HTTPS, port 80 redirects, `/api/*` → `backend:8080`, else → `web:8080`, `/data` on a volume), `web` (static SPA) and `backend`. Images built by GitHub Actions, pushed to GHCR, tagged with the git SHA, pulled with the workflow's short-lived `GITHUB_TOKEN` (logged out after). Only GitHub Actions reaches the VM by SSH: `deploy` (on merge to `main`) and `kill-switch` (workflow_dispatch: retailer, `allow` / `stop` / `clear-block`). Same origin for web and API; no CORS.
+- **Rule:** One `prod` environment: one Azure Linux VM in an EU region with Docker Compose services `proxy` (Caddy 2, automatic HTTPS, port 80 redirects, `/api/*` → `backend:8080`, else → `web:8080`, `/data` on a volume), `web` (static SPA) and `backend`. Images built by GitHub Actions, pushed to GHCR, tagged with the git SHA, pulled with the workflow's short-lived `GITHUB_TOKEN` (logged out after). Only GitHub Actions reaches the VM by SSH: `deploy` (on merge to `main`) and `kill-switch` (workflow_dispatch for the operator: retailer, `allow` / `stop` / `clear-block`; and workflow_call for `health-check` only: retailer, `runner-block` with reason, or `runner-retry-after` with a time). Same origin for web and API; no CORS. How SSH is restricted (key-only sshd, a deploy user limited to the deploy and kill-switch commands, and the NSG rule for GitHub-hosted runners: opened just in time through OIDC, or a recorded accepted risk) is Pacala's (DevOps) stage 6 decision, recorded in an ADR.
 
 ### AD-16 — Health check: backend in `health` mode on a GitHub runner (ADR 0016)
 
 - **Binds:** FR-8, AC-8.1 to 8.7, AC-11.2, I-10, T-3, T-6
-- **Prevents:** a health check that skips fetch-client rules, hides a production Block, or is masked by a cache.
-- **Rule:** `.github/workflows/health-check.yml` (daily cron and workflow_dispatch) reads production `GET /api/status` with `curl` (fails if unreachable), fails every `blocked` retailer, and writes a runner `runtime.yaml` with `fetching: allowed` only for `enabled` ones. It then runs the backend built from `main` with the `health` profile: no web server, a no-op cache, an empty `blocks.json`, the same `lookup` core, register and fetch client. It checks every Known EAN is `FOUND` with price, availability and URL, and robots.txt for every adapter path; it writes a report (retailer, EAN, missing fact) and the stripped page (T-2), and exits non-zero on any failure. The workflow then opens or updates one `adapter-broken` issue per failing retailer with `gh`.
+- **Prevents:** a health check that skips fetch-client rules, hides a production Block, forgets a Block it saw, or is masked by a cache.
+- **Rule:** `.github/workflows/health-check.yml` (daily cron at 04:00 Europe/Bucharest, and workflow_dispatch) reads production `GET /api/status` with `curl` (fails if unreachable). It fails, without fetching, every retailer that is `blocked` or has an open `adapter-broken` issue labelled `blocked` (a second record in case a hand-off failed). It writes a runner `runtime.yaml` with `fetching: allowed` only for the other `enabled` ones, copying each retailer's `notBefore`, so the runner's fetch client also waits out a production `Retry-After` (that retailer is reported as skipped, not failed). It then runs the backend built from `main` with the `health` profile: no web server, a no-op cache, a fresh `blocks.json` (production Blocks already came through `/api/status`), the same `lookup` core, register and fetch client, with each retailer's rate interval doubled and concurrency 1 so the run leaves room for production traffic. It checks every Known EAN is `FOUND` with price, availability and URL, and robots.txt for every adapter path; it writes a report (retailer, EAN, missing fact, `blocked` flag) and the page passed through `fetch.PageStripper` (T-2), and exits non-zero on any failure. The hand-off is a separate job (`needs` the check job, `if: always()`), the only one holding the deploy secret; it reads the runner's `blocks.json` artifact, which `BlockStore` writes at the moment of each Block or 429, not the report, so it works even if the backend crashed later. For every retailer with a Block it calls `kill-switch` with `runner-block`, so production stops within one poll and every later run fails that retailer until an operator runs `clear-block` (AC-11.1, AC-11.2). For every retailer with a future `notBefore` it calls `runner-retry-after`, so production waits too (AC-11.4). Then, with `if: always()`, it opens or updates one `adapter-broken` issue per failing retailer with `gh`, labelled `blocked` for a Block, including when the hand-off failed. A missing or unparseable runner `blocks.json` or report fails the job and opens an issue for the operator. Any failed step fails the job.
+- **Stripping:** `fetch.PageStripper` is the one function that turns a fetched page into an uploadable fixture: it removes `<script>` except JSON-LD product data, `<style>`, images and `srcset`, iframes, comments, and description text beyond 200 characters; a unit test proves it (S-7, T-2).
 
 ## Consistency Conventions
 
@@ -245,6 +248,7 @@ flowchart TB
   gha["GitHub Actions"] -->|SSH deploy key: deploy, kill-switch| vm
   gha -->|health mode, fetch client| retailers
   gha -->|GET /api/status| proxy
+  gha -->|runner Block: kill-switch runner-block| vm
   gha -->|push images| ghcr[("GHCR")]
 ```
 
@@ -286,7 +290,7 @@ sequenceDiagram
 | FR-8 health check | `health`, `health-check` workflow | AD-16 |
 | FR-9 compliance gate | `registry`, `fetch`, register test | AD-6, AD-8 |
 | FR-10 EAN resolution | `lookup`, `config/known-eans.yaml` | AD-10, AD-12 |
-| FR-11 Block | `fetch`, `registry.BlockStore` | AD-6, AD-9 |
+| FR-11 Block | `fetch`, `registry.BlockStore`, `kill-switch` `runner-block` | AD-6, AD-9, AD-16 |
 | NFR-1 responsiveness | `lookup` | AD-11 |
 | NFR-2 accuracy | `extract`, `lookup` | AD-7, AD-10 |
 | NFR-3 polite fetching | `fetch` | AD-6 |
@@ -297,7 +301,7 @@ sequenceDiagram
 
 ## Deferred
 
-- **Exact versions** — the scaffold story pins them after a web check, including a Spring Boot 4 + OpenAPI Generator compatibility spike.
+- **Exact versions** — the scaffold story pins exact library versions and container base images (Temurin, Node, Caddy) by digest or exact tag after a web check, including a Spring Boot 4 + OpenAPI Generator compatibility spike; stage 7 checks it (S-12).
 - **Azure region, VM size, DNS label** — Pacala (DevOps), within I-3 and I-8; bound: EU region and a DNS name Caddy can get a certificate for.
 - **Secret and vulnerability scanners** — Pacala (DevOps) at stage 6; thresholds fixed in ADR 0014 (high and critical fail).
 - **Search or catalog resolution** — needs a register row first (AD-12).

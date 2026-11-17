@@ -21,7 +21,7 @@ The API is contract-first (C-3) with a generated client (C-W1). The lowest-price
 
 ## Decision
 
-Option A with integer bani. `GET /api/lookup?ean=` returns `LookupResponse { ean, rows[] }`; each `ResultRow` has `retailerId`, `retailerName`, `status`, `priceMinor?`, `availability?`, `url?`, `fetchedAt?` (ISO-8601 UTC), `lowest`. `GET /api/status` lists each Approved retailer with two booleans, `enabled` and `blocked`, and no prices. Generated DTOs stay in `api`; `lookup` returns domain types. Validation errors are RFC 9457 problem+json with `code` ∈ {`EAN_EMPTY`, `EAN_NON_DIGIT`, `EAN_LENGTH`, `EAN_CHECK_DIGIT`}. The same validation rule is implemented in `ean.Ean` and `web/src/ean.ts`, and both run the shared cases in `api/ean-cases.json` (T-7).
+Option A with integer bani. `GET /api/lookup?ean=` returns `LookupResponse { ean, rows[] }`; each `ResultRow` has `retailerId`, `retailerName`, `status`, `priceMinor?`, `availability?`, `url?`, `fetchedAt?` (ISO-8601 UTC), `lowest`. `GET /api/status` lists each Approved retailer with two booleans, `enabled` and `blocked`, an optional `notBefore` (ISO-8601 UTC; the time until which a `Retry-After` holds requests, ADR 0008), and no prices. Generated DTOs stay in `api`; `lookup` returns domain types. Validation errors are RFC 9457 problem+json with `code` ∈ {`EAN_EMPTY`, `EAN_NON_DIGIT`, `EAN_LENGTH`, `EAN_CHECK_DIGIT`}. The same validation rule is implemented in `ean.Ean` and `web/src/ean.ts`, and both run the shared cases in `api/ean-cases.json` (T-7).
 
 ## Consequences
 

@@ -25,6 +25,7 @@ Option A. Fields: `ts`, `level`, `event`, `ean`, `retailer`, `outcome`, `duratio
 
 - No traffic analytics (none wanted: AC-N5.4).
 - Debugging relies on outcomes and the Health check report.
+- Platform logs that could hold client IPs stay off: no Azure NSG flow logs and no network diagnostics on the VM (ADR 0015).
 
 ## Compliance
 

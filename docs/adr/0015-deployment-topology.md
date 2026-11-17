@@ -20,13 +20,14 @@ Spec §10 and I-1 to I-9 fix one Azure Linux VM in the EU, Docker Compose with w
 
 ## Decision
 
-Option A. Services: `proxy` (Caddy 2, `/api/*` → `backend:8080`, else → `web:8080`, port 80 redirects, `/data` on a volume so certificates persist), `web` (static build), `backend` (one instance, `runtime.yaml` and `blocks.json` mounted). The VM pulls images using the workflow's short-lived `GITHUB_TOKEN`, logs out afterwards and stores no token. Workflows: `ci`, `terraform-plan` (I-2), `deploy` (on merge to `main`), `kill-switch` (workflow_dispatch: retailer, `allow` / `stop` / `clear-block`; rewrites `runtime.yaml` only, through a temp file and `mv`), `health-check` (ADR 0016).
+Option A. Services: `proxy` (Caddy 2, `/api/*` → `backend:8080`, else → `web:8080`, port 80 redirects, `/data` on a volume so certificates persist), `web` (static build), `backend` (one instance, `runtime.yaml` and `blocks.json` mounted). The VM pulls images using the workflow's short-lived `GITHUB_TOKEN`, logs out afterwards and stores no token. Workflows: `ci`, `terraform-plan` (I-2), `deploy` (on merge to `main`), `kill-switch` (workflow_dispatch for the operator: retailer, `allow` / `stop` / `clear-block`; workflow_call for `health-check` only: retailer, `runner-block` with reason or `runner-retry-after` with a time; each action changes only its own field for its own retailer, keeps every other field, and rewrites `runtime.yaml` only, holding `flock` on the VM around read, edit, temp file and `mv`, then re-reads to verify its write; deploy never writes `runtime.yaml`), `health-check` (ADR 0016).
 
 ## Consequences
 
 - No staging environment; CI uses stubs (T-3, T-4).
 - Region, VM size and DNS label are Pacala's (DevOps) choice within I-3 and I-8.
-- The NSG keeps 80, 443 public and SSH from the deploy source only (I-3).
+- The NSG keeps 80, 443 public and SSH from the deploy source only (I-3). GitHub-hosted runners use large, changing IP ranges, so Pacala (DevOps) fixes the mechanism at stage 6 in an ADR: key-only sshd (no passwords, no root login), a deploy user limited by forced command to the deploy and kill-switch scripts, and either an NSG rule the workflow opens just in time through OIDC and closes afterwards, or an accepted risk recorded by the owner.
+- No NSG flow logs and no network diagnostics on the VM, since they would hold client IPs (S-9, ADR 0017).
 
 ## Compliance
 
