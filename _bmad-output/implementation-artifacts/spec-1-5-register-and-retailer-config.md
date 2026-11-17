@@ -142,3 +142,10 @@ EAN validity in `registry` uses a private GS1 check (8 or 13 digits) because `re
 - **Follow-up review recommended:** true. Two medium entries were patched; the unverified risk is that ceil-rounded intervals and distinct-EAN counting are checked only by the new unit tests.
 - **Verification:** `backend/gradlew -p backend check` passes: BUILD SUCCESSFUL, 90 tests, 0 failed or skipped, spotless clean.
 - **Residual risks:** CI and the gate do not run the backend tests yet (deferred, high). Approving a retailer will stop startup until two known EANs are added for it; this is intended, but it is a tripwire.
+
+### Round 3 (run `20261117-174705-full`, build/dev)
+
+- **Status of this round:** done. The story code is unchanged and the spec stays `done`.
+- **Feedback addressed:** `tests` gate blockers `dev-outcome`, `qa-missing`, `tests-missing` (AD-18). All three came from round 2's dev step ending `blocked` on an orchestrator defect outside the story (`gh pr merge --auto` refused on a PR in clean status, `orchestrator/src/sdlc/adapters/gh.py` `merge`). That defect is still on `origin/main` and needs an owner fix; the story branch cannot change the running orchestrator.
+- **Change:** merged `origin/main` (a573868, web check added to the `sdlc-commands` `tests` block) so the branch's `AGENTS.md` block matches `origin/main` (T-8, ADR 0021).
+- **Verification:** `uv run --directory orchestrator pytest -q` 286 passed, 2 skipped; `backend/gradlew -p backend check` BUILD SUCCESSFUL; `npm --prefix web ci` and `npm --prefix web run check` pass (22 tests).
