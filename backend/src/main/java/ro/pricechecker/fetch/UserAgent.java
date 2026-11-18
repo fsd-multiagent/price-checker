@@ -14,6 +14,8 @@ public final class UserAgent {
   /** cel.ro's robots.txt blocks agents containing these words, in any case (S-6). */
   static final List<String> FORBIDDEN_WORDS = List.of("bot", "robot", "crawl", "spider");
 
+  private static final String PRODUCT_TOKEN = "price-checker";
+
   private final String value;
 
   private UserAgent(String value) {
@@ -50,7 +52,7 @@ public final class UserAgent {
         || !(scheme.equals("http") || scheme.equals("https"))) {
       throw new IllegalStateException("price-checker.contact-url must be an absolute http(s) URL");
     }
-    String value = "price-checker/" + version.strip() + " (+" + contact + ")";
+    String value = PRODUCT_TOKEN + "/" + version.strip() + " (+" + contact + ")";
     if (!value.chars().allMatch(c -> c >= 0x20 && c <= 0x7e)) {
       throw new IllegalStateException("user agent must be printable ASCII");
     }
@@ -61,6 +63,11 @@ public final class UserAgent {
       }
     }
     return new UserAgent(value);
+  }
+
+  /** The product token robots.txt groups are matched against (RFC 9309 §2.2.1). */
+  public String productToken() {
+    return PRODUCT_TOKEN;
   }
 
   public String value() {

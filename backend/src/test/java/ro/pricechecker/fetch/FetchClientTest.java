@@ -41,7 +41,8 @@ class FetchClientTest {
   private FetchClient client(Registry registry, String... allowed) {
     RuntimeSwitch runtime = TestRegistries.runtimeAllowing(clock, allowed);
     assertThat(runtime.refresh()).isEmpty();
-    return new FetchClient(registry, runtime, transport, clock, sleeper, UA);
+    return new FetchClient(
+        registry, runtime, transport, clock, sleeper, UA, RobotsTest.allowAll(clock));
   }
 
   /** a.example: 10 ms interval, concurrency 1, 4 s deadline; fetching allowed for all three. */

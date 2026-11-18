@@ -23,9 +23,14 @@ import ro.pricechecker.registry.RuntimeSwitch;
  * {@link BoundHttp} for its retailer id and cannot name another host. Before every attempt
  * (redirect hops and retries included) it sends nothing unless the retailer is Approved, its
  * adapter is enabled, fetching is allowed, the URL is {@code https} on the register domain or
- * {@code www.} of it (port 443, no userinfo), and a rate and concurrency permit is free before the
- * deadline. Only timeouts and 5xx are retried, at most {@value #MAX_RETRIES} times with backoff
- * inside the deadline; headers, user agent and route never change on a retry (S-6).
+ * {@code www.} of it (port 443, no userinfo), the host's robots.txt allows the path for the product
+ * token (S-4), and a rate and concurrency permit is free before the deadline. robots.txt is loaded
+ * on a host's first request through the same gate and permits, never retried, and kept per host for
+ * 24 h; it fails closed (RFC 9309): a disallowed path or an unparseable file gives {@code
+ * Unavailable(BLOCKED)}, an unreachable one (5xx, 429, timeout, I/O error, off-host or too many
+ * redirects, no permit) gives {@code Unavailable(REFUSED)} and is not kept. Only timeouts and 5xx
+ * are retried, at most {@value #MAX_RETRIES} times with backoff inside the deadline; headers, user
+ * agent and route never change on a retry (S-6).
  */
 public final class FetchClient {
 
@@ -41,6 +46,8 @@ public final class FetchClient {
   private final Clock clock;
   private final Sleeper sleeper;
   private final String userAgent;
+  private final String productToken;
+  private final RobotsCache robots;
   private final Map<String, RetailerConfig> configs = new HashMap<>();
   private final Map<String, RetailerLimiter> limiters = new HashMap<>();
 
@@ -51,12 +58,26 @@ public final class FetchClient {
       Clock clock,
       Sleeper sleeper,
       UserAgent userAgent) {
+    this(registry, runtimeSwitch, transport, clock, sleeper, userAgent, new RobotsCache(clock));
+  }
+
+  /** With a given robots.txt cache, so tests can seed it. */
+  FetchClient(
+      Registry registry,
+      RuntimeSwitch runtimeSwitch,
+      Transport transport,
+      Clock clock,
+      Sleeper sleeper,
+      UserAgent userAgent,
+      RobotsCache robots) {
     this.registry = registry;
     this.runtimeSwitch = runtimeSwitch;
     this.transport = transport;
     this.clock = clock;
     this.sleeper = sleeper;
     this.userAgent = userAgent.value();
+    this.productToken = userAgent.productToken();
+    this.robots = robots;
     for (RetailerConfig config : registry.retailers()) {
       configs.put(config.domain(), config);
       limiters.put(
@@ -128,6 +149,8 @@ public final class FetchClient {
         Transport.Response response;
         UnavailableReason failure;
         try {
+          check(url);
+          checkRobots(url, deadline);
           response = attempt(url, deadline);
           int status = response.status();
           if (status >= 200 && status < 300) {
@@ -183,6 +206,62 @@ public final class FetchClient {
         return transport.get(url, userAgent, left);
       } finally {
         permit.get().close();
+      }
+    }
+
+    /** Sends nothing unless the host's robots.txt allows {@code url} for our product token. */
+    private void checkRobots(URI url, Instant deadline) throws FetchFailure, InterruptedException {
+      String host = url.getHost().toLowerCase(Locale.ROOT);
+      Optional<RobotsRules> rules = robots.rules(host, deadline, () -> loadRobots(host, deadline));
+      if (rules.isEmpty()) {
+        throw unavailable(UnavailableReason.REFUSED);
+      }
+      if (!rules.get().allows(url)) {
+        // A Block candidate (2.5.1); story 2.6 records it.
+        throw unavailable(UnavailableReason.BLOCKED);
+      }
+    }
+
+    /**
+     * Loads {@code https://<host>/robots.txt}: each hop through {@link #attempt} (gate, host check,
+     * permit), at most {@value FetchClient#MAX_REDIRECTS} on-host redirects, no retry.
+     *
+     * @return the rules, or empty when robots.txt is unreachable
+     */
+    private Optional<RobotsRules> loadRobots(String host, Instant deadline)
+        throws InterruptedException {
+      URI url;
+      try {
+        url = new URI("https", host, "/robots.txt", null);
+      } catch (URISyntaxException e) {
+        return Optional.empty();
+      }
+      int redirects = 0;
+      while (true) {
+        Transport.Response response;
+        try {
+          response = attempt(url, deadline);
+          int status = response.status();
+          if (status >= 200 && status < 300) {
+            return Optional.of(
+                RobotsRules.parse(response.body(), productToken).orElse(RobotsRules.DISALLOW_ALL));
+          }
+          if (REDIRECTS.contains(status)) {
+            if (redirects >= MAX_REDIRECTS) {
+              return Optional.empty();
+            }
+            redirects++;
+            url = redirectTarget(url, response.location());
+            continue;
+          }
+          if (status >= 400 && status < 500 && status != 429) {
+            return Optional.of(RobotsRules.ALLOW_ALL);
+          }
+          return Optional.empty();
+        } catch (IOException e) {
+          // Timeout, transport error, refused gate, host or permit: unreachable, not kept.
+          return Optional.empty();
+        }
       }
     }
 
