@@ -8,6 +8,8 @@
 # Curated by the owner on 2026-11-18 from search-engine results (no retailer was fetched).
 # 5099206027282 (Logitech M185 grey, 910-002238) is sold by both: the demo EAN.
 # Stories 2-12 and 2-13 check each URL against the live page and correct this list if needed.
+# Story 2-13 (2026-11-18): the evoMAG A400 120GB URL redirected to its category page (product gone),
+# so it was replaced by the A400 480GB page, whose microdata gtin is 740617263442 (UPC-A).
 knownEans:
   cel.ro:
     - ean: "5099206027282"
@@ -17,5 +19,5 @@ knownEans:
   evomag.ro:
     - ean: "5099206027282"
       url: "https://www.evomag.ro/componente-pc-gaming-mouse-pc-gaming/logitech-mouse-optic-wireless-m185-gri-66605.html"
-    - ean: "0740617261196"
-      url: "https://www.evomag.ro/componente-pc-gaming-solid-state-drive-ssd/kingston-ssd-kingston-a400-120gb-2.5-sata-iii-600-3585134.html"
+    - ean: "0740617263442"
+      url: "https://www.evomag.ro/componente-pc-gaming-solid-state-drive-ssd/kingston-ssd-kingston-a400-480gb-2.5-sata-iii-600-3584157.html"
