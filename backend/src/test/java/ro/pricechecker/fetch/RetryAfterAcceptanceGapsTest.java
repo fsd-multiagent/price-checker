@@ -213,6 +213,7 @@ class RetryAfterAcceptanceGapsTest {
   void ac_2_7_3_lookupRowIsUnavailableDuringThePauseAndNotReusedAfterIt() {
     BlockStore store = store();
     List<String> adapterCalls = new ArrayList<>();
+    FetchClient.BoundHttp boundA = boundA(store);
     LookupService service =
         new LookupService(
             registry,
@@ -222,7 +223,7 @@ class RetryAfterAcceptanceGapsTest {
                     adapter("b.example", adapterCalls),
                     adapter("c.example", adapterCalls)),
                 registry),
-            Optional.of(boundA(store)),
+            Optional.of(id -> boundA),
             clock,
             runtime,
             store,

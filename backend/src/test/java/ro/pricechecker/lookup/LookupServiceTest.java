@@ -18,6 +18,7 @@ import ro.pricechecker.adapter.Availability;
 import ro.pricechecker.adapter.PageFacts;
 import ro.pricechecker.adapter.RetailerAdapter;
 import ro.pricechecker.adapter.RetailerHttp;
+import ro.pricechecker.adapter.RetailerHttpBinder;
 import ro.pricechecker.adapter.UnavailableReason;
 import ro.pricechecker.cache.ResultCache;
 import ro.pricechecker.ean.Ean;
@@ -46,7 +47,8 @@ class LookupServiceTest {
     };
   }
 
-  private LookupService service(Optional<RetailerHttp> http, Supplier<AdapterOutcome> aOutcome) {
+  private LookupService service(
+      Optional<RetailerHttpBinder> http, Supplier<AdapterOutcome> aOutcome) {
     var registry = TestRegistries.mixed();
     var catalog =
         new AdapterCatalog(
@@ -74,7 +76,9 @@ class LookupServiceTest {
   @Tag("AC-1.6.2")
   void ac_1_6_2_oneRowPerApprovedRetailerAndDisabledIsDisabled() {
     LookupService service =
-        service(Optional.of(HTTP), () -> new AdapterOutcome.Unavailable(UnavailableReason.TIMEOUT));
+        service(
+            Optional.of(id -> HTTP),
+            () -> new AdapterOutcome.Unavailable(UnavailableReason.TIMEOUT));
     LookupResult result = service.lookup(ean(TestRegistries.EAN_A));
     assertThat(result.ean()).isEqualTo(TestRegistries.EAN_A);
     assertThat(result.rows())
@@ -90,7 +94,7 @@ class LookupServiceTest {
   void ac_1_6_2_unknownEanIsNotFoundWithoutAdapterCall() {
     LookupService service =
         service(
-            Optional.of(HTTP),
+            Optional.of(id -> HTTP),
             () -> new AdapterOutcome.Found(new PageFacts(1L, "RON", null, null, null)));
     LookupResult result = service.lookup(ean("5901234123457"));
     assertThat(result.rows())
@@ -106,7 +110,7 @@ class LookupServiceTest {
   void ac_1_6_4_adapterExceptionBecomesUnavailable() {
     LookupService service =
         service(
-            Optional.of(HTTP),
+            Optional.of(id -> HTTP),
             () -> {
               throw new IllegalStateException("boom");
             });
@@ -134,7 +138,7 @@ class LookupServiceTest {
     URI page = URI.create("https://a.example/page");
     LookupService service =
         service(
-            Optional.of(HTTP),
+            Optional.of(id -> HTTP),
             () ->
                 new AdapterOutcome.Found(
                     new PageFacts(12345L, "RON", Availability.IN_STOCK, page, null)));
@@ -150,7 +154,7 @@ class LookupServiceTest {
   @Test
   @Tag("AC-1.6.4")
   void ac_1_6_4_adapterNotFoundBecomesNotFoundRow() {
-    LookupService service = service(Optional.of(HTTP), AdapterOutcome.NotFound::new);
+    LookupService service = service(Optional.of(id -> HTTP), AdapterOutcome.NotFound::new);
     LookupRow row = service.lookup(ean(TestRegistries.EAN_A)).rows().get(0);
     assertThat(row.status()).isEqualTo(RowStatus.NOT_FOUND);
     assertThat(row.url()).isNull();
@@ -162,7 +166,7 @@ class LookupServiceTest {
   void ac_1_6_4_foundWithoutUrlOrAvailabilityUsesKnownUrlAndUnknown() {
     LookupService service =
         service(
-            Optional.of(HTTP),
+            Optional.of(id -> HTTP),
             () -> new AdapterOutcome.Found(new PageFacts(100L, "RON", null, null, null)));
     LookupRow row = service.lookup(ean(TestRegistries.EAN_A)).rows().get(0);
     assertThat(row.status()).isEqualTo(RowStatus.FOUND);

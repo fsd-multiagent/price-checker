@@ -127,7 +127,7 @@ class LookupSkeletonAcceptanceGapsTest {
     return new LookupService(
             registry,
             new AdapterCatalog(adapters, registry),
-            Optional.of(HTTP),
+            Optional.of(id -> HTTP),
             CLOCK,
             TestRegistries.runtimeAllowing(
                 CLOCK, "a.example", "b.example", "c.example", "d.example", "e.example"),

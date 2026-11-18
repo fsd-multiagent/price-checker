@@ -79,7 +79,7 @@ class LookupExecutionTest {
     return new LookupService(
         registry,
         new AdapterCatalog(list, registry),
-        Optional.of(HTTP),
+        Optional.of(id -> HTTP),
         clock,
         runtime,
         blocks,

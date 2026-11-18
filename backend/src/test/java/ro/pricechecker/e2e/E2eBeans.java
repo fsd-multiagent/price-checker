@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.RouterFunctions;
 import org.springframework.web.servlet.function.ServerResponse;
+import ro.pricechecker.adapter.RetailerHttpBinder;
 import ro.pricechecker.registry.Registry;
 import ro.pricechecker.registry.TestRegistries;
 
@@ -45,6 +46,16 @@ public class E2eBeans {
     Set<URI> known =
         registry.knownEans().stream().map(k -> URI.create(k.url())).collect(Collectors.toSet());
     return new FixtureHttp(known, FixtureHttp::classpathPage, HANG);
+  }
+
+  /**
+   * Binds every retailer id to the stub, so the e2e server never fetches through the main {@code
+   * FetchClient} and its {@code JdkTransport} (T-3, issue #102).
+   */
+  @Bean
+  @Primary
+  RetailerHttpBinder e2eRetailerHttpBinder(FixtureHttp http) {
+    return retailerId -> http;
   }
 
   /** {@code GET /e2e/requests?ean=} returns the stub's page-request count for that EAN. */

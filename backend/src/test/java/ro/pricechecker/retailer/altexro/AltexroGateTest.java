@@ -91,7 +91,7 @@ class AltexroGateTest {
         new LookupService(
             registry,
             new AdapterCatalog(adapters, registry),
-            Optional.of(http),
+            Optional.of(id -> http),
             CLOCK,
             // The runtime switch allows every domain, Altex too: only the disabled flag holds it.
             TestRegistries.runtimeAllowing(
