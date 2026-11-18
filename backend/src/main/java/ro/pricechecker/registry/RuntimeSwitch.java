@@ -101,4 +101,9 @@ public final class RuntimeSwitch {
   public boolean hasRunnerBlock(String domain) {
     return settings.hasRunnerBlock(domain);
   }
+
+  /** The polled {@code notBefore} for {@code domain} (a runner 429, AD-16); empty when absent. */
+  public Optional<Instant> notBefore(String domain) {
+    return settings.notBefore(domain);
+  }
 }

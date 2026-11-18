@@ -1,9 +1,13 @@
 package ro.pricechecker.registry;
 
 import java.math.BigInteger;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -14,22 +18,29 @@ import org.yaml.snakeyaml.error.YAMLException;
  * One parsed {@code runtime.yaml} (AD-9, FR-7, FR-11, S-8): which retailers may be fetched, each
  * retailer's {@code clearGeneration} (a non-negative integer, default 0) and whether it has a
  * {@code runnerBlock} (present = blocked, AD-16). Immutable. A retailer missing from the file is
- * stopped (fail closed). {@code notBefore} is ignored until story 2.7.
+ * stopped (fail closed). An optional {@code notBefore} (an ISO-8601 instant, the time a 429 the
+ * Health check runner saw asks us to wait until, AD-6, AD-16) is read per retailer; a value that is
+ * not an instant rejects the whole file (story 2.7).
  */
 public final class RuntimeSettings {
 
   /** No good read yet: every retailer is stopped. */
-  static final RuntimeSettings NONE = new RuntimeSettings(Set.of(), Map.of(), Set.of());
+  static final RuntimeSettings NONE = new RuntimeSettings(Set.of(), Map.of(), Set.of(), Map.of());
 
   private final Set<String> allowed;
   private final Map<String, Long> clearGenerations;
   private final Set<String> runnerBlocked;
+  private final Map<String, Instant> notBefores;
 
   private RuntimeSettings(
-      Set<String> allowed, Map<String, Long> clearGenerations, Set<String> runnerBlocked) {
+      Set<String> allowed,
+      Map<String, Long> clearGenerations,
+      Set<String> runnerBlocked,
+      Map<String, Instant> notBefores) {
     this.allowed = Set.copyOf(allowed);
     this.clearGenerations = Map.copyOf(clearGenerations);
     this.runnerBlocked = Set.copyOf(runnerBlocked);
+    this.notBefores = Map.copyOf(notBefores);
   }
 
   /** True only when the file lists {@code domain} with {@code fetching: allowed}. */
@@ -45,6 +56,11 @@ public final class RuntimeSettings {
   /** True when the file lists a {@code runnerBlock} for {@code domain}. */
   public boolean hasRunnerBlock(String domain) {
     return runnerBlocked.contains(domain);
+  }
+
+  /** The retailer's {@code notBefore}, when the file lists one. */
+  public Optional<Instant> notBefore(String domain) {
+    return Optional.ofNullable(notBefores.get(domain));
   }
 
   /**
@@ -66,6 +82,7 @@ public final class RuntimeSettings {
     Set<String> allowed = new HashSet<>();
     Map<String, Long> clearGenerations = new HashMap<>();
     Set<String> runnerBlocked = new HashSet<>();
+    Map<String, Instant> notBefores = new HashMap<>();
     for (Map.Entry<?, ?> e : entries.entrySet()) {
       if (!(e.getKey() instanceof String domain)) {
         throw new IllegalArgumentException("retailer key is not a string");
@@ -85,8 +102,29 @@ public final class RuntimeSettings {
       if (fields.containsKey("runnerBlock")) {
         runnerBlocked.add(domain);
       }
+      if (fields.containsKey("notBefore")) {
+        notBefores.put(domain, notBefore(fields.get("notBefore")));
+      }
     }
-    return new RuntimeSettings(allowed, clearGenerations, runnerBlocked);
+    return new RuntimeSettings(allowed, clearGenerations, runnerBlocked, notBefores);
+  }
+
+  /**
+   * An ISO-8601 instant: SnakeYAML's safe constructor turns an unquoted timestamp into a {@link
+   * Date}, a quoted one stays a string. Anything else rejects the file.
+   */
+  private static Instant notBefore(Object value) {
+    if (value instanceof Date date) {
+      return date.toInstant();
+    }
+    if (value instanceof String text) {
+      try {
+        return Instant.parse(text.strip());
+      } catch (DateTimeParseException e) {
+        throw new IllegalArgumentException("notBefore is not an ISO-8601 instant", e);
+      }
+    }
+    throw new IllegalArgumentException("notBefore is not an ISO-8601 instant");
   }
 
   /** A non-negative YAML integer that fits a {@code long}; anything else rejects the file. */

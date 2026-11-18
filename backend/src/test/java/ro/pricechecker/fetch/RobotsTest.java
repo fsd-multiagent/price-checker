@@ -194,8 +194,8 @@ class RobotsTest {
 
   @ParameterizedTest
   @Tag("AC-2.5.3")
-  @ValueSource(ints = {500, 503, 599, 429})
-  void ac_2_5_3_robotsServerErrorOr429RefusesAndIsNotKept(int code) {
+  @ValueSource(ints = {500, 503, 599})
+  void ac_2_5_3_robotsServerErrorRefusesAndIsNotKept(int code) {
     robots = url -> status(code);
     FetchClient.BoundHttp http = boundA();
 

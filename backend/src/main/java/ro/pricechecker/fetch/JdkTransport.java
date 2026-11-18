@@ -55,6 +55,9 @@ public final class JdkTransport implements Transport {
       throw new IOException(e.getCause());
     }
     return new Response(
-        response.statusCode(), response.headers().firstValue("Location"), response.body());
+        response.statusCode(),
+        response.headers().firstValue("Location"),
+        response.body(),
+        response.headers().firstValue("Retry-After"));
   }
 }

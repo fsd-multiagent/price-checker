@@ -11,8 +11,17 @@ import java.util.Optional;
  */
 public interface Transport {
 
-  /** Status, {@code Location} header (if any) and body of one response. */
-  record Response(int status, Optional<String> location, String body) {}
+  /**
+   * Status, {@code Location} header (if any), body and {@code Retry-After} header (if any) of one
+   * response.
+   */
+  record Response(int status, Optional<String> location, String body, Optional<String> retryAfter) {
+
+    /** A response without a {@code Retry-After} header. */
+    public Response(int status, Optional<String> location, String body) {
+      this(status, location, body, Optional.empty());
+    }
+  }
 
   /**
    * Sends one GET with the given user agent and timeout.

@@ -40,6 +40,15 @@ import ro.pricechecker.registry.RuntimeSwitch;
  * that retailer, robots.txt included, is refused without sending ({@code Unavailable(BLOCKED)}).
  * Nothing here ever retries a Block another way: no proxy, no other user agent, no other headers
  * (AC-11.3).
+ *
+ * <p>429 (AC-11.4, story 2.7): never a Block. The client computes {@code notBefore} from {@code
+ * Retry-After} ({@link RetryAfter}, 60 s when missing or unparseable) and calls {@link
+ * BlockStore#recordRetryAfter}. When {@code notBefore} is before the deadline it waits until then
+ * and sends the same request once more (a single 429 retry, separate from the 5xx and timeout
+ * ones); otherwise, or on a second 429, the outcome is {@code Unavailable(REFUSED)}. A robots.txt
+ * 429 records {@code notBefore} too and is never retried. While {@link BlockStore#notBefore} is in
+ * the future every request to that retailer, robots.txt included, is refused without sending
+ * ({@code Unavailable(REFUSED)}).
  */
 public final class FetchClient {
 
@@ -166,6 +175,7 @@ public final class FetchClient {
       URI url = start;
       int retries = 0;
       int redirects = 0;
+      boolean retriedTooMany = false;
       while (true) {
         Transport.Response response;
         UnavailableReason failure;
@@ -182,6 +192,20 @@ public final class FetchClient {
           }
           if (status == 403) {
             throw block(BlockStore.Reason.HTTP_403);
+          }
+          if (status == 429) {
+            // A later pause already stored (or from runtime.yaml) wins over this 429's own value.
+            Instant own = tooMany(response);
+            Instant notBefore = blocks.notBefore(config.domain()).orElse(own);
+            if (retriedTooMany || !notBefore.isBefore(deadline)) {
+              throw unavailable(UnavailableReason.REFUSED);
+            }
+            retriedTooMany = true;
+            Duration wait = Duration.between(clock.instant(), notBefore);
+            if (wait.isPositive()) {
+              sleeper.sleep(wait);
+            }
+            continue;
           }
           if (status == 404 || status == 410) {
             throw FetchFailure.notFound(clock.instant());
@@ -284,7 +308,11 @@ public final class FetchClient {
             url = redirectTarget(url, response.location());
             continue;
           }
-          if (status >= 400 && status < 500 && status != 429) {
+          if (status == 429) {
+            tooMany(response);
+            return Optional.empty();
+          }
+          if (status >= 400 && status < 500) {
             return Optional.of(RobotsRules.ALLOW_ALL);
           }
           return Optional.empty();
@@ -306,6 +334,24 @@ public final class FetchClient {
       if (!onRetailerHost(url, domain)) {
         throw unavailable(UnavailableReason.REFUSED);
       }
+      Optional<Instant> notBefore = blocks.notBefore(domain);
+      if (notBefore.isPresent() && notBefore.get().isAfter(clock.instant())) {
+        throw unavailable(UnavailableReason.REFUSED);
+      }
+    }
+
+    /**
+     * Records the {@code notBefore} a 429 asks for and returns it. A failed {@code blocks.json}
+     * write still leaves the value in memory, so the outcome is the same.
+     */
+    private Instant tooMany(Transport.Response response) {
+      Instant notBefore = RetryAfter.notBefore(response.retryAfter(), clock.instant());
+      try {
+        blocks.recordRetryAfter(config.domain(), notBefore);
+      } catch (UncheckedIOException e) {
+        // The value is kept in memory; the write failure changes no outcome.
+      }
+      return notBefore;
     }
 
     /**
