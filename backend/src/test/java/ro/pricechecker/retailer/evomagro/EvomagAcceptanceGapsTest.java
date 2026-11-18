@@ -7,6 +7,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Tag;
@@ -56,7 +57,10 @@ class EvomagAcceptanceGapsTest {
                 new PageFacts(
                     249990L, "RON", Availability.OUT_OF_STOCK, PRODUCT_URL, "5901234123457"),
             "product-mixed.html",
-                new PageFacts(10000L, "RON", Availability.IN_STOCK, PRODUCT_URL, null));
+                new PageFacts(10000L, "RON", Availability.IN_STOCK, PRODUCT_URL, null),
+            "product-meta-microdata.html",
+                new PageFacts(
+                    40000L, "RON", Availability.OUT_OF_STOCK, PRODUCT_URL, "5901234123457"));
     expected.forEach((fixture, facts) ->
         assertThat(fetch(fixture)).as(fixture).isEqualTo(new AdapterOutcome.Found(facts)));
   }
@@ -195,7 +199,7 @@ class EvomagAcceptanceGapsTest {
   void ac_2_11_3_fixturesHoldFactsOnlyAndLinkNowhereButSchemaOrg() throws IOException {
     try (Stream<Path> files = Files.list(Fixtures.DIR)) {
       for (Path file : files.filter(p -> p.toString().endsWith(".html")).toList()) {
-        String html = Files.readString(file).toLowerCase(java.util.Locale.ROOT);
+        String html = Files.readString(file).toLowerCase(Locale.ROOT);
         assertThat(html)
             .as(file.toString())
             .doesNotContain("<img")

@@ -50,15 +50,15 @@ class EvomagPageTest {
 
   @Test
   @Tag("AC-2.11.1")
-  void ac_2_11_1_ownSelectorsStepReadsMicrodata() {
-    assertThat(EvomagPage.ownSelectors(Fixtures.read("product-microdata.html")))
+  void ac_2_11_1_microdataStepReadsMicrodata() {
+    assertThat(EvomagPage.microdata(Fixtures.read("product-microdata.html")))
         .contains(
             new ExtractedFacts(249990L, "RON", ExtractedFacts.Availability.OUT_OF_STOCK, GTIN));
   }
 
   @Test
   @Tag("AC-2.11.1")
-  void ac_2_11_1_ownSelectorsStepFallsBackToElementText() {
+  void ac_2_11_1_microdataStepFallsBackToElementText() {
     String html =
         """
         <div itemscope itemtype="http://schema.org/Product">
@@ -68,13 +68,13 @@ class EvomagPageTest {
           <span itemprop="gtin13">5901234123457</span>
         </div>
         """;
-    assertThat(EvomagPage.ownSelectors(html))
+    assertThat(EvomagPage.microdata(html))
         .contains(new ExtractedFacts(129999L, "RON", ExtractedFacts.Availability.IN_STOCK, GTIN));
   }
 
   @Test
   @Tag("AC-2.11.1")
-  void ac_2_11_1_ownSelectorsStepPrefersContentOverText() {
+  void ac_2_11_1_microdataStepPrefersContentOverText() {
     String html =
         """
         <div itemscope itemtype="https://schema.org/Product">
@@ -82,7 +82,7 @@ class EvomagPageTest {
           <meta itemprop="availability" content="schema:InStock">
         </div>
         """;
-    assertThat(EvomagPage.ownSelectors(html))
+    assertThat(EvomagPage.microdata(html))
         .contains(new ExtractedFacts(249990L, null, ExtractedFacts.Availability.IN_STOCK, null));
   }
 
@@ -107,10 +107,10 @@ class EvomagPageTest {
 
   @Test
   @Tag("AC-2.11.1")
-  void ac_2_11_1_ownSelectorsStepNeedsAProductScope() {
-    assertThat(EvomagPage.ownSelectors(Fixtures.read("no-product.html"))).isEmpty();
-    assertThat(EvomagPage.ownSelectors(Fixtures.read("product-meta.html"))).isEmpty();
-    assertThat(EvomagPage.ownSelectors(null)).isEmpty();
+  void ac_2_11_1_microdataStepNeedsAProductScope() {
+    assertThat(EvomagPage.microdata(Fixtures.read("no-product.html"))).isEmpty();
+    assertThat(EvomagPage.microdata(Fixtures.read("product-meta.html"))).isEmpty();
+    assertThat(EvomagPage.microdata(null)).isEmpty();
   }
 
   @Test
@@ -123,6 +123,27 @@ class EvomagPageTest {
     assertThat(EvomagPage.availabilityOf("https://schema.org/PreOrder"))
         .isEqualTo(ExtractedFacts.Availability.UNKNOWN);
     assertThat(EvomagPage.availabilityOf(null)).isEqualTo(ExtractedFacts.Availability.UNKNOWN);
+  }
+
+  @Test
+  @Tag("AC-2.11.1")
+  void ac_2_11_1_availabilityMapsEveryKnownTerm() {
+    for (String term :
+        new String[] {
+          "https://schema.org/LimitedAvailability", "https://schema.org/OnlineOnly", "in stock"
+        }) {
+      assertThat(EvomagPage.availabilityOf(term))
+          .as(term)
+          .isEqualTo(ExtractedFacts.Availability.IN_STOCK);
+    }
+    for (String term :
+        new String[] {
+          "https://schema.org/SoldOut", "https://schema.org/Discontinued", "oos", "out of stock"
+        }) {
+      assertThat(EvomagPage.availabilityOf(term))
+          .as(term)
+          .isEqualTo(ExtractedFacts.Availability.OUT_OF_STOCK);
+    }
   }
 
   // --- I/O matrix ---
@@ -147,7 +168,7 @@ class EvomagPageTest {
 
   @Test
   @Tag("AC-2.11.1")
-  void ac_2_11_1_microdataPageIsFoundFromOwnSelectors() {
+  void ac_2_11_1_microdataPageIsFoundFromMicrodataStep() {
     assertThat(extract("product-microdata.html"))
         .isEqualTo(
             new AdapterOutcome.Found(
@@ -161,6 +182,20 @@ class EvomagPageTest {
         .isEqualTo(
             new AdapterOutcome.Found(
                 new PageFacts(10000L, "RON", Availability.IN_STOCK, URL, null)));
+  }
+
+  @Test
+  @Tag("AC-2.11.1")
+  void ac_2_11_1_microdataWinsOverMetaTags() {
+    String html = Fixtures.read("product-meta-microdata.html");
+    assertThat(EvomagPage.metaTags(html))
+        .get()
+        .extracting(ExtractedFacts::priceMinor)
+        .isEqualTo(30000L);
+    assertThat(extract("product-meta-microdata.html"))
+        .isEqualTo(
+            new AdapterOutcome.Found(
+                new PageFacts(40000L, "RON", Availability.OUT_OF_STOCK, URL, GTIN)));
   }
 
   @Test

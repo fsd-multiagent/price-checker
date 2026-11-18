@@ -16,8 +16,10 @@ import ro.pricechecker.extract.Prices;
 import ro.pricechecker.extract.StructuredData;
 
 /**
- * Turns an evoMAG product page into an outcome. Extraction runs in the C-6 order: JSON-LD, then
- * meta tags, then evoMAG's own selectors (schema.org microdata). Parses the string only.
+ * Turns an evoMAG product page into an outcome. Extraction runs in the C-6 order: embedded
+ * structured data (JSON-LD, then schema.org microdata), then meta tags. evoMAG needs no
+ * retailer-specific selectors on the synthetic pages; story 2.13 adds them if real pages do. Parses
+ * the string only.
  */
 final class EvomagPage {
 
@@ -28,7 +30,7 @@ final class EvomagPage {
 
   private EvomagPage() {}
 
-  /** Step 1: the first JSON-LD {@code Product}. */
+  /** Step 1a: the first JSON-LD {@code Product}. */
   static Optional<ExtractedFacts> structuredData(String html) {
     return StructuredData.fromJsonLd(html);
   }
@@ -38,8 +40,8 @@ final class EvomagPage {
     return MetaTags.fromMetaTags(html);
   }
 
-  /** Step 3: microdata inside the first element whose {@code itemtype} is a schema.org Product. */
-  static Optional<ExtractedFacts> ownSelectors(String html) {
+  /** Step 1b: microdata inside the first element whose {@code itemtype} is a schema.org Product. */
+  static Optional<ExtractedFacts> microdata(String html) {
     if (html == null) {
       return Optional.empty();
     }
@@ -67,7 +69,7 @@ final class EvomagPage {
    */
   static AdapterOutcome extract(String html, URI url) {
     List<Optional<ExtractedFacts>> steps =
-        List.of(structuredData(html), metaTags(html), ownSelectors(html));
+        List.of(structuredData(html), microdata(html), metaTags(html));
     Optional<ExtractedFacts> chosen =
         steps.stream()
             .flatMap(Optional::stream)

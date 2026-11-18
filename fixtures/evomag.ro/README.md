@@ -6,10 +6,11 @@ They hold facts only (S-7, T-2): price, currency, availability and GTIN. No prod
 
 | File | What it exercises |
 |------|-------------------|
-| `product-jsonld.html` | JSON-LD `Product`/`Offer`: 1299.99 RON, InStock, gtin13 (step 1) |
-| `product-meta.html` | Open Graph product meta tags only: 849.00 RON (step 2) |
-| `product-microdata.html` | schema.org microdata only: 2499.90 RON, OutOfStock (step 3, own selectors) |
+| `product-jsonld.html` | JSON-LD `Product`/`Offer`: 1299.99 RON, InStock, gtin13 (step 1, structured data) |
+| `product-microdata.html` | schema.org microdata only: 2499.90 RON, OutOfStock (step 1, structured data) |
+| `product-meta.html` | Open Graph product meta tags only: 849.00 RON (step 2, meta tags) |
 | `product-mixed.html` | JSON-LD 100.00 and microdata 200.00: JSON-LD wins |
+| `product-meta-microdata.html` | Meta tags 300.00 and microdata 400.00: microdata wins (C-6) |
 | `no-product.html` | No product facts at all: `Unavailable(UNPARSEABLE)` |
 | `unparseable-price.html` | Microdata with price text "la cerere", RON, InStock: `priceMinor` null |
 

@@ -5,7 +5,7 @@ created: '2026-11-18'
 status: 'done'
 baseline_revision: '37236ecaa18be8277bca478f5094e7cd5d87fcf1'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/docs/standards/coding.md'
   - '{project-root}/docs/standards/testing.md'
@@ -29,6 +29,15 @@ deferred:
     location: >-
       backend/src/test/java/ro/pricechecker/lookup/StubAdapters.java
     severity: low
+  - summary: >-
+      EvomagPage.availabilityOf copies the package-private extract.SchemaAvailability, and the
+      microdata reader is generic; both belong in extract so other adapters share them.
+    evidence: |-
+      Review code_lens CR-2 (C-5) and the round-2 blind review. This story may not change extract,
+      so expose SchemaAvailability and a shared microdata reader in a follow-up (ADR 0012).
+    location: >-
+      backend/src/main/java/ro/pricechecker/retailer/evomagro/EvomagPage.java
+    severity: medium
 ---
 
 <intent-contract>
@@ -37,7 +46,7 @@ deferred:
 
 **Problem:** `evomag.ro` is configured in `config/retailers.yaml` but has no adapter, so no evoMAG product page can be turned into price, availability and link (story 2.11, FR-3).
 
-**Approach:** Add one Spring bean `EvomagAdapter` in `ro.pricechecker.retailer.evomagro` that GETs only the curated product URL through `RetailerHttp` and extracts facts in the order JSON-LD → meta tags → its own selectors (schema.org microdata, which the register notes evoMAG uses), tested against hand-written synthetic fixtures in `fixtures/evomag.ro/`.
+**Approach:** Add one Spring bean `EvomagAdapter` in `ro.pricechecker.retailer.evomagro` that GETs only the curated product URL through `RetailerHttp` and extracts facts in the C-6 order: embedded structured data (JSON-LD, then schema.org microdata, which the register notes evoMAG uses), then meta tags; no evoMAG-specific selectors are needed for the synthetic pages, tested against hand-written synthetic fixtures in `fixtures/evomag.ro/`.
 
 ## Boundaries & Constraints
 
@@ -51,7 +60,8 @@ deferred:
 |----------|--------------|---------------------------|----------------|
 | JSON-LD page | `product-jsonld.html` (Product/Offer 1299.99 RON InStock, gtin13) | `Found(PageFacts(129999, RON, IN_STOCK, productUrl, gtin))` | none |
 | Meta-only page | `product-meta.html` (`product:price:amount` 849.00) | `Found` priceMinor 84900 from meta step | none |
-| Microdata page | `product-microdata.html` (itemprop price 2499.90, OutOfStock) | `Found` priceMinor 249990, OUT_OF_STOCK, from own selectors | none |
+| Microdata page | `product-microdata.html` (itemprop price 2499.90, OutOfStock) | `Found` priceMinor 249990, OUT_OF_STOCK, from the microdata step | none |
+| Microdata vs meta | `product-meta-microdata.html` (meta 300.00, microdata 400.00 OutOfStock) | microdata wins: 40000, OUT_OF_STOCK (C-6) | none |
 | Order | `product-mixed.html` (JSON-LD 100.00 and microdata 200.00) | JSON-LD wins: 10000 | none |
 | No facts | `no-product.html` | `Unavailable(UNPARSEABLE)` | none |
 | Unparseable price | `unparseable-price.html` (microdata price text "la cerere", RON, InStock) | `Found` with `priceMinor` null, currency RON | none |
@@ -71,8 +81,8 @@ deferred:
 ## Tasks & Acceptance
 
 **Execution:**
-- `fixtures/evomag.ro/{product-jsonld,product-meta,product-microdata,product-mixed,no-product,unparseable-price}.html` + `README.md` -- synthetic, facts only, no images/descriptions; README states they are synthetic until 2.13 -- T-2, AC 2.11.1/2.
-- `backend/src/main/java/ro/pricechecker/retailer/evomagro/EvomagPage.java` -- package-private steps `structuredData`, `metaTags`, `ownSelectors` (microdata in the `itemtype` Product scope: `price` content-or-text, `priceCurrency`, `availability` href-or-content, `gtin13`), and `extract(html, url)` choosing the outcome -- C-6.
+- `fixtures/evomag.ro/{product-jsonld,product-meta,product-microdata,product-mixed,product-meta-microdata,no-product,unparseable-price}.html` + `README.md` -- synthetic, facts only, no images/descriptions; README states they are synthetic until 2.13 -- T-2, AC 2.11.1/2.
+- `backend/src/main/java/ro/pricechecker/retailer/evomagro/EvomagPage.java` -- package-private steps `structuredData`, `microdata`, `metaTags` (microdata in the `itemtype` Product scope: `price` content-or-text, `priceCurrency`, `availability` href-or-content, `gtin13`), and `extract(html, url)` choosing the outcome -- C-6.
 - `backend/src/main/java/ro/pricechecker/retailer/evomagro/EvomagAdapter.java` -- `@Component`, `retailerId()` = `evomag.ro`, one `http.get(productUrl)`, `IOException` → `Unavailable(HTTP_ERROR)` -- AD-7.
 - `backend/src/main/java/ro/pricechecker/retailer/evomagro/package-info.java` -- package doc.
 - `backend/src/test/java/ro/pricechecker/lookup/StubAdapters.java` -- skip ids that a real adapter bean already serves.
@@ -84,6 +94,8 @@ deferred:
 - Given `@SpringBootTest` contexts, when they start, then `AdapterCatalog` sees exactly one `evomag.ro` adapter.
 
 ## Spec Change Log
+
+- 2026-11-18 (run 20261117-174705-full, round 2): triggered by review blocker code_lens/CR-1 (C-6). Amended the Approach, the I/O matrix (new "Microdata vs meta" row) and the Code Map: microdata is embedded structured data, so the step order is JSON-LD → microdata → meta tags, and the `ownSelectors` step is renamed `microdata`. Known-bad state avoided: a page with both og:product price tags and microdata returned the meta price. KEEP: the "first step with a price wins, else first recognized step" rule, the step functions as separate tested units, and the synthetic, facts-only fixtures.
 
 ## Review Triage Log
 
@@ -123,6 +135,40 @@ deferred:
   - `[false]` `[reject]` (intent) own selectors are generic microdata — the register names schema.org microdata as evoMAG's markup.
   - `[false]` `[reject]` (intent) spec not in reviewed diff — excluded on purpose; it is the claims file.
 
+### 2026-11-18 — Review pass
+- verdicts: 30 findings — high 0, medium 1, low 7, false 9, maybe-false 13
+- findings:
+  - `[low]` `[reject]` (blind) adapter ignores the EAN and never returns NotFound on a GTIN mismatch: URLs are curated per EAN (1.6), and evoMAG pages rarely carry a GTIN, so a check would rarely run. The fix would add a new branch.
+  - `[low]` `[defer]` (blind) `availabilityOf` copies `extract.SchemaAvailability`: carried from round 1 (code_lens CR-2). The intent says "Never change `extract`", so making it public waits for a follow-up. See `deferred`.
+  - `[maybe-false]` `[defer]` (blind) generic microdata reader belongs in `extract`: carried. It needs an `extract` change, which this story excludes; same deferred item.
+  - `[maybe-false]` `[defer]` (blind) Product-scope selection (itemscope not required, multi-type itemtype, nested scopes): carried; covered by the existing `deferred` item (story 2.13 real pages).
+  - `[false]` `[reject]` (blind) price accepted without currency, and facts not merged: carried from round 1. "First step with a price wins" is the KEEP rule; currency null is still an honest fact (C-7), not a guess.
+  - `[low]` `[reject]` (blind) only IOException is caught and timeouts map to HTTP_ERROR: carried. No fetch client exists yet, and deadlines are the caller's job (AD-7, story 2.4).
+  - `[false]` `[reject]` (blind) no host check on productUrl: carried from round 1. Host and robots enforcement live in the fetch client (AD-6, S-4); SEC-2 is optional for a later story.
+  - `[maybe-false]` `[defer]` (blind) StubAdapters instantiates adapters with a no-arg constructor: carried; the existing `deferred` item covers it.
+  - `[low]` `[reject]` (blind) microdata availability has no text fallback and no Romanian terms: the synthetic pages use href/content, and real markup comes in 2.13. The fix would add a branch.
+  - `[medium]` `[patch]` (blind, intent) the new fixture `product-meta-microdata.html` was missing from the adapter-level `fetchAndExtract` test: added to `ac_2_11_1_ac_3_4_adapterFindsEveryProductFixtureThroughItsStep`.
+  - `[false]` `[reject]` (blind) overlapping tests: carried (code_lens CR-3, minor). The duplication is test-only and causes no failure.
+  - `[maybe-false]` `[reject]` (blind) fixtures lack @graph, offer arrays and multiple offers: the JSON-LD parsing for those belongs to `extract` (story 2.1 tests). The rest needs real pages (2.13).
+  - `[maybe-false]` `[defer]` (edge) multi-type itemtype: covered by the existing `deferred` Product-scope item.
+  - `[maybe-false]` `[defer]` (edge) itemtype with a trailing slash: same deferred item.
+  - `[maybe-false]` `[defer]` (edge) nested itemscope inside the Product: same deferred item (carried).
+  - `[maybe-false]` `[defer]` (edge) several Offer scopes give mixed price and currency: same deferred item.
+  - `[maybe-false]` `[defer]` (edge) AggregateOffer lowPrice in microdata: same deferred item; settle against real pages in 2.13.
+  - `[maybe-false]` `[reject]` (edge) multi-token itemprop: rare in practice. If true it would be low, and the fix adds selector complexity.
+  - `[maybe-false]` `[defer]` (edge) gtin/gtin8/12/14 in microdata: same deferred item. evoMAG pages carry no GTIN according to the register.
+  - `[low]` `[reject]` (edge) availability given as element text only: duplicate of the blind finding above.
+  - `[low]` `[reject]` (edge) a RuntimeException from `http.get` escapes the adapter: carried. The per-retailer error handling is in lookup (C-8, story 1.6).
+  - `[maybe-false]` `[defer]` (edge) an @Bean factory adapter has a null bean class name in StubAdapters: covered by the existing StubAdapters `deferred` item.
+  - `[maybe-false]` `[defer]` (edge) StubAdapters with constructor injection: carried; same deferred item.
+  - `[false]` `[reject]` (edge) the YAML text test is brittle: `retailers.yaml` is fixed in this story (Never: change config), so the test cannot break unless config changes.
+  - `[false]` `[reject]` (edge, claim) the spec says JSON-LD → meta → own selectors: the fix is a spec edit. The spec was already amended for CR-1 (see Spec Change Log).
+  - `[false]` `[reject]` (edge, claim) the spec names `ownSelectors`: the fix is a spec edit; the Code Map has been amended.
+  - `[false]` `[reject]` (edge, claim) StubAdapters skips only resolvable no-arg classes: a duplicate of the deferred StubAdapters item.
+  - `[low]` `[patch]` (verification-gap) `availabilityOf` terms limitedavailability/onlineonly/soldout/discontinued/oos and the stripping of non-letters were untested: added `ac_2_11_1_availabilityMapsEveryKnownTerm`.
+  - `[false]` `[reject]` (intent) "first step with a price" is looser than strict first-step-wins when the microdata price is unparseable: this is a deliberate, tested KEEP rule from round 1. C-7 forbids guessing, but a parseable meta price is a fact, not a guess.
+  - `[false]` `[reject]` (intent) the own-selectors step is dropped and the diff touches files outside the touches list: CR-1's fix allows dropping the step until 2.13. The StubAdapters edit is carried from round 1 (CR-4: no change needed).
+
 ## Design Notes
 
 Outcome choice: compute the three steps in order; take the first whose `priceMinor` is non-null; otherwise the first "recognized" result (any of price, currency, GTIN non-null or availability not UNKNOWN) with `priceMinor` null; otherwise `Unavailable(UNPARSEABLE)`. `eanOnPage` = the step's GTIN (evoMAG pages carry none per register, so usually null). `url` = the requested product URL.
@@ -140,3 +186,12 @@ Outcome choice: compute the three steps in order; take the first whose `priceMin
 - Follow-up review recommended: true — two medium patches; unverified risk: the microdata step's availability mapping was rewritten after review and only checked against synthetic markup.
 - Verification: `backend/gradlew -p backend check` — BUILD SUCCESSFUL after patches (EvomagPageTest 18, EvomagAdapterTest 5, EvomagWiringTest 1, all pass).
 - Residual risks: real evoMAG markup may differ from the synthetic fixtures (story 2.13); story 2.10 (cel.ro) likely edits `StubAdapters.java` too, so expect a merge conflict there.
+
+### 2026-11-18 — Round 2 (follow-up pass)
+
+- Summary: fixed review blocker code_lens/CR-1 (C-6). `EvomagPage.extract` now runs JSON-LD → microdata → meta tags; `ownSelectors` is renamed `microdata`. A new synthetic fixture `product-meta-microdata.html` (meta 300.00, microdata 400.00) pins that microdata wins, through `EvomagPage.extract` and through `fetchAndExtract`. Also imports `Locale` and `Modifier` instead of inline qualified names (CR-5/CR-6).
+- Files: `EvomagPage.java` (step order, rename, Javadoc); `EvomagPageTest.java` (renamed tests, `ac_2_11_1_microdataWinsOverMetaTags`, `ac_2_11_1_availabilityMapsEveryKnownTerm`); `EvomagAcceptanceGapsTest.java` (new fixture in the adapter-level matrix, `Locale` import); `StubAdapters.java` (`Modifier` import); `fixtures/evomag.ro/product-meta-microdata.html` (new); `fixtures/evomag.ro/README.md` (table follows the C-6 order).
+- Review: 2 patches (1 medium: new fixture in the `fetchAndExtract` matrix; 1 low: test for every availability term). 1 new deferred item (share `SchemaAvailability` and a microdata reader from `extract`). The other maybe-false findings are folded into existing deferred items. Rejected findings and reasons are in the 2026-11-18 triage log.
+- Follow-up review recommended: false. This is a follow-up pass and no high finding was patched (patched: high 0, medium 1, low 1).
+- Verification: `backend/gradlew -p backend check` exit 0 (Spotless, `-Werror`, ArchUnit, text scan and all tests, including the two new tests).
+- Residual risks: real evoMAG markup is still unverified (story 2.13). The deferred `StubAdapters` no-arg constructor issue (code_review CR-1, major) remains for story 2.10 or whichever adapter first uses constructor injection.
