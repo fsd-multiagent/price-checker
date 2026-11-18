@@ -38,11 +38,19 @@ public class EanProblemHandler {
   private ResponseEntity<Problem> reject(EanError error) {
     log.eanRejected(error);
     Problem problem =
-        new Problem(EanErrorCode.fromValue(error.name()))
-            .title(TITLE)
-            .status(HttpStatus.BAD_REQUEST.value());
+        new Problem(toCode(error)).title(TITLE).status(HttpStatus.BAD_REQUEST.value());
     return ResponseEntity.badRequest()
         .contentType(MediaType.APPLICATION_PROBLEM_JSON)
         .body(problem);
+  }
+
+  /** Exhaustive, so a new {@link EanError} without a contract code fails the build, not a call. */
+  private static EanErrorCode toCode(EanError error) {
+    return switch (error) {
+      case EAN_EMPTY -> EanErrorCode.EAN_EMPTY;
+      case EAN_NON_DIGIT -> EanErrorCode.EAN_NON_DIGIT;
+      case EAN_LENGTH -> EanErrorCode.EAN_LENGTH;
+      case EAN_CHECK_DIGIT -> EanErrorCode.EAN_CHECK_DIGIT;
+    };
   }
 }

@@ -2,14 +2,21 @@
 title: 'Story 1.4: Server-side EAN validation and lookup logging'
 type: 'feature'
 created: '2026-11-18'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '6c2cd020fc9a29d133ca0e33eb4de0af13e76315'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
   - '{project-root}/docs/adr/0017-logging-and-privacy.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      Spring Boot and Logback write plain-text lines to the same stdout as LookupLog's JSON lines, so stdout is not a pure JSON-lines stream.
+    evidence: |-
+      LookupLog uses System.out.println; framework console logging is unchanged. Whether framework logs go JSON or off is an AD-14/ADR 0017 ops decision (Pacala (DevOps), story 3.x).
+    location: >-
+      backend/src/main/java/ro/pricechecker/lookup/LookupLog.java
+    severity: medium
 ---
 
 <intent-contract>
@@ -70,6 +77,30 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-11-18 — Review pass
+- verdicts: 20 findings — high 0, medium 1, low 15, false 1, maybe-false 3
+- findings:
+  - `[low]` `[patch]` blind 1: `EanErrorCode.fromValue(error.name())` throws (500, no log) if the enums drift — replaced with an exhaustive `switch` in `EanProblemHandler.toCode`, so drift fails compilation.
+  - `[low]` `[reject]` blind 2: "no lookup work runs" untested — nothing downstream exists yet; a seam would be new surface; story 1.6 adds the service and its ordering test.
+  - `[low]` `[reject]` blind 3: allowlist repeated in `Field` and two tests — tests pin the ADR 0017 list on purpose; a shared constant would make them tautological.
+  - `[maybe-false]` `[reject]` blind 4: non-ASCII digits test skips log/content-type checks and depends on stdout encoding — the shared-case loop already asserts both for every code; if true only low.
+  - `[low]` `[reject]` blind 5: leak check uses `strip()` and full input; timestamp substring risk — no shared input is a substring of the fixed timestamp; structural rework not worth it.
+  - `[medium]` `[defer]` blind 6: stdout mixes framework text with JSON lines — ops/logging configuration decision under ADR 0017; deferred in frontmatter.
+  - `[low]` `[reject]` blind 7: other exceptions fall to Spring's default error JSON — contract declares only 400; the default body holds no query input; unlikely in everyday use.
+  - `[low]` `[reject]` blind 8: repeated `ean` params join with a comma — result is a safe `EAN_NON_DIGIT` 400; pinning it adds no value.
+  - `[low]` `[reject]` blind 9: shared-case loop uses `.param()` and skips `status`/`title` — three raw-URI tests cover decoding; `code` and media type are the AC.
+  - `[maybe-false]` `[reject]` blind 10: `LookupLogTest` `hasSize(1)` over all stdout — OutputCapture is per test and the test JVM prints nothing else there; would be low.
+  - `[low]` `[patch]` edge 1: same root cause as blind 1 — same fix.
+  - `[maybe-false]` `[reject]` edge 2: malformed percent-encoding — Tomcat rejects before the controller with no input logged; would be low.
+  - `[low]` `[reject]` edge 3: leak assertion uses Java `strip()` — same as blind 5.
+  - `[false]` `[reject]` edge 4: a `{`-line that is not JSON breaks the test — only `LookupLog` writes `{`-lines in the slice; a failure would be loud and correct.
+  - `[low]` `[reject]` intent 1: AC 1.4.2 "no adapter or fetch call" holds only by construction — same as blind 2.
+  - `[low]` `[reject]` intent 2: tests run a MockMvc slice, not a real container — slice exercises the generated mapping and advice; raw-URI tests cover decoding.
+  - `[low]` `[reject]` intent 3: error code in `outcome`, not a `code` key — deliberate: ADR 0017 requires a line has no other fields (Design Notes).
+  - `[low]` `[reject]` intent 4: no ArchUnit rule that `LookupLog` is the only writer — not in this story's ACs; would be new rule surface.
+  - `[low]` `[reject]` intent 5: container/Caddy logs not exercised — Tomcat access log already off; Caddy is story 3.x (AD-15).
+  - `[low]` `[reject]` intent 6: `backend/build.gradle.kts` outside touches — required: Spring Boot 4 moved `@WebMvcTest` to `spring-boot-starter-webmvc-test` (BOM-managed, S-12).
+
 ## Design Notes
 
 - ADR 0017 says "a test asserts a log line has no other fields", so the error code travels in `outcome` (an enum field) rather than a new `code` key.
@@ -81,3 +112,19 @@ deferred: []
 **Commands:**
 - `backend/gradlew -p backend check` -- expected: exit 0, new tests pass.
 - `git status --short` -- expected: only intended source, test and spec files.
+
+## Auto Run Result
+
+Status: done
+
+**Summary:** `ean.Ean` implements AD-13 (JS-`trim()` whitespace set, ASCII digits, GS1 check digit) and passes every `api/ean-cases.json` case. `GET /api/lookup` validates first; rejections, including a missing `ean`, return 400 `application/problem+json` with the `EAN_*` code; a valid EAN returns `{ean, rows: []}` until story 1.6. `lookup.LookupLog` writes allowlisted JSON lines to stdout; `ean_rejected` carries the code in `outcome`, never the input (ADR 0017).
+
+**Files:** `ean/Ean.java`, `ean/EanError.java`, `ean/InvalidEanException.java` (validator); `api/LookupController.java` (implements generated `LookupApi`); `api/EanProblemHandler.java` (400 problem+json + log); `lookup/LookupLog.java` (allowlisted log); tests `EanTest` (1.4.1), `LookupControllerTest` (1.4.2, 1.4.3), `LookupLogTest` (1.4.3); `backend/build.gradle.kts` (test dep `spring-boot-starter-webmvc-test`, BOM-managed).
+
+**Review:** 20 findings; 1 patched (low: exhaustive enum mapping, members blind 1 + edge 1); 1 deferred (medium: stdout mixes framework text and JSON lines); the rest rejected with reasons in the triage log. The patch was applied by the parent session, not the implementation subagent, to stay within the run budget.
+
+**Follow-up review recommended:** false (patched: high 0, medium 0, low 1).
+
+**Verification:** `backend/gradlew -p backend check` exit 0 before and after the patch (Spotless, `-Xlint:all -Werror`, ArchUnit, all tests; new tests 6 + 5 + 1 passed). Every I/O matrix row is covered by a passing test.
+
+**Residual risks:** the deferred stdout item; AC 1.4.2's "no adapter or fetch call" holds by construction until story 1.6 adds the lookup service.
