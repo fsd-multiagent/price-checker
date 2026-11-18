@@ -63,8 +63,8 @@ class FetchClientTest {
   // ---- happy path ----
 
   @Test
-  @Tag("AC-2.4.1")
-  void ac_2_4_1_approvedEnabledAllowedPageIsReturnedWithOneRequest() throws IOException {
+  @Tag("AC-2.4.2")
+  void ac_2_4_2_approvedEnabledAllowedPageIsReturnedWithOneRequest() throws IOException {
     transport.then(ok("<html>p1</html>"));
 
     FetchedPage page = boundA().fetch(PAGE);
@@ -81,14 +81,14 @@ class FetchClientTest {
   }
 
   @Test
-  @Tag("AC-2.4.1")
-  void ac_2_4_1_retailerHttpGetReturnsTheBody() throws IOException {
+  @Tag("AC-2.4.2")
+  void ac_2_4_2_retailerHttpGetReturnsTheBody() throws IOException {
     RetailerHttp http = boundA();
     assertThat(http.get(PAGE)).isEqualTo("<html>page</html>");
   }
 
   @ParameterizedTest
-  @Tag("AC-2.4.2")
+  @Tag("AC-2.4.1")
   @ValueSource(
       strings = {
         "https://www.a.example/p/1",
@@ -96,7 +96,7 @@ class FetchClientTest {
         "HTTPS://a.example/p/1",
         "https://a.example:443/p/1"
       })
-  void ac_2_4_2_registerDomainOrWwwOverHttpsIsSent(String url) throws IOException {
+  void ac_2_4_1_registerDomainOrWwwOverHttpsIsSent(String url) throws IOException {
     boundA().get(URI.create(url));
     assertThat(transport.requests).hasSize(1);
   }
@@ -104,8 +104,8 @@ class FetchClientTest {
   // ---- gate ----
 
   @Test
-  @Tag("AC-2.4.1")
-  void ac_2_4_1_notApprovedRetailerSendsNothing() {
+  @Tag("AC-2.4.2")
+  void ac_2_4_2_notApprovedRetailerSendsNothing() {
     RetailerHttp http =
         client(TestRegistries.fetchable(10, 1, 4000), "a.example", "b.example", "c.example")
             .bind("c.example");
@@ -115,8 +115,8 @@ class FetchClientTest {
   }
 
   @Test
-  @Tag("AC-2.4.1")
-  void ac_2_4_1_disabledAdapterSendsNothing() {
+  @Tag("AC-2.4.2")
+  void ac_2_4_2_disabledAdapterSendsNothing() {
     RetailerHttp http =
         client(TestRegistries.fetchable(10, 1, 4000), "a.example", "b.example", "c.example")
             .bind("b.example");
@@ -126,8 +126,8 @@ class FetchClientTest {
   }
 
   @Test
-  @Tag("AC-2.4.1")
-  void ac_2_4_1_fetchingStoppedSendsNothing() {
+  @Tag("AC-2.4.2")
+  void ac_2_4_2_fetchingStoppedSendsNothing() {
     RetailerHttp http =
         client(TestRegistries.fetchable(10, 1, 4000), "b.example").bind("a.example");
     assertThat(outcomeOf(http, PAGE)).isEqualTo(unavailable(UnavailableReason.REFUSED));
@@ -135,8 +135,8 @@ class FetchClientTest {
   }
 
   @Test
-  @Tag("AC-2.4.1")
-  void ac_2_4_1_unknownRetailerCannotBeBound() {
+  @Tag("AC-2.4.2")
+  void ac_2_4_2_unknownRetailerCannotBeBound() {
     FetchClient client = client(TestRegistries.fetchable(10, 1, 4000), "a.example");
     assertThatThrownBy(() -> client.bind("evil.example"))
         .isInstanceOf(IllegalArgumentException.class);
@@ -145,7 +145,7 @@ class FetchClientTest {
   // ---- URL checks ----
 
   @ParameterizedTest
-  @Tag("AC-2.4.2")
+  @Tag("AC-2.4.1")
   @ValueSource(
       strings = {
         "http://a.example/p/1",
@@ -162,7 +162,7 @@ class FetchClientTest {
         "/p/1",
         "mailto:x@a.example"
       })
-  void ac_2_4_2_offHostSchemePortOrUserinfoSendsNothing(String url) {
+  void ac_2_4_1_offHostSchemePortOrUserinfoSendsNothing(String url) {
     assertThat(outcomeOf(boundA(), URI.create(url)))
         .isEqualTo(unavailable(UnavailableReason.REFUSED));
     assertThat(transport.requests).isEmpty();
@@ -171,8 +171,8 @@ class FetchClientTest {
   // ---- redirects ----
 
   @Test
-  @Tag("AC-2.4.2")
-  void ac_2_4_2_redirectToWwwIsFollowedWithANewCheck() throws IOException {
+  @Tag("AC-2.4.1")
+  void ac_2_4_1_redirectToWwwIsFollowedWithANewCheck() throws IOException {
     transport.then(redirect(301, "https://www.a.example/q")).then(ok("q"));
 
     FetchedPage page = boundA().fetch(PAGE);
@@ -185,14 +185,14 @@ class FetchClientTest {
   }
 
   @Test
-  @Tag("AC-2.4.2")
-  void ac_2_4_2_relativeRedirectIsResolvedAgainstTheCurrentUrl() throws IOException {
+  @Tag("AC-2.4.1")
+  void ac_2_4_1_relativeRedirectIsResolvedAgainstTheCurrentUrl() throws IOException {
     transport.then(redirect(302, "/q?x=1")).then(ok("q"));
     assertThat(boundA().fetch(PAGE).url()).isEqualTo(URI.create("https://a.example/q?x=1"));
   }
 
   @ParameterizedTest
-  @Tag("AC-2.4.2")
+  @Tag("AC-2.4.1")
   @ValueSource(
       strings = {
         "https://evil.example/q",
@@ -201,23 +201,23 @@ class FetchClientTest {
         "https://a.example:8443/q",
         "//evil.example/q"
       })
-  void ac_2_4_2_redirectOffHostIsRefusedAfterOneRequest(String location) {
+  void ac_2_4_1_redirectOffHostIsRefusedAfterOneRequest(String location) {
     transport.then(redirect(301, location));
     assertThat(outcomeOf(boundA(), PAGE)).isEqualTo(unavailable(UnavailableReason.REFUSED));
     assertThat(transport.requests).extracting(StubTransport.Request::url).containsExactly(PAGE);
   }
 
   @Test
-  @Tag("AC-2.4.2")
-  void ac_2_4_2_atMostThreeRedirectsAreFollowed() {
+  @Tag("AC-2.4.1")
+  void ac_2_4_1_atMostThreeRedirectsAreFollowed() {
     transport.always(redirect(307, "https://a.example/loop"));
     assertThat(outcomeOf(boundA(), PAGE)).isEqualTo(unavailable(UnavailableReason.HTTP_ERROR));
     assertThat(transport.requests).hasSize(4);
   }
 
   @Test
-  @Tag("AC-2.4.2")
-  void ac_2_4_2_redirectWithoutLocationIsAnHttpError() {
+  @Tag("AC-2.4.1")
+  void ac_2_4_1_redirectWithoutLocationIsAnHttpError() {
     transport.then(status(302));
     assertThat(outcomeOf(boundA(), PAGE)).isEqualTo(unavailable(UnavailableReason.HTTP_ERROR));
     assertThat(transport.requests).hasSize(1);
