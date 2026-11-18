@@ -332,4 +332,25 @@ class DeployConfigTest {
       }
     }
   }
+
+  @Test
+  @Tag("AC-3.2.3")
+  void ac_3_2_3_deleteFiltersAreActiveInTheGlobalLogAndDebugIsOff() throws IOException {
+    for (Path file : List.of(DEPLOY_CADDYFILE, WEB_CADDYFILE)) {
+      String global =
+          topLevelBlocks(caddyfileWithoutPlaceholderBraces(file)).stream()
+              .filter(b -> b[0].isEmpty())
+              .map(b -> b[1])
+              .findFirst()
+              .orElseThrow();
+      String active = global.replaceAll("(?m)#.*$", "");
+      assertThat(active).as("%s", file).containsPattern("format\\s+filter");
+      for (String field : FILTERED) {
+        assertThat(active)
+            .as("%s global log deletes %s", file, field)
+            .containsPattern("(?m)^\\s*" + Pattern.quote(field) + "\\s+delete\\s*$");
+      }
+      assertThat(active).as("%s global options", file).doesNotContainPattern("(?m)^\\s*debug\\b");
+    }
+  }
 }
