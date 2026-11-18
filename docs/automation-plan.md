@@ -161,8 +161,10 @@ All commands run from `orchestrator/` (`uv run sdlc …`). The design is in the 
 | A fix for a broken adapter | The health check opens an `adapter-broken` issue, or `sdlc fix <issue>` | Stages 7–9 for one generated story. **Not built yet** |
 | To check a run | `sdlc status [<run-id>]` | Prints every scope with its status, round and reason |
 | To continue after an escalation or a block | Fix the input (spec, story, config or register approval), then `sdlc resume <run-id>` | The paused scope continues; the rest of the run is unchanged |
+| To pause without losing work | `sdlc pause [<run-id>]` | The run starts no new step, lets running agent steps finish, then ends `paused` (issue #72). Continue with `sdlc resume <run-id>` |
+| To stop at once | `sdlc stop [<run-id>]` | Running steps are interrupted (worktree reset, cap charged) and the run ends `paused` (issue #72). Continue with `sdlc resume <run-id>` |
 
-Exit codes: 0 means everything passed, 2 means something escalated or is blocked, 1 means an internal error.
+Exit codes: 0 means everything passed, the run paused or the command was queued; 2 means something escalated, is blocked or awaits the owner; 1 means an internal error. A pause or stop does not start the next queued command.
 
 **Order of the remaining work**
 
