@@ -58,15 +58,16 @@ cleanup() {
 trap cleanup EXIT
 
 # Only these two members are extracted; anything else in the tar is ignored.
-mkdir "$work/bundle"
-tar -x -f - -C "$work/bundle" --no-same-owner compose.yaml Caddyfile
+# They stay in $work/bundle until the pull has passed, so a failed pull leaves
+# the app directory in step with the running containers.
+bundle="$work/bundle"
+mkdir "$bundle"
+tar -x -f - -C "$bundle" --no-same-owner compose.yaml Caddyfile
 for f in compose.yaml Caddyfile; do
-  if [ -L "$work/bundle/$f" ] || [ ! -f "$work/bundle/$f" ]; then
+  if [ -L "$bundle/$f" ] || [ ! -f "$bundle/$f" ]; then
     echo "deploy: bundle has no regular file $f" >&2
     exit 65
   fi
-  install -m 0640 "$work/bundle/$f" "$PC_APP_DIR/$f.new"
-  mv -f "$PC_APP_DIR/$f.new" "$PC_APP_DIR/$f"
 done
 
 export IMAGE_TAG="$sha"
@@ -75,13 +76,46 @@ BACKEND_UID="$(id -u)"
 BACKEND_GID="$(id -g)"
 export BACKEND_UID BACKEND_GID
 
-compose=(docker compose --project-name price-checker --project-directory "$PC_APP_DIR" -f "$PC_APP_DIR/compose.yaml")
+project=(docker compose --project-name price-checker)
+compose=("${project[@]}" --project-directory "$PC_APP_DIR" -f "$PC_APP_DIR/compose.yaml")
 
 printf '%s\n' "$registry_token" | docker login "$REGISTRY" --username "$registry_user" --password-stdin >/dev/null
 registry_token=""
 
-"${compose[@]}" pull
+"${project[@]}" --project-directory "$bundle" -f "$bundle/compose.yaml" pull
 docker logout "$REGISTRY" >/dev/null
 
-"${compose[@]}" up -d --remove-orphans
+# The pull passed: move the bundle into place. A changed Caddyfile is a new
+# inode, so the proxy container is recreated to mount it. The marker survives a
+# failed `up`, so the next deploy still recreates the proxy.
+caddy_pending="$PC_APP_DIR/.caddy-pending"
+if [ ! -f "$PC_APP_DIR/Caddyfile" ] || ! cmp -s "$bundle/Caddyfile" "$PC_APP_DIR/Caddyfile"; then
+  : >"$caddy_pending"
+fi
+for f in compose.yaml Caddyfile; do
+  install -m 0640 "$bundle/$f" "$PC_APP_DIR/$f.new"
+  mv -f "$PC_APP_DIR/$f.new" "$PC_APP_DIR/$f"
+done
+
+# --wait fails when a container does not reach running (or healthy) in time.
+"${compose[@]}" up -d --remove-orphans --wait --wait-timeout "${PC_WAIT_SECONDS:-120}"
+if [ -e "$caddy_pending" ]; then
+  "${compose[@]}" up -d --no-deps --force-recreate --wait --wait-timeout "${PC_WAIT_SECONDS:-120}" proxy
+  rm -f "$caddy_pending"
+fi
+
+# A backend that fails its start checks (Registry ConfigCheck, a bad Block file) can
+# look running for a moment and then restart; a restart during the settle time
+# fails the deploy.
+restarts() {
+  docker inspect --format '{{.State.Running}} {{.RestartCount}}' price-checker-backend price-checker-web
+}
+before="$(restarts)"
+sleep "${PC_SETTLE_SECONDS:-20}"
+after="$(restarts)"
+if [ "$before" != "$after" ] || grep -q '^false' <<<"$after"; then
+  echo "deploy: a container restarted or stopped after start (before: $before; after: $after)" >&2
+  "${compose[@]}" ps -a >&2 || true
+  exit 1
+fi
 echo "deploy: $IMAGE_TAG is running on $SITE_ADDRESS"

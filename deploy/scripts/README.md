@@ -5,9 +5,19 @@
 GHCR and then runs `ssh deploy@<fqdn> deploy <sha> <fqdn>` through the
 just-in-time NSG rule (ADR 0015, ADR 0018). On the VM the forced command
 `pc-dispatch` runs `/opt/price-checker/bin/deploy`, which logs in to GHCR with
-the workflow's `GITHUB_TOKEN` on stdin, pulls, logs out and runs
-`docker compose up -d` in `/opt/price-checker/app`. It never touches the
-files under `/opt/price-checker/config` or `/opt/price-checker/state` (AD-9).
+the workflow's `GITHUB_TOKEN` on stdin, pulls with the new bundle, logs out,
+moves `compose.yaml` and `Caddyfile` into `/opt/price-checker/app` only after
+the pull passed, and runs `docker compose up -d --wait` there. It recreates the
+proxy when the Caddyfile changed, and fails the deploy when a container
+restarts or stops within 20 s (`PC_SETTLE_SECONDS`). There is no rollback. It
+never touches the files under `/opt/price-checker/config` or
+`/opt/price-checker/state` (AD-9). Design: ADR 0026.
+
+The runner reads its public IPv4 from `api.ipify.org`, or from
+`checkip.amazonaws.com` when that fails; the IP only scopes the NSG rule.
+Every workflow that opens a `jit-ssh-*` rule must use concurrency group
+`prod-ssh`, because the deploy job removes leaked `jit-ssh-*` rules
+(`DeployWorkflowTest` checks this).
 
 | File | Holds |
 |---|---|

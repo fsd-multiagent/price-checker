@@ -101,7 +101,7 @@ tasks.withType<Test>().configureEach {
     // Stories 3.2, 3.3: DeployConfigTest and DeployWorkflowTest read these files, so a change
     // must re-run them.
     inputs.dir("../deploy")
-    inputs.files("../.github/workflows/deploy.yml", "../.github/workflows/ci.yml")
+    inputs.dir("../.github/workflows")
     inputs.files("Dockerfile", "../web/Dockerfile", "../web/Caddyfile", "../web/package.json", "../web/openapitools.json", "../.dockerignore")
 }
 

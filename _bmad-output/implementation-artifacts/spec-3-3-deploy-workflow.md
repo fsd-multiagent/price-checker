@@ -12,41 +12,6 @@ context:
 warnings: []
 deferred:
   - summary: >-
-      Caddy keeps the old Caddyfile after a deploy: mv swaps the inode under the file bind mount and Caddy does not reload.
-    evidence: |-
-      Review pass 2026-11-18; verified by reading the diff; deferred because the run budget ran out.
-    location: >-
-      deploy/scripts/deploy bundle loop
-    severity: medium
-  - summary: >-
-      App dir gets the new compose.yaml/Caddyfile before the pull; a failed pull leaves it out of step with the running containers.
-    evidence: |-
-      Review pass 2026-11-18; verified by reading the diff; deferred because the run budget ran out.
-    location: >-
-      deploy/scripts/deploy bundle loop
-    severity: medium
-  - summary: >-
-      Deploy reports success without checking the app is up (no up --wait or /api/status probe); no rollback.
-    evidence: |-
-      Review pass 2026-11-18; verified by reading the diff; deferred because the run budget ran out.
-    location: >-
-      deploy/scripts/deploy up -d
-    severity: medium
-  - summary: >-
-      The SSH probe hides host-key or auth failures (stderr dropped, exit 255 retried as 'did not connect').
-    evidence: |-
-      Review pass 2026-11-18; verified by reading the diff; deferred because the run budget ran out.
-    location: >-
-      deploy.yml deploy step probe
-    severity: low
-  - summary: >-
-      Workflow shell lacks pipefail and checks: a failed OIDC curl or nsg rule list is not caught clearly.
-    evidence: |-
-      Review pass 2026-11-18; verified by reading the diff; deferred because the run budget ran out.
-    location: >-
-      deploy.yml Azure login and open steps
-    severity: low
-  - summary: >-
       Concurrent pushes: an older SHA could deploy after a newer one; the shared prod-ssh group can replace a pending kill-switch run (story 3.4 must decide).
     evidence: |-
       Review pass 2026-11-18; verified by reading the diff; deferred because the run budget ran out.
@@ -60,13 +25,6 @@ deferred:
     location: >-
       DeployWorkflowTest.java
     severity: medium
-  - summary: >-
-      Runner IP comes from api.ipify.org (unpinned third party); not recorded in an ADR; no ADR for stdin token or bundle transport or owner install bootstrap (D-2).
-    evidence: |-
-      Review pass 2026-11-18; verified by reading the diff; deferred because the run budget ran out.
-    location: >-
-      deploy.yml open step
-    severity: low
 ---
 
 <intent-contract>
@@ -81,7 +39,7 @@ deferred:
 
 **Always:** the registry token travels only on stdin (`docker login --password-stdin`, never argv, never a file outside a temp `DOCKER_CONFIG` that is removed on exit); `docker logout ghcr.io` runs right after `compose pull` and again on any exit; secrets reach `run:` steps only through `env:`; actions pinned to commit SHAs (S-12) — only `actions/checkout` is used, Azure login is `az login --federated-token` with the runner's OIDC token; the deploy script validates its two arguments (40-hex SHA, DNS name) before reading stdin, extracts only `compose.yaml` and `Caddyfile` from the tar, sets `IMAGE_TAG`, `SITE_ADDRESS`, `BACKEND_UID`/`BACKEND_GID` (the deploy user's ids) and fails when `/opt/price-checker/state` is missing or not writable; deploy and the future kill-switch share the concurrency group `prod-ssh` because both use NSG priority 100.
 
-**Never:** the deploy script writes, creates or deletes `runtime.yaml` or `blocks.json`, or anything under `/opt/price-checker/config` or `/opt/price-checker/state` (AD-9); no `set -x`; no `latest` tag; no `terraform apply`; no change to `infra/` (bootstrap is the owner's `install` script); no smoke test, image pruning or rollback (not in the ACs).
+**Never:** the deploy script writes, creates or deletes `runtime.yaml` or `blocks.json`, or anything under `/opt/price-checker/config` or `/opt/price-checker/state` (AD-9); no `set -x`; no `latest` tag; no `terraform apply`; no change to `infra/` (bootstrap is the owner's `install` script); no HTTP smoke test, image pruning or rollback (not in the ACs; round 2 added only the container start check).
 
 ## I/O & Edge-Case Matrix
 
@@ -142,6 +100,17 @@ deferred:
   - `[low]` `[reject]` stale-rule sweep vs owner apply mid-deploy (blind) — owner action; a leaked rule shows as plan drift (ADR 0018).
   - `[low]` `[reject]` intent audit: proof at stand-in surfaces and tests outside touches — the only way the tests gate can run them (T-8); live path needs owner setup.
 
+### 2026-11-18 — Round 2 (orchestrator review feedback r1)
+- `[major]` `[patch]` code_review CR-1: bundle stays in the temp dir until `compose pull` (run with the bundle's compose file) passes; then moved into the app dir.
+- `[major]` `[patch]` code_review CR-2: `up -d --wait --wait-timeout`, then a settle check of `docker inspect` running state and restart counts; a restart or stop fails the deploy. Caddy proxy recreated when the Caddyfile changed (closes the inode deferral).
+- `[minor]` `[patch]` CR-3: last probe attempt prints ssh stderr; message names host key and deploy key.
+- `[minor]` `[patch]` CR-4: test that every workflow job opening a `jit-ssh-*` rule uses group `prod-ssh` (binds story 3.4).
+- `[minor]` `[patch]` CR-5 / code_lens CR-1: fallback IP service `checkip.amazonaws.com`; ADR 0026 records the deploy choices (D-2).
+- `[minor]` `[patch]` code_lens CR-2: `set -euo pipefail` in every deploy-job run block; empty or `null` OIDC token fails clearly; NSG rule list captured before the loop so its failure stops the step.
+- `[major]` `[patch]` round-2 self-review: a failed `up` after the Caddyfile move lost the proxy recreate; `.caddy-pending` marker in the app dir keeps it owed until a recreate passes.
+- `[minor]` `[reject]` round-2 self-review: temp `DOCKER_CONFIG` hides user CLI plugins — cloud-init installs `docker-compose-v2` system-wide.
+- security step left no verdict in r1 (reviewer error, AD-10/AD-18); no code finding to act on.
+
 ## Design Notes
 
 Stdin carries `user\ntoken\n` then the tar; bash `read` on a pipe consumes byte by byte, so `tar -x -f -` gets the rest intact. The actor goes on stdin because `github-actions[bot]` fails `pc-dispatch`'s charset. The bundle travels with each deploy so compose/Caddyfile changes need no owner step; only a change to the `deploy` script itself needs the owner to rerun `install`.
@@ -160,5 +129,6 @@ Status: done
 - Files: `.github/workflows/deploy.yml` (workflow); `deploy/scripts/deploy` (VM script); `deploy/scripts/install` (owner one-time root bootstrap: bin, state, app dirs); `deploy/scripts/README.md` (owner setup); `backend/src/test/java/ro/pricechecker/DeployWorkflowTest.java` (9 AC tests); `backend/build.gradle.kts` (test inputs).
 - Review: 0 patches; 8 deferred (frontmatter `deferred`); rejections with reasons in the triage log. The orchestrator change after implementation made the host-key pin required instead of trust-on-first-use.
 - Follow-up review recommended: false (no patches this pass).
+- Round 2: review findings CR-1..CR-5 and code_lens CR-1..CR-2 patched; ADR 0026 added; DeployWorkflowTest 20/20 and `backend/gradlew -p backend check` passed.
 - Verification: `backend/gradlew -p backend check` passed (DeployWorkflowTest 9/9, 0 skipped); `bash -n` on both scripts passed. No real Actions or VM run.
 - Residual risks: the deferred items, mainly that the Caddyfile is not reloaded on deploy and the deploy is reported green without a health check. Owner setup is required (install script, variables, secret, NSG-scoped OIDC role).

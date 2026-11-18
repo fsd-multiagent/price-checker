@@ -54,9 +54,17 @@ class DeployWorkflowTest {
       printf 'CFG %s %s\\n' "$DOCKER_CONFIG" "$state" >> "$log"
       case "$1" in
         login) cat > "$log.stdin" ;;
+        inspect)
+          n=0
+          if [ "${FAKE_FAIL:-}" = crash ]; then
+            n=$(( $(cat "$log.restarts" 2>/dev/null || echo 0) + 1 ))
+            echo "$n" > "$log.restarts"
+          fi
+          printf 'true %s\\ntrue 0\\n' "$n" ;;
         compose)
           for a in "$@"; do
             if [ "$a" = pull ] && [ "${FAKE_FAIL:-}" = pull ]; then exit 1; fi
+            if [ "$a" = up ] && [ "${FAKE_FAIL:-}" = up ]; then exit 1; fi
             if [ "$a" = up ]; then
               printf 'ENV %s %s %s %s\\n' "$IMAGE_TAG" "$SITE_ADDRESS" "$BACKEND_UID" "$BACKEND_GID" >> "$log"
             fi
@@ -152,6 +160,7 @@ class DeployWorkflowTest {
     e.put("PC_ROOT", root.toString());
     e.put("PC_APP_DIR", appDir.toString());
     e.put("FAKE_DOCKER_LOG", log.toString());
+    e.put("PC_SETTLE_SECONDS", "0");
     e.put("TMPDIR", Files.createDirectories(tmp.resolve("tmpdir")).toString());
     e.putAll(env);
     Process p = pb.start();
@@ -247,12 +256,67 @@ class DeployWorkflowTest {
   @Test
   @Tag("AC-3.3.1")
   void ac_3_3_1_failedPullStillLogsOutAndNeverStarts() throws Exception {
+    Files.writeString(appDir.resolve("compose.yaml"), "previous compose\n");
+    Files.writeString(appDir.resolve("Caddyfile"), "previous caddy\n");
+
     Run run = deploy(Map.of("FAKE_FAIL", "pull"), goodStdin(), SHA, SITE);
 
     assertThat(run.exit()).isNotZero();
     List<String> calls = dockerCalls();
+    assertThat(calls.get(indexOf(calls, " pull")))
+        .as("pulls with the bundle, not the app directory")
+        .contains("-f " + tmp.resolve("tmpdir"))
+        .doesNotContain(appDir.toString());
     assertThat(indexOf(calls, "logout ghcr.io")).isGreaterThan(indexOf(calls, " pull"));
     assertThat(indexOf(calls, " up")).isEqualTo(-1);
+    assertThat(Files.readString(appDir.resolve("compose.yaml"))).isEqualTo("previous compose\n");
+    assertThat(Files.readString(appDir.resolve("Caddyfile"))).isEqualTo("previous caddy\n");
+    assertThat(listing(tmp.resolve("tmpdir"))).isEmpty();
+  }
+
+  @Test
+  @Tag("AC-3.3.1")
+  void ac_3_3_1_upWaitsForTheContainersAndRecreatesTheProxyOnlyForANewCaddyfile() throws Exception {
+    Run first = deploy(Map.of(), goodStdin(), SHA, SITE);
+    assertThat(first.exit()).as(first.stderr()).isZero();
+    List<String> calls = dockerCalls();
+    assertThat(calls.get(indexOf(calls, " up -d"))).contains("--wait", "--wait-timeout");
+    assertThat(indexOf(calls, "--force-recreate")).as("new Caddyfile").isGreaterThan(0);
+    assertThat(calls.get(indexOf(calls, "--force-recreate"))).endsWith(" proxy");
+
+    Files.delete(log);
+    Files.deleteIfExists(tmp.resolve("bundle.tar"));
+    deleteTree(tmp.resolve("bundle-src"));
+    Run second = deploy(Map.of(), goodStdin(), SHA, SITE);
+    assertThat(second.exit()).as(second.stderr()).isZero();
+    assertThat(indexOf(dockerCalls(), "--force-recreate")).as("same Caddyfile").isEqualTo(-1);
+  }
+
+  @Test
+  @Tag("AC-3.3.1")
+  void ac_3_3_1_containerThatFailsToStartOrRestartsFailsTheDeploy() throws Exception {
+    Run up = deploy(Map.of("FAKE_FAIL", "up"), goodStdin(), SHA, SITE);
+    assertThat(up.exit()).isNotZero();
+    assertThat(up.stderr()).doesNotContain("is running");
+    assertThat(appDir.resolve(".caddy-pending")).as("proxy recreate still owed").exists();
+
+    Files.delete(log);
+    Files.deleteIfExists(tmp.resolve("bundle.tar"));
+    deleteTree(tmp.resolve("bundle-src"));
+    Run retry = deploy(Map.of(), goodStdin(), SHA, SITE);
+    assertThat(retry.exit()).as(retry.stderr()).isZero();
+    assertThat(indexOf(dockerCalls(), "--force-recreate"))
+        .as("same Caddyfile, owed")
+        .isGreaterThan(0);
+    assertThat(appDir.resolve(".caddy-pending")).doesNotExist();
+
+    Files.delete(log);
+    Files.deleteIfExists(tmp.resolve("bundle.tar"));
+    deleteTree(tmp.resolve("bundle-src"));
+    Run crash = deploy(Map.of("FAKE_FAIL", "crash"), goodStdin(), SHA, SITE);
+    assertThat(crash.exit()).isEqualTo(1);
+    assertThat(crash.stderr()).contains("restarted or stopped after start");
+    assertThat(Files.readString(tmp.resolve("stdout.txt"))).doesNotContain("is running");
     assertThat(listing(tmp.resolve("tmpdir"))).isEmpty();
   }
 
@@ -582,6 +646,36 @@ class DeployWorkflowTest {
         .doesNotContain("BEGIN OPENSSH PRIVATE KEY", "BEGIN RSA PRIVATE KEY")
         .doesNotContainPattern("(?i)password\\s*[:=]\\s*\\S")
         .doesNotContainPattern("client[-_]secret");
+  }
+
+  @Test
+  @Tag("AC-3.3.1")
+  void ac_3_3_1_everyJobThatOpensAJitSshRuleSharesTheProdSshGroup() throws IOException {
+    // The stale-rule sweep deletes every jit-ssh-* rule, which is safe only while all
+    // such jobs run one at a time (ADR 0018, ADR 0026).
+    int found = 0;
+    try (Stream<Path> files = Files.list(WORKFLOW.getParent())) {
+      for (Path file : files.filter(f -> f.toString().endsWith(".yml")).toList()) {
+        Map<String, Object> jobs = map(map(new Yaml().load(Files.readString(file))).get("jobs"));
+        for (Map.Entry<String, Object> job : jobs.entrySet()) {
+          boolean opensRule =
+              ((List<?>) map(job.getValue()).get("steps"))
+                  .stream()
+                      .map(step -> String.valueOf(map(step).get("run")))
+                      .anyMatch(run -> run.contains("nsg rule create") && run.contains("jit-ssh-"));
+          if (opensRule) {
+            found++;
+            Object concurrency = map(job.getValue()).get("concurrency");
+            assertThat(concurrency).as("%s job %s", file, job.getKey()).isInstanceOf(Map.class);
+            assertThat(map(concurrency).get("group"))
+                .as("%s job %s", file, job.getKey())
+                .isEqualTo("prod-ssh");
+            assertThat(map(concurrency).get("cancel-in-progress")).isEqualTo(false);
+          }
+        }
+      }
+    }
+    assertThat(found).isGreaterThanOrEqualTo(1);
   }
 
   private static void deleteTree(Path dir) throws IOException {
