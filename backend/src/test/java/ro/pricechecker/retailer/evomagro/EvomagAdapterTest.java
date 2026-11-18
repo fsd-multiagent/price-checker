@@ -73,13 +73,16 @@ class EvomagAdapterTest {
 
   @Test
   @Tag("AC-2.11.3")
-  void ac_2_11_3_retailerIdMatchesConfigAndStaysDisabled() {
+  void ac_2_11_3_retailerIdMatchesConfigAndIsEnabledOnlyBecauseApproved() {
     assertThat(adapter.retailerId()).isEqualTo(EvomagAdapter.RETAILER_ID);
-    assertThat(new Registry().retailers())
+    Registry registry = new Registry();
+    assertThat(registry.isApproved(EvomagAdapter.RETAILER_ID))
+        .isTrue(); // owner approval 2026-11-18
+    assertThat(registry.retailers())
         .filteredOn(r -> r.domain().equals(EvomagAdapter.RETAILER_ID))
         .singleElement()
         .extracting(RetailerConfig::enabled)
-        .isEqualTo(false);
+        .isEqualTo(true);
   }
 
   @Test

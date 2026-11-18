@@ -155,7 +155,7 @@ class EvomagAcceptanceGapsTest {
   @Test
   @Tag("AC-2.11.3")
   @Tag("AC-9.4")
-  void ac_2_11_3_ac_9_4_bundledConfigShipsEvomagDisabled() throws IOException {
+  void ac_2_11_3_ac_9_4_bundledConfigShipsEvomagEnabledOnceApproved() throws IOException {
     List<String> lines = Files.readAllLines(Path.of("..", "config", "retailers.yaml"));
     int start = lines.indexOf("  " + EvomagAdapter.RETAILER_ID + ":");
     assertThat(start).as("evoMAG entry in retailers.yaml").isNotNegative();
@@ -164,7 +164,8 @@ class EvomagAcceptanceGapsTest {
             .takeWhile(l -> l.startsWith("    "))
             .map(String::strip)
             .toList();
-    assertThat(block).contains("adapter: disabled", "resolution: curated");
+    assertThat(block)
+        .contains("adapter: enabled", "resolution: curated"); // owner approval 2026-11-18
   }
 
   @Test
