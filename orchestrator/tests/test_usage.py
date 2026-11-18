@@ -711,6 +711,25 @@ def test_usage_model_is_the_modelusage_id():
     assert (rec.model, rec.model_requested) == ("claude-opus-4-1", "opus")
 
 
+def test_usage_step_limits_override_the_stage():
+    """AD-7, AD-24: the ledger records the step's own model and effort over the stage's."""
+    text = pipeline_text().replace(
+        "  - id: analysis\n", "  - id: analysis\n    model: opus\n    effort: high\n", 1
+    )
+    text = text.replace(
+        "        prompt: brief\n",
+        "        prompt: brief\n        model: haiku\n        effort: low\n",
+        1,
+    )
+    p = load_pipeline(text)
+    result = parse_result(json.dumps({"subtype": "success", "total_cost_usd": 0.2, "modelUsage": {
+        "claude-haiku-4-5": {"inputTokens": 1, "costUSD": 0.2}}}))  # fmt: skip
+    s = apply(p, running_analysis(p), StepFinished(at=T, seq=1, result=result))
+    rec = s.step_record(1).usage
+    assert rec is not None
+    assert (rec.model_requested, rec.effort) == ("haiku", "low")
+
+
 def test_usage_no_record_when_no_model_ran():
     p = load_pipeline(pipeline_text())
     failed = StepResult(subtype="error_orchestrator", is_error=True, errors=("bad prompt",))

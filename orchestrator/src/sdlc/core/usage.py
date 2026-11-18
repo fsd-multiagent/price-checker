@@ -214,7 +214,7 @@ def render_summary(state: RunState, epic: int) -> str:
         "",
         "## What to recommend",
         "",
-        "Record each change you recommend to `model`, `effort` or `max_turns` per stage in",
+        "Record each change you recommend to `model`, `effort` or `max_turns` per stage or step in",
         "`sdlc/pipeline.yaml` as an action item. Do not edit `sdlc/` yourself: the owner",
         "changes the pipeline through a reviewed PR.",
     ]

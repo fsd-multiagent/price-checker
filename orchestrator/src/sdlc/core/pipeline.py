@@ -97,6 +97,12 @@ def _resolve_stage(raw: Any, index: int, earlier: list[Stage], settings: Setting
             step = Step.model_validate(raw_step)
         except ValidationError as exc:
             raise PipelineError(f"{step_where}: {_first_error(exc)}") from exc
+        if step.max_turns is not None and step.max_turns <= 0:
+            raise PipelineError(f"{step_where}: max_turns must be greater than 0")
+        if step.kind is StepKind.SCRIPT and (step.model or step.effort or step.max_turns):
+            raise PipelineError(
+                f"{step_where}: model, effort and max_turns need an agent or judge step"
+            )
         steps.append(_resolve_step(step, step_where))
         _check_role(steps[-1], step_where, settings)
     data["steps"] = steps
