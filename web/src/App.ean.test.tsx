@@ -140,7 +140,11 @@ describe('AC 1.7.4 server 400 problem+json', () => {
     submit('96385074');
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await settle();
-    expect(screen.queryByRole('alert')).toBeNull();
+    // AC 1.8.5: not an EAN error, so the request-failed notice shows instead.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not reach Price Checker. Check your connection and try again.',
+    );
+    expect(screen.getByLabelText('EAN (8 or 13 digits)')).not.toHaveAttribute('aria-invalid');
   });
 
   it('AC 1.7.4: a 400 whose body is not JSON shows no EAN error', async () => {
@@ -151,7 +155,11 @@ describe('AC 1.7.4 server 400 problem+json', () => {
     submit('96385074');
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await settle();
-    expect(screen.queryByRole('alert')).toBeNull();
+    // AC 1.8.5: not an EAN error, so the request-failed notice shows instead.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not reach Price Checker. Check your connection and try again.',
+    );
+    expect(screen.getByLabelText('EAN (8 or 13 digits)')).not.toHaveAttribute('aria-invalid');
   });
 
   it('AC 1.7.4: a 400 for a Lookup started from /?ean= shows the client copy', async () => {
