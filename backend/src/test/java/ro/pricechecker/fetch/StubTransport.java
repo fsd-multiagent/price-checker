@@ -35,6 +35,11 @@ final class StubTransport implements Transport {
     return new Response(status, Optional.empty(), "");
   }
 
+  /** A 429, with the given {@code Retry-After} header value when non-null. */
+  static Response tooMany(String retryAfter) {
+    return new Response(429, Optional.empty(), "", Optional.ofNullable(retryAfter));
+  }
+
   static Response redirect(int status, String location) {
     return new Response(status, Optional.of(location), "");
   }

@@ -341,7 +341,7 @@ class FetchClientTest {
 
   @ParameterizedTest
   @Tag("AC-2.4.4")
-  @ValueSource(ints = {400, 401, 405, 429, 451, 304, 999})
+  @ValueSource(ints = {400, 401, 405, 451, 304, 999})
   void ac_2_4_4_fourHundredsAreNotRetried(int code) {
     transport.always(status(code));
     assertThat(outcomeOf(boundA(), PAGE)).isEqualTo(unavailable(UnavailableReason.HTTP_ERROR));

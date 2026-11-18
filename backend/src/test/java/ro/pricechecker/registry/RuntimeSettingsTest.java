@@ -3,6 +3,7 @@ package ro.pricechecker.registry;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Instant;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -118,5 +119,37 @@ class RuntimeSettingsTest {
     assertThat(settings.hasRunnerBlock("a.example")).isTrue();
     assertThat(settings.hasRunnerBlock("b.example")).isFalse();
     assertThat(RuntimeSettings.NONE.hasRunnerBlock("a.example")).isFalse();
+  }
+
+  @Test
+  @Tag("AC-2.7.3")
+  void ac_2_7_3_notBeforeIsReadQuotedOrUnquoted() {
+    RuntimeSettings settings =
+        RuntimeSettings.parse(
+            """
+            retailers:
+              a.example: {fetching: allowed, notBefore: "2026-11-18T05:00:00Z"}
+              b.example: {fetching: allowed, notBefore: 2026-11-18T06:00:00Z}
+              c.example: {fetching: allowed}
+            """);
+    assertThat(settings.notBefore("a.example")).contains(Instant.parse("2026-11-18T05:00:00Z"));
+    assertThat(settings.notBefore("b.example")).contains(Instant.parse("2026-11-18T06:00:00Z"));
+    assertThat(settings.notBefore("c.example")).isEmpty();
+    assertThat(RuntimeSettings.NONE.notBefore("a.example")).isEmpty();
+  }
+
+  @ParameterizedTest
+  @Tag("AC-2.7.3")
+  @ValueSource(
+      strings = {
+        "retailers:\n  a.example: {fetching: allowed, notBefore: soon}\n",
+        "retailers:\n  a.example: {fetching: allowed, notBefore: 60}\n",
+        "retailers:\n  a.example: {fetching: allowed, notBefore: }\n",
+        "retailers:\n  a.example: {fetching: allowed, notBefore: \"2026-13-01T00:00:00Z\"}\n",
+        "retailers:\n  a.example: {fetching: allowed, notBefore: [1]}\n",
+      })
+  void ac_2_7_3_badNotBeforeRejectsTheFile(String yaml) {
+    assertThatThrownBy(() -> RuntimeSettings.parse(yaml))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }

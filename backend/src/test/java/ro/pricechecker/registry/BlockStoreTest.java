@@ -240,4 +240,123 @@ class BlockStoreTest {
     assertThat(store.isBlocked("a.example")).isTrue();
     assertThat(events).containsExactly("a.example HTTP_403");
   }
+
+  // ---- story 2.7: notBefore after a 429 ----
+
+  private JsonNode entryInFile() throws IOException {
+    return JsonMapper.builder()
+        .build()
+        .readTree(Files.readString(blocksFile))
+        .get("retailers")
+        .get("a.example");
+  }
+
+  @Test
+  @Tag("AC-2.7.1")
+  void ac_2_7_1_retryAfterIsPersistedAndIsNotABlock() throws IOException {
+    BlockStore store = store();
+    store.recordRetryAfter("a.example", START.plusSeconds(60));
+
+    assertThat(store.notBefore("a.example")).contains(START.plusSeconds(60));
+    assertThat(store.isBlocked("a.example")).isFalse();
+    assertThat(events).isEmpty();
+    JsonNode entry = entryInFile();
+    assertThat(entry.get("notBefore").stringValue()).isEqualTo("2026-11-18T10:01:00Z");
+    assertThat(entry.has("reason")).isFalse();
+    assertThat(entry.has("blockGeneration")).isFalse();
+    assertThat(store.notBefore("b.example")).isEmpty();
+  }
+
+  @Test
+  @Tag("AC-2.7.1")
+  void ac_2_7_1_notBeforeNeverMovesEarlier() throws IOException {
+    BlockStore store = store();
+    store.recordRetryAfter("a.example", START.plusSeconds(300));
+    store.recordRetryAfter("a.example", START.plusSeconds(60));
+
+    assertThat(store.notBefore("a.example")).contains(START.plusSeconds(300));
+    assertThat(entryInFile().get("notBefore").stringValue()).isEqualTo("2026-11-18T10:05:00Z");
+
+    store.recordRetryAfter("a.example", START.plusSeconds(600));
+    assertThat(store.notBefore("a.example")).contains(START.plusSeconds(600));
+  }
+
+  @Test
+  @Tag("AC-2.7.3")
+  void ac_2_7_3_notBeforeSurvivesARestart() {
+    store().recordRetryAfter("a.example", START.plusSeconds(120));
+    BlockStore restarted = store();
+    assertThat(restarted.notBefore("a.example")).contains(START.plusSeconds(120));
+    assertThat(restarted.isBlocked("a.example")).isFalse();
+  }
+
+  @Test
+  @Tag("AC-2.7.1")
+  void ac_2_7_1_blockAndNotBeforeAreBothKeptOnEveryWrite() throws IOException {
+    BlockStore store = store();
+    store.recordRetryAfter("a.example", START.plusSeconds(120));
+    store.record("a.example", BlockStore.Reason.HTTP_403);
+    assertThat(entryInFile().get("notBefore").stringValue()).isEqualTo("2026-11-18T10:02:00Z");
+    assertThat(entryInFile().get("reason").stringValue()).isEqualTo("HTTP_403");
+
+    store.recordRetryAfter("a.example", START.plusSeconds(240));
+    BlockStore restarted = store();
+    assertThat(restarted.entries().get("a.example"))
+        .isEqualTo(
+            new BlockStore.Entry(0, START, BlockStore.Reason.HTTP_403, START.plusSeconds(240)));
+    assertThat(restarted.isBlocked("a.example")).isTrue();
+  }
+
+  @Test
+  @Tag("AC-2.7.3")
+  void ac_2_7_3_laterOfFileAndRuntimeNotBeforeWins() throws IOException {
+    BlockStore store = store();
+    store.recordRetryAfter("a.example", START.plusSeconds(60));
+    Files.writeString(
+        runtimeFile,
+        "retailers:\n  a.example: {fetching: allowed, notBefore: \"2026-11-18T11:00:00Z\"}\n"
+            + "  b.example: {fetching: allowed, notBefore: \"2026-11-18T09:00:00Z\"}\n");
+    poll();
+
+    assertThat(store.notBefore("a.example")).contains(Instant.parse("2026-11-18T11:00:00Z"));
+    assertThat(store.notBefore("b.example")).contains(Instant.parse("2026-11-18T09:00:00Z"));
+    store.recordRetryAfter("b.example", START.plusSeconds(60));
+    assertThat(store.notBefore("b.example")).contains(START.plusSeconds(60));
+    assertThat(store.isBlocked("a.example")).isFalse();
+  }
+
+  @Test
+  @Tag("AC-2.7.1")
+  void ac_2_7_1_parseIgnoresUnknownFieldsAndReadsNotBefore() {
+    var parsed =
+        BlockStore.parse(
+            """
+            {"retailers": {
+              "a.example": {"notBefore": "2026-11-18T10:01:00Z", "later": 1},
+              "b.example": {"blockGeneration": 2, "blockedAt": "2026-11-18T10:00:00Z",
+                            "reason": "ROBOTS", "extra": {"x": true}}
+            }, "version": 1}
+            """);
+    assertThat(parsed.get("a.example"))
+        .isEqualTo(new BlockStore.Entry(0, null, null, START.plusSeconds(60)));
+    assertThat(parsed.get("b.example"))
+        .isEqualTo(new BlockStore.Entry(2, START, BlockStore.Reason.ROBOTS));
+  }
+
+  @ParameterizedTest
+  @Tag("AC-2.7.1")
+  @ValueSource(
+      strings = {
+        "{\"retailers\": {\"a.example\": {}}}",
+        "{\"retailers\": {\"a.example\": {\"other\": 1}}}",
+        "{\"retailers\": {\"a.example\": {\"notBefore\": \"soon\"}}}",
+        "{\"retailers\": {\"a.example\": {\"notBefore\": 60}}}",
+        "{\"retailers\": {\"a.example\": {\"reason\": \"HTTP_403\","
+            + " \"notBefore\": \"2026-11-18T10:01:00Z\"}}}",
+        "{\"retailers\": {\"a.example\": {\"blockGeneration\": 0,"
+            + " \"blockedAt\": \"2026-11-18T10:00:00Z\", \"reason\": \"HTTP_429\"}}}",
+      })
+  void ac_2_7_1_parseStaysStrictOnKnownFields(String json) {
+    assertThatThrownBy(() -> BlockStore.parse(json)).isInstanceOf(IllegalArgumentException.class);
+  }
 }
