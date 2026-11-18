@@ -27,8 +27,8 @@ development_status:
   2-9-status-endpoint: done
   2-10-adapter-celro: done
   2-11-adapter-evomagro: done
-  2-12-celro-live-enable: backlog
-  2-13-evomagro-live-enable: backlog
+  2-12-celro-live-enable: done
+  2-13-evomagro-live-enable: review
   2-14-e2e-uj1-uj2: done
   epic-2-retrospective: optional
   epic-3: in-progress
