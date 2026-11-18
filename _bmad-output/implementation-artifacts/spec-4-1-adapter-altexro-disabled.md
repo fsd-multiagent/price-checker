@@ -228,3 +228,9 @@ Status: done
 - CR-1 (T-8): `backend/gradlew -p backend check` exit 0 after the rebase. CR-3 (D-2): ADR 0026 is still Proposed; the PR description must name it for the owner's acceptance. code_lens CR-1 (C-6, `RON` currency text) stays deferred as recorded in the frontmatter.
 - No code change this round, so no follow-up review pass ran.
 - QA (Eufrosina, round 11): no test change. All three criteria are covered by tests whose names carry the criterion ID (T-1): 4.1.1 in `AltexroAdapterTest` (15) and `AltexroAcceptanceGapsTest` (8 of 9), 4.1.2 in `AltexroGateTest`, `AltexroLookupContextTest` and `AltexroAcceptanceGapsTest`, 4.1.3 in `AltexroGateTest`. `backend/gradlew -p backend check` exit 0; the 29 Altex tests pass with no skips. The security blockers do not come from the tests, so a test change cannot fix them.
+
+### Round 12
+
+- Fixed the `rebase-outcome` blocker (AD-18): `origin/main` moved to fef53d4 (#86 story 4-2, #89). Rebased onto it; the only conflict was `_bmad-output/implementation-artifacts/epic-4-context.md`, which both stories added. Kept main's version (merged with story 4-2, a superset of this story's copy). `open_pr-missing`, `ci_green-missing` and `merge_pr-missing` follow from the failed rebase and need no change of their own.
+- Restored `sdlc/prompts/security-story.md` to `origin/main`: commit 5192b81 had committed the round 11 factory proposal on this story branch, and a story PR must not change `protected_paths` (AD-26). The proposal stands as recorded in round 11 and goes through the owner.
+- Verification: `backend/gradlew -p backend check` exit 0 after the rebase, including story 4-2's `LayoutChangeTest`, `LayoutChangeCoverageTest` and `LayoutChangeHealthCheckTest`.
