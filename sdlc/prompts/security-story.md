@@ -19,3 +19,7 @@ format of `docs/standards/review-findings.md`. Do not write a verdict file. Ever
 cite a rule ID or an acceptance criterion ID. The block must have all four top-level keys
 `reviewer`, `target`, `verdict` and `findings`; set `target` to `story/${story_key} @ <commit>`.
 A block without `target` is not a valid verdict and fails the gate, even when it passes.
+Each finding must have `id` (for example `SEC-1`), `severity` (only `blocker`, `major` or `minor`;
+there is no `info`) and `summary`; `rule`, `file`, `line` and `fix` are optional. Use these exact
+key names: a finding with `message` or `location` instead of `summary` or `file` makes the whole
+verdict invalid. With nothing to report, return `"findings": []`.
