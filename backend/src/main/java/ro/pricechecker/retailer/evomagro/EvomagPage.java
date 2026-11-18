@@ -17,16 +17,19 @@ import ro.pricechecker.extract.StructuredData;
 
 /**
  * Turns an evoMAG product page into an outcome. Extraction runs in the C-6 order: embedded
- * structured data (JSON-LD, then schema.org microdata), then meta tags. evoMAG needs no
- * retailer-specific selectors on the synthetic pages; story 2.13 adds them if real pages do. Parses
- * the string only.
+ * structured data (JSON-LD, then schema.org microdata), then meta tags. The real pages recorded in
+ * story 2.13 carry microdata only (one Product scope with a nested Offer), so evoMAG needs no
+ * retailer-specific selectors. Parses the string only.
  */
 final class EvomagPage {
 
   private static final String PRICE = "[itemprop=price]";
   private static final String CURRENCY = "[itemprop=priceCurrency]";
   private static final String AVAILABILITY = "[itemprop=availability]";
-  private static final String GTIN = "[itemprop=gtin13]";
+  // Real evoMAG pages use the generic gtin property with a 12-digit UPC-A (story 2.13); the first
+  // gtin-like property in document order wins.
+  private static final String GTIN =
+      "[itemprop=gtin13], [itemprop=gtin], [itemprop=gtin12], [itemprop=gtin14], [itemprop=gtin8]";
 
   private EvomagPage() {}
 
