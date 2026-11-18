@@ -43,6 +43,13 @@ deferred:
     evidence: |-
       Docs sync belongs to Aglaia (Knowledge Keeper) at stage 9.
     severity: low
+  - summary: >-
+      Adapter maps every IOException to Unavailable(HTTP_ERROR) instead of returning FetchFailure.outcome(), so a 404 would not be NotFound (AD-6).
+    evidence: |-
+      Same pattern in CelroAdapter and EvomagAdapter; fix all three when FetchClient is wired as RetailerHttp (story 2.8), with a 404 test each.
+    location: >-
+      backend/src/main/java/ro/pricechecker/retailer/altexro/AltexroAdapter.java:58
+    severity: medium
 ---
 
 <intent-contract>
@@ -184,4 +191,12 @@ Status: done
 - code_lens CR-3 (S-1, exact register Status pin) had already been fixed in round 5: `ac_4_1_2_registerKeepsAltexNotChecked` asserts only that altex.ro is in the register and is not Approved.
 - CR-2 (C-7, gtin compared with the requested EAN) and CR-3 (C-6, `RON` currency text) stay deferred as recorded. CR-4 (D-2): ADR 0026 is still Proposed and needs the owner's acceptance.
 - Rebased onto `origin/main` at 6406f067ef29549503dfb6e95c65187302cd9ca5 (#63 story 2-7, #64 learn 2-4) with no conflicts. Main has no new ADR, so 0026 is still free.
+- Verification: `backend/gradlew -p backend check` exit 0.
+
+### Round 7
+
+- The round 6 blockers `security-outcome` (AD-18) and `security-verdict` (AD-10) again came from Veronel (Security & Compliance)'s step ending without a valid verdict. Neither names a defect in the diff, and code_review and code_lens both passed. No code change answers them; the security step has to run again.
+- Rebased onto `origin/main` at b624f2a18803692e77197a6f044434fd2b6cffe9 (#65 learn 2-5) with no conflicts. Main has no new ADR, so 0026 is still free.
+- CR-2 (AD-6, new): `AltexroAdapter` maps every `IOException` to `Unavailable(HTTP_ERROR)` instead of returning `fetch.FetchFailure.outcome()`. Deferred to the story that wires `FetchClient` as the `RetailerHttp` bean (2.8), as the reviewer recommends: `CelroAdapter` and `EvomagAdapter` share the pattern, they should change together, and `FetchFailure`'s factories are package-private in `fetch` (outside this story's touches), so no adapter test can build one yet. Altex ships `adapter: disabled`, so no Lookup reaches this path.
+- CR-3 (C-7, gtin compared with the requested EAN) stays deferred. code_lens CR-3 (S-1) was already fixed in round 5. CR-4 (D-2): ADR 0026 is still Proposed; the PR description must name it for the owner's acceptance.
 - Verification: `backend/gradlew -p backend check` exit 0.
