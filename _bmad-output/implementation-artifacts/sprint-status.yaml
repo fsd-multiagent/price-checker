@@ -17,7 +17,7 @@ development_status:
   epic-1-retrospective: optional
   epic-2: in-progress
   2-1-extract-helpers: done
-  2-2-page-stripper: in-progress
+  2-2-page-stripper: review
   2-3-runtime-kill-switch: backlog
   2-4-fetch-client: backlog
   2-5-robots-txt: backlog
