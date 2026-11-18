@@ -211,3 +211,4 @@ Status: done
 - CR-2 (D-2) fixed: the review log and the round 7 notes now mark the EAN/gtin (C-7) and `FetchFailure` (AD-6) items as resolved in round 8.
 - CR-3 / code_lens CR-1 (C-6, `RON` currency text) stay deferred as recorded in the frontmatter. CR-4 (D-2): ADR 0026 is still Proposed; the PR description must name it for the owner's acceptance.
 - No code change this round, so no follow-up review pass ran. `origin/main` is still 398a852, so no rebase was needed.
+- QA (Eufrosina (QA), round 9): no test gap behind the round 8 blockers; they come from the security verdict format (see above). The story has 33 tests named by criterion ID (T-1): 23 for 4.1.1, 8 for 4.1.2, 2 for 4.1.3, in `AltexroAdapterTest`, `AltexroAcceptanceGapsTest`, `AltexroGateTest` and `AltexroLookupContextTest`. No test was added. `backend/gradlew -p backend check` exit 0.
