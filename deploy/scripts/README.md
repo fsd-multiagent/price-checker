@@ -8,8 +8,9 @@ just-in-time NSG rule (ADR 0015, ADR 0018). On the VM the forced command
 the workflow's `GITHUB_TOKEN` on stdin, pulls with the new bundle, logs out,
 moves `compose.yaml` and `Caddyfile` into `/opt/price-checker/app` only after
 the pull passed, and runs `docker compose up -d --wait` there. It recreates the
-proxy when the Caddyfile changed, and fails the deploy when a container
-restarts or stops within 20 s (`PC_SETTLE_SECONDS`). There is no rollback. It
+proxy when the Caddyfile changed, and fails the deploy when the backend, web
+or proxy container restarts or stops within 20 s (`PC_SETTLE_SECONDS`), or
+when compose does not report exactly one proxy container. There is no rollback. It
 never touches the files under `/opt/price-checker/config` or
 `/opt/price-checker/state` (AD-9). Design: ADR 0026.
 
@@ -32,7 +33,8 @@ Every workflow that opens a `jit-ssh-*` rule must use concurrency group
    `deploy/Caddyfile` need no owner step: each deploy sends them.
 2. Repository variables, from `terraform output`: `PROD_FQDN` (`fqdn`),
    `PROD_RESOURCE_GROUP` (`resource_group_name`), `PROD_NSG_NAME`
-   (`nsg_name`). The deploy job is skipped while `PROD_FQDN` is empty.
+   (`nsg_name`). The deploy job is skipped while `PROD_FQDN` is empty; the
+   `images` job then shows a "Deploy skipped" notice.
 3. Required: `PROD_SSH_HOST_KEY`, the VM's host key as `ssh-ed25519 AAAA...`
    (read it from `/etc/ssh/ssh_host_ed25519_key.pub` during break-glass access).
    The deploy fails without it, so `GITHUB_TOKEN` never goes to an unverified host.

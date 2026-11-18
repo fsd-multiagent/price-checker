@@ -60,11 +60,24 @@ class DeployWorkflowTest {
             n=$(( $(cat "$log.restarts" 2>/dev/null || echo 0) + 1 ))
             echo "$n" > "$log.restarts"
           fi
-          printf 'true %s\\ntrue 0\\ntrue 0\\n' "$n" ;;
+          if [ "${FAKE_FAIL:-}" = proxycrash ]; then
+            n=$(( $(cat "$log.restarts" 2>/dev/null || echo 0) + 1 ))
+            echo "$n" > "$log.restarts"
+            printf 'true 0\\ntrue 0\\ntrue %s\\n' "$n"
+          else
+            printf 'true %s\\ntrue 0\\ntrue 0\\n' "$n"
+          fi ;;
         compose)
           for a in "$@"; do
             if [ "$a" = ps ]; then
-              if [ "${FAKE_FAIL:-}" != noproxy ]; then echo proxy-container-id; fi
+              case "$*" in
+                *" ps -a -q proxy")
+                  case "${FAKE_FAIL:-}" in
+                    noproxy) ;;
+                    twoproxies) printf 'proxy-a\\nproxy-b\\n' ;;
+                    *) echo proxy-container-id ;;
+                  esac ;;
+              esac
               exit 0
             fi
             if [ "$a" = pull ] && [ "${FAKE_FAIL:-}" = pull ]; then exit 1; fi
@@ -330,9 +343,22 @@ class DeployWorkflowTest {
     Files.delete(log);
     Files.deleteIfExists(tmp.resolve("bundle.tar"));
     deleteTree(tmp.resolve("bundle-src"));
-    Run noProxy = deploy(Map.of("FAKE_FAIL", "noproxy"), goodStdin(), SHA, SITE);
-    assertThat(noProxy.exit()).isEqualTo(1);
-    assertThat(noProxy.stderr()).contains("proxy container is missing");
+    Run proxyCrash = deploy(Map.of("FAKE_FAIL", "proxycrash"), goodStdin(), SHA, SITE);
+    assertThat(proxyCrash.exit()).as("only the proxy restarts").isEqualTo(1);
+    assertThat(proxyCrash.stderr()).contains("restarted or stopped after start");
+    assertThat(dockerCalls()).anyMatch(c -> c.endsWith(" ps -a -q proxy"));
+
+    for (String mode : new String[] {"noproxy", "twoproxies"}) {
+      Files.delete(log);
+      Files.deleteIfExists(tmp.resolve("bundle.tar"));
+      deleteTree(tmp.resolve("bundle-src"));
+      Run bad = deploy(Map.of("FAKE_FAIL", mode), goodStdin(), SHA, SITE);
+      assertThat(bad.exit()).as(mode).isEqualTo(1);
+      assertThat(bad.stderr()).as(mode).contains("expected one proxy container");
+      assertThat(Files.readString(tmp.resolve("stdout.txt"))).doesNotContain("is running");
+      assertThat(listing(tmp.resolve("tmpdir"))).isEmpty();
+      assertThat(indexOf(dockerCalls(), "inspect")).as(mode).isEqualTo(-1);
+    }
   }
 
   @Test
