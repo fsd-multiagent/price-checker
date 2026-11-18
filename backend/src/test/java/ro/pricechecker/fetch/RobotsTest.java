@@ -135,6 +135,40 @@ class RobotsTest {
         URI.create("https://www.a.example/p/1"));
   }
 
+  @ParameterizedTest
+  @Tag("AC-2.5.1")
+  @ValueSource(
+      strings = {"https://evil.example/p/1", "http://a.example/p/1", "https://x.a.example/p/1"})
+  void ac_2_5_1_offHostUrlLoadsNoRobotsEither(String url) {
+    // The host check runs first: a URL the gate refuses never triggers a robots.txt request.
+    assertThat(outcomeOf(boundA(), URI.create(url)))
+        .isEqualTo(unavailable(UnavailableReason.REFUSED));
+    assertThat(transport.requests).isEmpty();
+  }
+
+  @Test
+  @Tag("AC-2.5.1")
+  void ac_2_5_1_disallowedPathTakesNoRateSlot() throws IOException {
+    FetchClient.BoundHttp http = boundA(2000, 4000);
+    assertThat(outcomeOf(http, SEARCH)).isEqualTo(unavailable(UnavailableReason.BLOCKED));
+    // Only the robots request ran, as the first request of the host: no wait for a page slot.
+    assertThat(sleeper.sleeps).isEmpty();
+    assertThat(outcomeOf(http, SEARCH)).isEqualTo(unavailable(UnavailableReason.BLOCKED));
+    assertThat(sleeper.sleeps).isEmpty();
+    assertUrls(ROBOTS);
+  }
+
+  @Test
+  @Tag("AC-2.5.1")
+  void ac_2_5_1_disallowAllForOurTokenBlocksEveryPath() {
+    robots = url -> ok("User-agent: price-checker\nDisallow: /\n");
+    FetchClient.BoundHttp http = boundA();
+    assertThat(outcomeOf(http, PAGE)).isEqualTo(unavailable(UnavailableReason.BLOCKED));
+    assertThat(outcomeOf(http, URI.create("https://a.example/")))
+        .isEqualTo(unavailable(UnavailableReason.BLOCKED));
+    assertUrls(ROBOTS);
+  }
+
   // ---- AC-2.5.3: an unparseable or unreachable robots.txt sends no page ----
 
   @ParameterizedTest
