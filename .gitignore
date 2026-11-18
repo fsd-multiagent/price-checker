@@ -40,3 +40,6 @@ __pycache__/
 # Orchestrator run state and per-worktree scratch (spine AD-9)
 .sdlc/
 _bmad-output/sdlc/
+
+# Local scratch files (owner)
+temp/
