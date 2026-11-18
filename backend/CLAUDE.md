@@ -12,7 +12,7 @@ Run from the repository root. No `cd` is needed (T-8, ADR 0014).
 | Format check only | `backend/gradlew -p backend spotlessCheck` |
 | Fix formatting | `backend/gradlew -p backend spotlessApply` |
 
-`check` is not yet in the `sdlc-commands` gate or in CI (deferred in story 1.1; the gate change needs a PR to `main`, ADR 0004). Run it by hand before you hand work over.
+Zamolxe (Orchestrator) runs `check` at the "tests pass" gate (the `sdlc-commands` block in `AGENTS.md`, T-8). GitHub CI (`.github/workflows/ci.yml`) does not run it yet, so run it yourself before you hand work over.
 
 ## Layout
 

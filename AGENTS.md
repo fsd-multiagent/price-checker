@@ -52,7 +52,7 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
     - terraform -chdir=infra test
   ```
 
-- Backend (Java 21, Spring Boot), from the repo root: `backend/gradlew -p backend check` runs compile, Spotless and all tests (ADR 0014). Details and pitfalls: `backend/CLAUDE.md`. It is not yet in the `sdlc-commands` block above; adding it needs a reviewed PR to `main` (ADR 0004).
+- Backend (Java 21, Spring Boot), from the repo root: `backend/gradlew -p backend check` runs compile, Spotless and all tests (ADR 0014). Details and pitfalls: `backend/CLAUDE.md`. The `tests` gate runs it through the `sdlc-commands` block above. GitHub CI (`.github/workflows/ci.yml`) does not run it yet.
 - TODO: web (React) build, test and lint commands. Zamolxe (Orchestrator) runs exactly the `sdlc-commands` entries at the "tests pass" gate (T-8).
 
 ## Conventions that differ from defaults
