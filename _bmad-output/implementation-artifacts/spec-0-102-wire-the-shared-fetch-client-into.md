@@ -123,3 +123,4 @@ deferred:
 - Follow-up review recommended: false (one medium patched).
 - Verification: `backend/gradlew -p backend check` green before and after the patch; LookupFetchWiringTest ran 6 tests, 0 failures.
 - Residual risks: real fetching is now live for any Approved, enabled, `fetching: allowed` retailer; AGENTS.md edit may be reverted on story branches by the orchestrator.
+- Round 2 (ci_green fix): the r1 CI failure was `:spotlessJava` failing to download `com.google.googlejavaformat:google-java-format:2.0.0` from Maven Central, not a formatting diff. This branch does not change `backend/build.gradle.kts`, and `main` passed CI with the same config. Local `spotlessApply` changed nothing and `backend/gradlew -p backend check` passed. A rerun of the failed CI jobs on 73e74d26627b628bf3e457e14840ada38d451ac5 passed every job. No code changes.
