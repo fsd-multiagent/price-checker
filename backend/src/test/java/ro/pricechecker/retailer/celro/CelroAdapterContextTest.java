@@ -31,7 +31,8 @@ class CelroAdapterContextTest {
         .getBeansOfType(RetailerAdapter.class)
         .values()
         .forEach(a -> assertThat(typeById.put(a.retailerId(), a.getClass())).isNull());
-    assertThat(typeById).containsOnlyKeys("cel.ro", "evomag.ro");
+    // altex.ro has its own real (disabled) adapter since story 4.1.
+    assertThat(typeById).containsOnlyKeys("altex.ro", "cel.ro", "evomag.ro");
     assertThat(typeById.get("cel.ro")).isEqualTo(CelroAdapter.class);
     assertThat(typeById.get("evomag.ro")).isEqualTo(EvomagAdapter.class);
   }

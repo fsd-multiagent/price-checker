@@ -20,6 +20,7 @@ import ro.pricechecker.adapter.RetailerAdapter;
 import ro.pricechecker.adapter.RetailerHttp;
 import ro.pricechecker.ean.Ean;
 import ro.pricechecker.lookup.AdapterCatalog;
+import ro.pricechecker.lookup.LookupLog;
 import ro.pricechecker.lookup.LookupResult;
 import ro.pricechecker.lookup.LookupRow;
 import ro.pricechecker.lookup.LookupService;
@@ -86,7 +87,15 @@ class AltexroGateTest {
         };
     LookupService service =
         new LookupService(
-            registry, new AdapterCatalog(adapters, registry), Optional.of(http), CLOCK);
+            registry,
+            new AdapterCatalog(adapters, registry),
+            Optional.of(http),
+            CLOCK,
+            // The runtime switch allows every domain, Altex too: only the disabled flag holds it.
+            TestRegistries.runtimeAllowing(
+                CLOCK,
+                registry.retailers().stream().map(RetailerConfig::domain).toArray(String[]::new)),
+            new LookupLog(CLOCK));
 
     LookupResult result = service.lookup(Ean.parse("4006381333931"));
 

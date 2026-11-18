@@ -157,3 +157,10 @@ Status: done
 ### Round 2
 
 - Fixed CR-1 (D-2): ADR 0024 records the Limits exemption for disabled, not Approved entries and amends ADR 0009; AD-8 and AC 1.5.2 updated. `backend/gradlew -p backend check` exit 0.
+
+### Round 3
+
+- Fixed the `ci_green` gate's `rebase-outcome` blocker (AD-18): rebased the branch onto `origin/main`, which had moved on (stories 2-2, 2-3, 2-10). The conflict in `StubAdapters` was settled by taking story 2-10's version (it already skips ids that a real adapter under `ro.pricechecker.retailer` serves; `AltexroAdapter` has the implicit no-arg constructor that version needs), so this story's own `hasRealAdapter` was dropped.
+- `AltexroGateTest` now passes the `RuntimeSwitch` and `LookupLog` that story 2-3 added to the `LookupService` constructor. The switch allows every domain, Altex included, so the test shows that `adapter: disabled` alone holds Altex back.
+- `CelroAdapterContextTest` (story 2-10) now expects `altex.ro` among the context's adapter ids, because Altex has a real adapter bean.
+- Verification: `backend/gradlew -p backend check` exit 0.
