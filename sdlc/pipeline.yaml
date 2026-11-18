@@ -318,6 +318,8 @@ stages:
     max_rounds: 2
     steps:
       - {id: rebase, kind: script, script: rebase}
+      # issue #87: the branch-point tests block again on the rebased tree, before any PR
+      - {id: tests_rebased, kind: script, script: tests}
       - {id: open_pr, kind: script, script: open_pr}
       - {id: ci_green, kind: script, script: ci_green}
       - {id: merge_pr, kind: script, script: merge_pr}

@@ -29,6 +29,7 @@ from sdlc.core.text import last_json_block
 _STANDARD_RULE = re.compile(r"[CTSID]-[A-Z]?\d+[a-z]?")
 _AC_ID = re.compile(r"(?:^|[-_.\s])AC-?\d+")
 _AD_ID = re.compile(r"AD-\d+")
+OUTPUT_TAIL = 4096  # chars of a failed script step's output kept in its finding
 
 
 def cites_rule(rule: str | None) -> bool:
@@ -169,8 +170,14 @@ def evaluate_stage(
     records: list[StepRecord],
     files: Mapping[str, str | None],
     target: str,
+    outputs: Mapping[int, str] | None = None,
 ) -> StageVerdict:
-    """Evaluate every gate of a stage for one round. `records` are the round's latest records."""
+    """Evaluate every gate of a stage for one round. `records` are the round's latest records.
+
+    `outputs` maps a failed script step's `seq` to its output; its tail (at most
+    `OUTPUT_TAIL` chars) goes into that step's finding, so it reaches `${feedback}` (AD-15).
+    """
+    outputs = outputs or {}
     by_step = {r.step: r for r in records}
     extra: dict[str, list[Finding]] = {g.kind: [] for g in stage.gate}
 
@@ -184,6 +191,10 @@ def evaluate_stage(
             )
         elif rec.outcome is not Outcome.DONE:
             why = f": {rec.reason}" if rec.reason else ""
+            out = (outputs.get(rec.seq) or "").strip()
+            if out:
+                tail = out if len(out) <= OUTPUT_TAIL else "[...]" + out[-(OUTPUT_TAIL - 5) :]
+                why += f"\n{tail}"
             extra[gate.kind].append(
                 _blocker(
                     f"{step.id}-outcome", f"step '{step.id}' ended {rec.outcome}{why}", "AD-18"

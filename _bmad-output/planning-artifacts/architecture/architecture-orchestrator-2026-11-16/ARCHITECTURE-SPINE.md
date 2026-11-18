@@ -273,6 +273,8 @@ stateDiagram-v2
     4. Every domain in `sources` is Approved. Otherwise the story is `blocked`, and the check repeats on every tick.
   - Before a PR, the orchestrator also checks the files the diff actually touches against `serial_paths`.
   - A failed rebase gives the story one Developer fix round, then escalates.
+  - After a clean rebase, `integrate` runs the `tests` script again on the rebased tree (step `tests_rebased`, the branch-point block, ADR 0023) before `open_pr`; red tests fail the round before any PR is opened (issue #87).
+  - When `ci_green` fails, its output is `checks not green` plus an excerpt (at most 4096 chars, `core/ci_log.py`) of the failed jobs' logs (`gh run view --log-failed`) of the runs on the PR head SHA only. The excerpt keeps compiler `error:` lines, failing tests with their first cause or assertion line, formatter and linter file lists and `::error::` lines, and drops git, credential and environment lines. A failing log fetch leaves the output `checks not green`; it never turns CI green.
 
 ### AD-16 — One writer per worktree
 
@@ -309,6 +311,7 @@ stateDiagram-v2
   - Only `done` lets a step pass.
   - `blocked` and `error` are failed rounds.
   - `ambiguous`, meaning a blocking open question reported by a skill, escalates at once.
+  - A failed script step's finding carries the tail (at most 4096 chars) of the step's output, so the Developer fix round sees it in `${feedback}` (issue #87).
   - Gates also read `open_questions` and `assumptions` from the result. They are logged; a blocking one makes the outcome `ambiguous`.
 
 ### AD-19 — Gate catalogue [ADOPTED from plan §4.2]

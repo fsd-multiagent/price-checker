@@ -8,6 +8,7 @@ store before the next decision (AD-4).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import fnmatch
 import glob
@@ -26,6 +27,7 @@ from sdlc.adapters.commands import (
     restore_commands_block,
 )
 from sdlc.adapters.git import commit_message
+from sdlc.core import ci_log
 from sdlc.core import gates as core_gates
 from sdlc.core.epics_parser import ParsedStories, parse_epics
 from sdlc.core.issues import (
@@ -1291,6 +1293,8 @@ class Orchestrator:
                         scope.pr, self.p.settings.ci_timeout_min, key=key
                     )
                     code, out = (0, "required checks green") if ok else (1, "checks not green")
+                    if not ok and scope.pr is not None:
+                        out += await self._ci_excerpt(scope.pr, key)
                 case "merge_pr":
                     if scope.pr is None or not scope.head_sha:
                         code, out = 1, "no PR or no head SHA to merge"
@@ -1342,6 +1346,15 @@ class Orchestrator:
                 head_sha=head if code == 0 else None,
             ),
         ]
+
+    async def _ci_excerpt(self, pr: int, key: StepKey) -> str:
+        """Issue #87: the failed jobs' log excerpt of the PR head, or "" when it cannot be read
+        (a failing fetch never turns red CI green and never raises)."""
+        try:
+            text = ci_log.excerpt(await self.ports.gh.failed_ci_log(pr, key=key))
+        except Exception:
+            return ""
+        return f"\nfailed CI jobs (excerpt):\n{text}" if text else ""
 
     async def _open_pr(
         self, key: StepKey, worktree: str
@@ -1432,7 +1445,16 @@ class Orchestrator:
             files[stage.stories_file] = self.ports.fs.read_text(
                 f"{scope.worktree}/{stage.stories_file}"
             )
-        sv = core_gates.evaluate_stage(stage, records, files, f"{action.scope} r{action.round}")
+        outputs: dict[int, str] = {}
+        for r in records:  # a failed script step's output goes into its finding (issue #87)
+            if r.outcome is not Outcome.DONE and stage.step(r.step).kind is StepKind.SCRIPT:
+                text = self.store.read_artifact(f"steps/{r.seq}-{r.scope}-{r.step}.json")
+                if text:
+                    with contextlib.suppress(ValueError):
+                        outputs[r.seq] = StepResult.model_validate_json(text).result or ""
+        sv = core_gates.evaluate_stage(
+            stage, records, files, f"{action.scope} r{action.round}", outputs
+        )
         base = f"verdicts/{action.scope}/r{action.round}"
         paths: dict[str, list[str]] = {}
         for kind, verdict in sv.verdicts:
