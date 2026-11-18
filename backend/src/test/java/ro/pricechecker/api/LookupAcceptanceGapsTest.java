@@ -2,14 +2,12 @@ package ro.pricechecker.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.Arrays;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +20,7 @@ import ro.pricechecker.api.generated.model.Problem;
 import ro.pricechecker.ean.EanError;
 import ro.pricechecker.ean.InvalidEanException;
 import ro.pricechecker.lookup.LookupLog;
+import ro.pricechecker.lookup.LookupService;
 
 /**
  * AC 1.4.2 gaps found by Eufrosina (QA): every {@link EanError} becomes the same-named contract
@@ -55,28 +54,13 @@ class LookupAcceptanceGapsTest {
 
   @Test
   void ac_1_4_2_invalidEanThrowsBeforeAnyResponseIsBuilt() {
-    LookupController controller = new LookupController();
+    LookupService service = mock(LookupService.class);
+    LookupController controller = new LookupController(service);
     for (String input : new String[] {"", "40063813339A1", "1234567", "4006381333932"}) {
       assertThatThrownBy(() -> controller.lookup(input))
           .as(input)
           .isInstanceOf(InvalidEanException.class);
     }
-  }
-
-  /**
-   * No adapter or fetch call is possible on the reject path: the controller holds no collaborator
-   * that could make one. When story 1.6 adds the lookup service, this test must change together
-   * with a test that the service is not called for an invalid EAN.
-   */
-  @Test
-  void ac_1_4_2_controllerHasNoCollaboratorThatCouldFetch() {
-    for (Constructor<?> c : LookupController.class.getDeclaredConstructors()) {
-      assertThat(c.getParameterCount()).as("%s", c).isZero();
-    }
-    assertThat(
-            Arrays.stream(LookupController.class.getDeclaredFields())
-                .filter(f -> !Modifier.isStatic(f.getModifiers()))
-                .map(Field::getName))
-        .isEmpty();
+    verifyNoInteractions(service);
   }
 }

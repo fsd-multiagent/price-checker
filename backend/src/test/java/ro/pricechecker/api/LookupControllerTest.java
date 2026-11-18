@@ -1,6 +1,8 @@
 package ro.pricechecker.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -25,8 +27,15 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import ro.pricechecker.ean.Ean;
 import ro.pricechecker.lookup.LookupLog;
+import ro.pricechecker.lookup.LookupResult;
+import ro.pricechecker.lookup.LookupRow;
+import ro.pricechecker.lookup.LookupService;
+import ro.pricechecker.lookup.RowAvailability;
+import ro.pricechecker.lookup.RowStatus;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -49,6 +58,8 @@ class LookupControllerTest {
       return Clock.fixed(Instant.parse("2026-11-18T10:15:30Z"), ZoneOffset.UTC);
     }
   }
+
+  @MockitoBean private LookupService lookupService;
 
   private final MockMvc mvc;
 
@@ -173,6 +184,8 @@ class LookupControllerTest {
   @Test
   @Tag("AC-1.4.2")
   void ac_1_4_2_validEanIsTrimmedAndReturnsEmptyRows(CapturedOutput output) throws Exception {
+    when(lookupService.lookup(any(Ean.class)))
+        .thenAnswer(i -> new LookupResult(i.<Ean>getArgument(0).value(), List.of()));
     mvc.perform(get(URI.create("/api/lookup?ean=%205901234123457%09")))
         .andExpect(status().isOk())
         .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -187,5 +200,51 @@ class LookupControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.ean").value("5901234123457"));
     assertThat(output.getOut()).doesNotContain("ean_rejected");
+  }
+
+  @Test
+  @Tag("AC-1.6.4")
+  void ac_1_6_4_rowsSerializeAndNonFoundRowsCarryOnlyFourFields() throws Exception {
+    Instant at = Instant.parse("2026-11-18T10:15:30Z");
+    when(lookupService.lookup(any(Ean.class)))
+        .thenReturn(
+            new LookupResult(
+                "5901234123457",
+                List.of(
+                    new LookupRow(
+                        "a.example",
+                        "a.example",
+                        RowStatus.FOUND,
+                        12345L,
+                        RowAvailability.IN_STOCK,
+                        URI.create("https://a.example/p"),
+                        at,
+                        true),
+                    new LookupRow(
+                        "b.example",
+                        "b.example",
+                        RowStatus.UNAVAILABLE,
+                        null,
+                        null,
+                        null,
+                        null,
+                        false))));
+    String body =
+        mvc.perform(get("/api/lookup").param("ean", "5901234123457"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.rows[0].status").value("FOUND"))
+            .andExpect(jsonPath("$.rows[0].priceMinor").value(12345))
+            .andExpect(jsonPath("$.rows[0].availability").value("IN_STOCK"))
+            .andExpect(jsonPath("$.rows[0].url").value("https://a.example/p"))
+            .andExpect(jsonPath("$.rows[0].fetchedAt").value("2026-11-18T10:15:30Z"))
+            .andExpect(jsonPath("$.rows[0].lowest").value(true))
+            .andExpect(jsonPath("$.rows[1].status").value("UNAVAILABLE"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    JsonNode row = JsonMapper.builder().build().readTree(body).get("rows").get(1);
+    assertThat(row.propertyNames())
+        .containsExactlyInAnyOrder("retailerId", "retailerName", "status", "lowest");
+    assertThat(row.get("lowest").booleanValue()).isFalse();
   }
 }
