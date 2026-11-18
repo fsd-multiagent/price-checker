@@ -21,7 +21,7 @@ development_status:
   2-3-runtime-kill-switch: done
   2-4-fetch-client: done
   2-5-robots-txt: done
-  2-6-block-store: in-progress
+  2-6-block-store: review
   2-7-retry-after: backlog
   2-8-lookup-execution-cache: backlog
   2-9-status-endpoint: backlog
