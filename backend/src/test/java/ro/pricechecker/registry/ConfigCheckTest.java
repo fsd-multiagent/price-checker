@@ -115,11 +115,37 @@ class ConfigCheckTest {
 
   @Test
   void ac_1_5_2_unparseableRegisterLimits() {
-    SourceRegister reg = SourceRegister.parse(register(row("c.example", "Proposed", "—")));
-    assertThat(ConfigCheck.violations(reg, List.of(ok("c.example", "disabled")), List.of()))
+    SourceRegister reg =
+        SourceRegister.parse(register(row("c.example", "Approved 2026-11-20", "—")));
+    assertThat(
+            ConfigCheck.violations(reg, List.of(ok("c.example", "disabled")), twoEans("c.example")))
         .singleElement()
         .asString()
-        .contains("Limits");
+        .contains("c.example", "Limits");
+  }
+
+  @Test
+  void ac_1_5_2_unparseableLimitsOnEnabledEntryIsAViolation() {
+    SourceRegister reg = SourceRegister.parse(register(row("c.example", "Not checked", "—")));
+    assertThat(ConfigCheck.violations(reg, List.of(ok("c.example", "enabled")), List.of()))
+        .anySatisfy(v -> assertThat(v).contains("c.example", "Limits"))
+        .anySatisfy(v -> assertThat(v).contains("c.example", "enabled"));
+  }
+
+  @Test
+  void ac_4_1_2_disabledNotCheckedRowWithoutLimitsPasses() {
+    SourceRegister reg = SourceRegister.parse(register(row("c.example", "Not checked", "—")));
+    assertThat(ConfigCheck.violations(reg, List.of(ok("c.example", "disabled")), List.of()))
+        .isEmpty();
+  }
+
+  @Test
+  void ac_4_1_2_disabledRowWithoutLimitsStillNeedsPositiveValues() {
+    SourceRegister reg = SourceRegister.parse(register(row("c.example", "Not checked", "—")));
+    RetailerConfig bad = new RetailerConfig("c.example", "disabled", "curated", 0, 0, 4000);
+    assertThat(ConfigCheck.violations(reg, List.of(bad), List.of()))
+        .anySatisfy(v -> assertThat(v).contains("c.example", "minIntervalMs"))
+        .anySatisfy(v -> assertThat(v).contains("c.example", "concurrency"));
   }
 
   @Test
