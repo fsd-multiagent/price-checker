@@ -17,4 +17,6 @@ The cel.ro selectors used in `product-selectors.html` (`#product-price`, `.stoc_
 | `product-selectors.html` | No JSON-LD or meta: price `1.299,99 lei`, stock text, EAN element |
 | `product-bad-price.html` | JSON-LD offer price `la cerere` (unparseable, price stays empty) |
 | `product-mixed.html` | JSON-LD (1299.99 RON, in stock, no EAN) beats conflicting meta; EAN only in a labelled selector element |
+| `product-meta-selectors.html` | Meta price 849.50 RON beats selector price `999,00 lei`; stock and EAN only in selectors |
+| `product-selectors-bad-price.html` | Selectors only: price text `Pret la cerere` (unparseable), out of stock, EAN |
 | `no-product.html` | Plain page with no product facts |
