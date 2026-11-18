@@ -98,6 +98,10 @@ deferred:
 - Given a test register with Approved and non-Approved retailers, when a valid EAN is looked up, then exactly one row per Approved retailer appears, disabled adapters as `DISABLED`.
 - Given any outcome including an exception, when `GET /api/lookup` runs, then the status is 200 and non-FOUND rows serialize only the four required fields.
 
+## Spec Change Log
+
+## Review Triage Log
+
 ### 2026-11-18 — Review pass
 - verdicts: 30 findings — high 0, medium 9, low 9, false 4, maybe-false 0, out-of-scope by epic 8
 - findings:
