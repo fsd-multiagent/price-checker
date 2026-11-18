@@ -19,14 +19,14 @@ development_status:
   2-1-extract-helpers: done
   2-2-page-stripper: done
   2-3-runtime-kill-switch: done
-  2-4-fetch-client: in-progress
+  2-4-fetch-client: review
   2-5-robots-txt: backlog
   2-6-block-store: backlog
   2-7-retry-after: backlog
   2-8-lookup-execution-cache: backlog
   2-9-status-endpoint: backlog
   2-10-adapter-celro: done
-  2-11-adapter-evomagro: review
+  2-11-adapter-evomagro: done
   2-12-celro-live-enable: backlog
   2-13-evomagro-live-enable: backlog
   2-14-e2e-uj1-uj2: backlog
