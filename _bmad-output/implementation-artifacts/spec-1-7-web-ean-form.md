@@ -72,7 +72,7 @@ deferred: []
 ## Review Triage Log
 
 ### 2026-11-18 — Review pass
-- verdicts: 21 findings — high 0, medium 2, low 13, false 6, maybe-false 0
+- verdicts: 21 findings — high 0, medium 6, low 11, false 4, maybe-false 0
 - findings:
   - `[medium]` `[patch]` Blind: typing does not cancel a pending Lookup, so a late 400 re-shows an error on the new text — added `editedSinceSubmit` ref in `App.tsx`; the catch skips `setError` after an edit; test "late 400 after typing".
   - `[low]` `[reject]` Blind: URL keeps the previous EAN after an invalid submit — UX-DR13 ties the URL to the last Lookup, which is what it holds; not a defect.
