@@ -227,3 +227,4 @@ Status: done
 - CR-2 (AD-18) fixed: rebased onto `origin/main` 6fe5ee8; no conflicts.
 - CR-1 (T-8): `backend/gradlew -p backend check` exit 0 after the rebase. CR-3 (D-2): ADR 0026 is still Proposed; the PR description must name it for the owner's acceptance. code_lens CR-1 (C-6, `RON` currency text) stays deferred as recorded in the frontmatter.
 - No code change this round, so no follow-up review pass ran.
+- QA (Eufrosina, round 11): no test change. All three criteria are covered by tests whose names carry the criterion ID (T-1): 4.1.1 in `AltexroAdapterTest` (15) and `AltexroAcceptanceGapsTest` (8 of 9), 4.1.2 in `AltexroGateTest`, `AltexroLookupContextTest` and `AltexroAcceptanceGapsTest`, 4.1.3 in `AltexroGateTest`. `backend/gradlew -p backend check` exit 0; the 29 Altex tests pass with no skips. The security blockers do not come from the tests, so a test change cannot fix them.
