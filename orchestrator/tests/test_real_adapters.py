@@ -14,11 +14,13 @@ import shutil
 import subprocess
 import sys
 import time
+import types
 from pathlib import Path
 
 import pytest
 from conftest import ORCH
 
+from sdlc.adapters import gh as gh_mod
 from sdlc.adapters import real
 from sdlc.adapters.claude import ClaudeCli, build_argv
 from sdlc.adapters.commands import ProjectCommands, parse_commands
@@ -387,9 +389,13 @@ PENDING = {"name": "ci", "state": "PENDING", "bucket": "pending"}
 async def test_real_no_required_checks(stubs, tmp_path, monkeypatch):
     """Zero required checks never counts as green; it polls until the deadline."""
     gh_config(tmp_path, monkeypatch, checks=[], checks_exit=1)
+    # A fake clock that ticks 1 s per read: the 3 s deadline allows exactly three polls, however
+    # slow the stub `gh` is on a loaded runner (a wall-clock deadline made this test flaky).
+    ticks = iter(range(1000))
+    monkeypatch.setattr(gh_mod, "time", types.SimpleNamespace(monotonic=lambda: next(ticks)))
     gh = GhCli(tmp_path, poll_s=0.01)
-    assert await gh.checks_green(5, 0.01) is False
-    assert len(_gh(stubs[1], "pr", "checks")) > 1  # kept polling, not False on the first poll
+    assert await gh.checks_green(5, 0.05) is False
+    assert len(_gh(stubs[1], "pr", "checks")) == 3
     argv = _gh(stubs[1], "pr", "checks")[0]
     assert argv[:3] == ["pr", "checks", "5"] and "--required" in argv and "--json" in argv
     for checks in (["not-a-dict"], [{"name": "ci", "bucket": "skipping"}]):

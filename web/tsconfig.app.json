@@ -18,5 +18,11 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/generated"],
+  "references": [
+    {
+      "path": "./tsconfig.generated.json"
+    }
+  ]
 }

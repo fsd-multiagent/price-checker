@@ -8,12 +8,15 @@
   },
   "scripts": {
     "dev": "vite",
+    "generate": "openapi-generator-cli generate -i ../api/openapi.yaml -g typescript-fetch -o src/generated --additional-properties=supportsES6=true,withInterfaces=false",
+    "prebuild": "npm run generate",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -b",
     "test": "vitest run",
+    "precheck": "npm run generate",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm run test"
   },
   "dependencies": {
@@ -22,6 +25,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@openapitools/openapi-generator-cli": "2.42.2",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
