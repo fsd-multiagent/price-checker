@@ -66,7 +66,7 @@ class RuntimeKillSwitchTest {
           new LookupService(
               registry,
               new AdapterCatalog(adapters, registry),
-              Optional.of(http),
+              Optional.of(id -> http),
               clock,
               new RuntimeSwitch(file(), clock),
               TestRegistries.blockStore(TestRegistries.runtimeAllowing(clock), clock),

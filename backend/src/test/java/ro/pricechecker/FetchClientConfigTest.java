@@ -10,6 +10,7 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ConfigurableApplicationContext;
+import ro.pricechecker.adapter.RetailerHttpBinder;
 import ro.pricechecker.fetch.FetchClient;
 import ro.pricechecker.fetch.UserAgent;
 import ro.pricechecker.lookup.LookupLog;
@@ -37,6 +38,20 @@ class FetchClientConfigTest {
           assertThat(context).hasNotFailed().hasSingleBean(FetchClient.class);
           assertThat(context.getBean(UserAgent.class).value())
               .isEqualTo("price-checker/dev (+https://contact.example/about)");
+        });
+  }
+
+  @Test
+  @Tag("AC-0.102.4")
+  void ac_0_102_4_binderBindsTheSharedFetchClientPerRetailer() {
+    runner
+        .withPropertyValues("price-checker.contact-url=https://contact.example/about")
+        .run(context -> {
+          assertThat(context).hasNotFailed().hasSingleBean(RetailerHttpBinder.class);
+          String id = context.getBean(Registry.class).retailers().get(0).domain();
+          assertThat(context.getBean(RetailerHttpBinder.class).bind(id))
+              .isInstanceOfSatisfying(
+                  FetchClient.BoundHttp.class, b -> assertThat(b.retailerId()).isEqualTo(id));
         });
   }
 

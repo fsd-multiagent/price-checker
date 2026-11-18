@@ -65,7 +65,7 @@ class RuntimeKillSwitchAcceptanceGapsTest {
     return new LookupService(
         registry,
         new AdapterCatalog(adapters, registry),
-        Optional.of(http),
+        Optional.of(id -> http),
         clock,
         new RuntimeSwitch(dir.resolve("runtime.yaml"), clock),
         TestRegistries.blockStore(TestRegistries.runtimeAllowing(clock), clock),

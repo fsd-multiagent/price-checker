@@ -4,6 +4,7 @@ import java.time.Clock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import ro.pricechecker.adapter.RetailerHttpBinder;
 import ro.pricechecker.fetch.FetchClient;
 import ro.pricechecker.fetch.JdkTransport;
 import ro.pricechecker.fetch.Sleeper;
@@ -18,7 +19,8 @@ import ro.pricechecker.registry.RuntimeSwitch;
  * checked here at startup, so a missing contact URL or a forbidden word stops the application (AC
  * 2.4.5). Pacing comes from {@code price-checker.fetch.interval-factor} (default 1) and {@code
  * price-checker.fetch.max-concurrency} (default unlimited); the {@code health} profile sets 2 and 1
- * (AC 3.5.1). Lives here so {@code fetch} reads no property.
+ * (AC 3.5.1). Lives here so {@code fetch} reads no property. Lookups bind the client per retailer
+ * through {@link RetailerHttpBinder} (issue #102).
  */
 @Configuration(proxyBeanMethods = false)
 public class FetchClientConfig {
@@ -51,5 +53,11 @@ public class FetchClientConfig {
         Sleeper.SYSTEM,
         userAgent,
         new FetchClient.Pace(intervalFactor, maxConcurrency));
+  }
+
+  /** The port {@code LookupService} binds one client per retailer through (AD-6). */
+  @Bean
+  RetailerHttpBinder retailerHttpBinder(FetchClient fetchClient) {
+    return fetchClient::bind;
   }
 }

@@ -19,9 +19,10 @@ Needs Node 24 and a JDK (Gradle provisions JDK 21). Playwright starts two server
   `backend/src/test/resources/e2e/` and the `FixtureHttp` stub as the only retailer HTTP: it serves
   `backend/src/test/resources/e2e/pages/<id>/<ean>.html`, hangs (60 s, `E2eBeans.HANG`) for a known URL
   without a page and throws for any other URL, so no request leaves the machine (T-3). Context
-  shutdown ends any hang still in progress. This holds only while `FixtureHttp` is the only
-  `RetailerHttp` bean: when story 2.8 wires a `FetchClient` bean, `E2eBeans` must override it
-  explicitly (`E2eJourneysApiTest` checks there is exactly one).
+  shutdown ends any hang still in progress. Lookups bind their client through a
+  `RetailerHttpBinder` (issue #102); `E2eBeans` overrides the main one, which binds the real
+  `FetchClient`, with a `@Primary` binder that returns `FixtureHttp` for every id, and
+  `E2eJourneysApiTest` checks `FixtureHttp` is the only `RetailerHttp` bean.
   `GET /e2e/requests?ean=` returns the stub's page-request count for one EAN.
 - the Vite dev server for `web/` with `e2e/vite.config.ts` (proxies `/api` to the backend) on
   port `E2E_WEB_PORT` (default 5174). It runs `npm run generate` first.

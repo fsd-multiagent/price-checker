@@ -114,7 +114,7 @@ class LookupExecutionAcceptanceGapsTest {
     return new LookupService(
         registry,
         new AdapterCatalog(list, registry),
-        Optional.of(http),
+        Optional.of(id -> http),
         clock,
         runtime,
         blocks,

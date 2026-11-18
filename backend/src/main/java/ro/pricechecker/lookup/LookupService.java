@@ -17,6 +17,7 @@ import ro.pricechecker.adapter.Availability;
 import ro.pricechecker.adapter.PageFacts;
 import ro.pricechecker.adapter.RetailerAdapter;
 import ro.pricechecker.adapter.RetailerHttp;
+import ro.pricechecker.adapter.RetailerHttpBinder;
 import ro.pricechecker.cache.ResultCache;
 import ro.pricechecker.ean.Ean;
 import ro.pricechecker.registry.BlockStore;
@@ -31,11 +32,12 @@ import ro.pricechecker.registry.RuntimeSwitch;
  *
  * <p>Per retailer, in AD-10 order: adapter disabled or fetching stopped ({@link RuntimeSwitch},
  * AD-9) → {@code DISABLED}; active Block ({@link BlockStore}) → {@code UNAVAILABLE}; EAN not in
- * {@code known-eans.yaml} → {@code NOT_FOUND} with no request; then the cache; then a load. Every
- * load runs on its own virtual thread through the {@link ResultCache}, so retailers are queried at
- * once (FR-2); the Lookup waits for each row only until its {@code deadlineMs} (NFR-1), and a row
- * past its deadline is {@code UNAVAILABLE} while the shared load goes on. A failure stays in its
- * row (AD-5). Each row is logged once (AC-3.6).
+ * {@code known-eans.yaml} → {@code NOT_FOUND} with no request; no adapter or no {@link
+ * RetailerHttpBinder} → {@code UNAVAILABLE}; then the cache; then a load through the client bound
+ * to that retailer (AD-6). Every load runs on its own virtual thread through the {@link
+ * ResultCache}, so retailers are queried at once (FR-2); the Lookup waits for each row only until
+ * its {@code deadlineMs} (NFR-1), and a row past its deadline is {@code UNAVAILABLE} while the
+ * shared load goes on. A failure stays in its row (AD-5). Each row is logged once (AC-3.6).
  */
 @Service
 public class LookupService {
@@ -48,7 +50,7 @@ public class LookupService {
 
   private final Registry registry;
   private final AdapterCatalog adapters;
-  private final Optional<RetailerHttp> http;
+  private final Optional<RetailerHttpBinder> http;
   private final Clock clock;
   private final RuntimeSwitch runtime;
   private final BlockStore blocks;
@@ -58,7 +60,7 @@ public class LookupService {
   public LookupService(
       Registry registry,
       AdapterCatalog adapters,
-      Optional<RetailerHttp> http,
+      Optional<RetailerHttpBinder> http,
       Clock clock,
       RuntimeSwitch runtime,
       BlockStore blocks,
@@ -114,10 +116,11 @@ public class LookupService {
       if (http.isEmpty() || adapter.isEmpty()) {
         return decided(config, RowStatus.UNAVAILABLE);
       }
+      RetailerHttpBinder binder = http.get();
       CompletableFuture<Verdict> load =
           cache.get(
               new RetailerEan(id, ean.value()),
-              key -> load(adapter.get(), http.get(), ean, url.get()));
+              key -> load(adapter.get(), binder.bind(id), ean, url.get()));
       return new Pending(config, null, load);
     } catch (Exception e) {
       return decided(config, RowStatus.UNAVAILABLE);

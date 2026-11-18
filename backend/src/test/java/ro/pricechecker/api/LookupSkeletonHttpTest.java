@@ -56,7 +56,7 @@ class LookupSkeletonHttpTest {
       return new LookupService(
           registry,
           new AdapterCatalog(adapters, registry),
-          Optional.of(http),
+          Optional.of(id -> http),
           clock,
           TestRegistries.runtimeAllowing(clock, "a.example", "b.example", "c.example"),
           TestRegistries.blockStore(TestRegistries.runtimeAllowing(clock), clock),
