@@ -16,4 +16,6 @@ ${feedback}
 
 End your final message with exactly one fenced `json` block holding your verdict, in the
 format of `docs/standards/review-findings.md`. Do not write a verdict file. Every `blocker` must
-cite a rule ID or an acceptance criterion ID.
+cite a rule ID or an acceptance criterion ID. The block must have all four top-level keys
+`reviewer`, `target`, `verdict` and `findings`; set `target` to `story/${story_key} @ <commit>`.
+A block without `target` is not a valid verdict and fails the gate, even when it passes.
