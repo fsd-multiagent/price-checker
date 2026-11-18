@@ -265,6 +265,18 @@ class DeployConfigTest {
 
   @Test
   @Tag("AC-3.2.2")
+  void ac_3_2_2_proxyAdminApiIsOff() throws IOException {
+    String global =
+        topLevelBlocks(caddyfileWithoutPlaceholderBraces(DEPLOY_CADDYFILE)).stream()
+            .filter(b -> b[0].isEmpty())
+            .findFirst()
+            .orElseThrow()[1];
+    // S-13: like web/Caddyfile, the proxy exposes no admin endpoint, even inside the container.
+    assertThat(global).containsPattern("(?m)^\\s*admin\\s+off\\s*$");
+  }
+
+  @Test
+  @Tag("AC-3.2.2")
   void ac_3_2_2_apiRouteKeepsItsPrefixAndNoOtherUpstreamIsUsed() throws IOException {
     String text = Files.readString(DEPLOY_CADDYFILE);
     // The backend serves /api/..., so the prefix must reach it unchanged.

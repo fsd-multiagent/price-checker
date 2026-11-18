@@ -225,3 +225,15 @@ Status: done
 **Verification:** `backend/gradlew -p backend spotlessApply check` passes, including all 15 `DeployConfigTest` tests. There is no Docker daemon or `caddy` binary on the host, so no image was built and neither Caddyfile was validated.
 
 **Residual risks:** unchanged from round 1. The `servers`/`protocols` global option is new Caddyfile syntax that only the deferred `caddy validate` will check.
+
+### Round 3 (follow-up pass, 2026-11-18)
+
+**Trigger:** round 2 again failed only because the security step left no valid verdict (AD-18, AD-10). No finding is attached, so no code change can answer it; the security review has to run again. Both code reviews passed.
+
+**Changes:**
+- `deploy/Caddyfile` -- global `admin off`, matching `web/Caddyfile` (code_review CR-3, S-13). Changing the config now means restarting the proxy container, not an admin-API reload.
+- `backend/src/test/java/ro/pricechecker/DeployConfigTest.java` -- new `ac_3_2_2_proxyAdminApiIsOff` (16 tests).
+
+**Not changed:** code_review CR-1/CR-2 and code_lens CR-1/CR-2/CR-3 (image build, `caddy validate`, state dir ownership) stay deferred to story 3.3, as both reviewers note.
+
+**Verification:** `backend/gradlew -p backend spotlessApply check` passes. There is still no Docker daemon or `caddy` binary on the host.
