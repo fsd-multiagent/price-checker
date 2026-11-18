@@ -52,6 +52,43 @@ public final class TestRegistries {
   }
 
   /**
+   * Like {@link #mixed()} but with a loose register limit (10 ms, concurrency 4) so fetch tests
+   * choose the retailer limits: a.example (Approved, enabled) gets the given values; b.example
+   * (Approved, disabled) and c.example (Proposed, disabled) get the same.
+   */
+  public static Registry fetchable(int minIntervalMs, int concurrency, int deadlineMs) {
+    String limits = "100 requests / 1 s, concurrency 4";
+    String reg =
+        register(
+            row("a.example", "Approved 2026-11-20", limits),
+            row("b.example", "Approved 2026-11-20", limits),
+            row("c.example", "Proposed", limits));
+    String values =
+        "resolution: curated, minIntervalMs: %d, concurrency: %d, deadlineMs: %d}"
+            .formatted(minIntervalMs, concurrency, deadlineMs);
+    String retailers =
+        "retailers:\n"
+            + "  a.example: {adapter: enabled, "
+            + values
+            + "\n  b.example: {adapter: disabled, "
+            + values
+            + "\n  c.example: {adapter: disabled, "
+            + values
+            + "\n";
+    String eans =
+        """
+        knownEans:
+          a.example:
+            - {ean: "4006381333931", url: "https://a.example/p/1"}
+            - {ean: "96385074", url: "https://a.example/p/2"}
+          b.example:
+            - {ean: "4006381333931", url: "https://b.example/p/1"}
+            - {ean: "96385074", url: "https://b.example/p/2"}
+        """;
+    return of(reg, retailers, eans);
+  }
+
+  /**
    * A {@link RuntimeSwitch} over a temporary {@code runtime.yaml} with {@code fetching: allowed}
    * for each given domain (and nothing else).
    */
