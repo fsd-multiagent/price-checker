@@ -32,7 +32,7 @@ settings:
   ci_timeout_min: 30
   serial_paths: [api/openapi.yaml]
   # Set by the owner, 2026-11-18 (plan §6). There is no default; removing it is a load error.
-  run_budget_usd: 400
+  run_budget_usd: 500
   # Unset: the CLI default model and effort (AD-7).
   default_model: null
   default_effort: null
