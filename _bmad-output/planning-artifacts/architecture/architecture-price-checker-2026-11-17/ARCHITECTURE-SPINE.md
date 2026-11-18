@@ -136,7 +136,7 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
 
   | File | Where | Only writer | Holds | Read |
   |---|---|---|---|---|
-  | `config/retailers.yaml` | repo, in the artifact | developers, by PR | per retailer, keyed by `id` (register domain): `name` (added in story 1.6), `adapter: enabled\|disabled`, `resolution`, `minIntervalMs`, `concurrency`, `deadlineMs` | start |
+  | `config/retailers.yaml` | repo, in the artifact | developers, by PR | per retailer, keyed by `id` (register domain): `name` (planned; story 1.6 did not add it, so `retailerName` is the register domain until it exists), `adapter: enabled\|disabled`, `resolution`, `minIntervalMs`, `concurrency`, `deadlineMs` | start |
   | `config/known-eans.yaml` | repo, in the artifact | developers, by PR | per retailer id: list of `{ ean, url }` | start |
   | `runtime.yaml` | VM `/opt/price-checker/config/` | `kill-switch` workflow (write temp file, then `mv`) | per retailer: `fetching: allowed\|stopped`, `clearGeneration` (integer), optional `runnerBlock: { blockedAt, reason }`, optional `notBefore` (runner 429) | polled every 15 s |
   | `blocks.json` | VM volume `/opt/price-checker/state/` | backend `registry.BlockStore` only (whole-map atomic write) | per retailer: `blockGeneration`, `blockedAt`, reason, `notBefore` | start; then in memory |
