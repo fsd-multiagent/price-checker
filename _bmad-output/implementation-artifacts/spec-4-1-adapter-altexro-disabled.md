@@ -164,3 +164,8 @@ Status: done
 - `AltexroGateTest` now passes the `RuntimeSwitch` and `LookupLog` that story 2-3 added to the `LookupService` constructor. The switch allows every domain, Altex included, so the test shows that `adapter: disabled` alone holds Altex back.
 - `CelroAdapterContextTest` (story 2-10) now expects `altex.ro` among the context's adapter ids, because Altex has a real adapter bean.
 - Verification: `backend/gradlew -p backend check` exit 0.
+
+### Round 4
+
+- Fixed CR-1 (D-4, AD-18): rebased onto `origin/main` at d7db3f8 (#39, learn:1-5). The only conflict was the AD-8 **Rule:** line in `ARCHITECTURE-SPINE.md`: kept main's new sentence on `registry.ConfigCheck` and `known-eans.yaml`, and re-applied this story's ADR 0024 qualifier ("for an entry that is `adapter: enabled` or Approved (ADR 0024)").
+- Verification: `backend/gradlew -p backend check` exit 0.
