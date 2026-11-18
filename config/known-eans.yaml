@@ -5,4 +5,17 @@
 #       - ean: "<8 or 13 digits, quoted, valid GS1 check digit>"
 #         url: "https://<domain or www.domain>/<product path>"
 # Every Approved retailer needs at least 2 entries. Empty until the owner approves a retailer.
-knownEans: {}
+# Curated by the owner on 2026-11-18 from search-engine results (no retailer was fetched).
+# 5099206027282 (Logitech M185 grey, 910-002238) is sold by both: the demo EAN.
+# Stories 2-12 and 2-13 check each URL against the live page and correct this list if needed.
+knownEans:
+  cel.ro:
+    - ean: "5099206027282"
+      url: "https://www.cel.ro/mouse/mouse-logitech-m185-gri-pNiUwNDM-l/"
+    - ean: "0740617261219"
+      url: "https://www.cel.ro/ssd-kingston-a400-240gb-sata-2-5inch-sa400s37240g-pNSAzPTQn-l/"
+  evomag.ro:
+    - ean: "5099206027282"
+      url: "https://www.evomag.ro/componente-pc-gaming-mouse-pc-gaming/logitech-mouse-optic-wireless-m185-gri-66605.html"
+    - ean: "0740617261196"
+      url: "https://www.evomag.ro/componente-pc-gaming-solid-state-drive-ssd/kingston-ssd-kingston-a400-120gb-2.5-sata-iii-600-3585134.html"

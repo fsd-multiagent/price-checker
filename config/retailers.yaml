@@ -9,13 +9,13 @@
 #   - deadlineMs is missing or not positive.
 retailers:
   evomag.ro:
-    adapter: disabled
+    adapter: enabled
     resolution: curated
     minIntervalMs: 2000
     concurrency: 1
     deadlineMs: 4000
   cel.ro:
-    adapter: disabled
+    adapter: enabled
     resolution: curated
     minIntervalMs: 2000
     concurrency: 1
