@@ -179,15 +179,18 @@ describe('AC 1.7 EAN form in the page', () => {
     expect(input).toHaveFocus();
   });
 
-  it('AC 1.7.4: a 400 without a known code shows no EAN error', async () => {
+  it('AC 1.7.4: a 400 without a known code shows no EAN error (AC 1.8.5: request-failed notice)', async () => {
     const fetchMock = stubFetch(() =>
       jsonResponse(400, { code: 'OTHER' }, 'application/problem+json'),
     );
     render(<App />);
-    submit('96385074');
+    const input = submit('96385074');
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not reach Price Checker. Check your connection and try again.',
+    );
+    expect(input).not.toHaveAttribute('aria-invalid');
+    expect(screen.queryByText(/^Error:/)).toBeNull();
   });
 
   it('AC 1.7.4: a 400 for a superseded Lookup is ignored', async () => {
