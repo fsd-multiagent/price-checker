@@ -29,7 +29,7 @@ development_status:
   2-11-adapter-evomagro: done
   2-12-celro-live-enable: backlog
   2-13-evomagro-live-enable: backlog
-  2-14-e2e-uj1-uj2: review
+  2-14-e2e-uj1-uj2: done
   epic-2-retrospective: optional
   epic-3: in-progress
   3-1-terraform-vm: done
