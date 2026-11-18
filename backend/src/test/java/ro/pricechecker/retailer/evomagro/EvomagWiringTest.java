@@ -9,7 +9,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import ro.pricechecker.adapter.RetailerAdapter;
 
-/** The real bean replaces the test stub, so the catalog sees exactly one evoMAG adapter. */
+/**
+ * StubAdapters registers no evoMAG stub because a real adapter serves the id, so the catalog sees
+ * exactly one evoMAG adapter.
+ */
 @SpringBootTest
 @Tag("AC-2.11.3")
 class EvomagWiringTest {

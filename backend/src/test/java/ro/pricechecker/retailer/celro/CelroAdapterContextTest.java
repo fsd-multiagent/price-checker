@@ -10,8 +10,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import ro.pricechecker.adapter.RetailerAdapter;
+import ro.pricechecker.retailer.evomagro.EvomagAdapter;
 
-/** Story 2.10: Spring test contexts hold the real cel.ro adapter and a stub only for the rest. */
+/** Story 2.10: Spring test contexts hold the real cel.ro and evoMAG adapters (story 2.11). */
 @SpringBootTest
 class CelroAdapterContextTest {
 
@@ -24,7 +25,7 @@ class CelroAdapterContextTest {
 
   @Test
   @Tag("AC-2.10.1")
-  void ac_2_10_1_contextHoldsRealCelroAdapterAndStubOnlyForEvomag() {
+  void ac_2_10_1_contextHoldsRealCelroAndEvomagAdapters() {
     Map<String, Class<?>> typeById = new TreeMap<>();
     context
         .getBeansOfType(RetailerAdapter.class)
@@ -32,6 +33,6 @@ class CelroAdapterContextTest {
         .forEach(a -> assertThat(typeById.put(a.retailerId(), a.getClass())).isNull());
     assertThat(typeById).containsOnlyKeys("cel.ro", "evomag.ro");
     assertThat(typeById.get("cel.ro")).isEqualTo(CelroAdapter.class);
-    assertThat(typeById.get("evomag.ro")).isNotEqualTo(CelroAdapter.class);
+    assertThat(typeById.get("evomag.ro")).isEqualTo(EvomagAdapter.class);
   }
 }

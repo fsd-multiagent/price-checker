@@ -115,6 +115,26 @@ class EvomagPageTest {
 
   @Test
   @Tag("AC-2.11.1")
+  void ac_2_11_1_microdataStepSkipsNonProductScopes() {
+    String breadcrumbFirst =
+        "<html><body>"
+            + "<ol itemscope itemtype=\"https://schema.org/BreadcrumbList\"><li>Home</li></ol>"
+            + "<div itemscope itemtype=\"https://schema.org/Product\">"
+            + "<div itemprop=\"offers\" itemscope itemtype=\"https://schema.org/Offer\">"
+            + "<meta itemprop=\"price\" content=\"400.00\">"
+            + "<meta itemprop=\"priceCurrency\" content=\"RON\">"
+            + "</div></div></body></html>";
+    assertThat(EvomagPage.microdata(breadcrumbFirst))
+        .contains(new ExtractedFacts(40000L, "RON", ExtractedFacts.Availability.UNKNOWN, null));
+
+    String offerOnly =
+        "<html><body><div itemscope itemtype=\"https://schema.org/Offer\">"
+            + "<meta itemprop=\"price\" content=\"400.00\"></div></body></html>";
+    assertThat(EvomagPage.microdata(offerOnly)).isEmpty();
+  }
+
+  @Test
+  @Tag("AC-2.11.1")
   void ac_2_11_1_availabilityMapsBySuffixAfterLastSlash() {
     assertThat(EvomagPage.availabilityOf("https://schema.org/InStock"))
         .isEqualTo(ExtractedFacts.Availability.IN_STOCK);

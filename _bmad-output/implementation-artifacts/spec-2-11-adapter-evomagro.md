@@ -3,7 +3,7 @@ title: 'evoMAG Adapter from synthetic fixtures'
 type: 'feature'
 created: '2026-11-18'
 status: 'done'
-baseline_revision: '37236ecaa18be8277bca478f5094e7cd5d87fcf1'
+baseline_revision: 'cfbfe5afa2a4a405bc01526550a1b6fc1dc5c3a1'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -169,6 +169,41 @@ deferred:
   - `[false]` `[reject]` (intent) "first step with a price" is looser than strict first-step-wins when the microdata price is unparseable: this is a deliberate, tested KEEP rule from round 1. C-7 forbids guessing, but a parseable meta price is a fact, not a guess.
   - `[false]` `[reject]` (intent) the own-selectors step is dropped and the diff touches files outside the touches list: CR-1's fix allows dropping the step until 2.13. The StubAdapters edit is carried from round 1 (CR-4: no change needed).
 
+### 2026-11-18 — Review pass (round 3, after rebase onto origin/main cfbfe5afa2a4a405bc01526550a1b6fc1dc5c3a1)
+- verdicts: 31 findings — high 0, medium 4, low 8, false 8, maybe-false 11
+- findings:
+  - `[false]` `[reject]` (blind) whole-step selection drops currency/GTIN from earlier steps and differs from cel.ro's per-field merge: carried. "First step with a price wins" is the KEEP rule (Design Notes).
+  - `[maybe-false]` `[defer]` (blind) microdata reads only `gtin13`: carried; covered by the existing deferred Product-scope item.
+  - `[maybe-false]` `[defer]` (blind) Product-scope detection too loose (no itemscope check, non-schema.org host) or too strict (multi-type, subtypes): carried; existing deferred item.
+  - `[maybe-false]` `[defer]` (blind) nested item scopes and AggregateOffer lowPrice: carried; existing deferred item.
+  - `[medium]` `[defer]` (blind) `availabilityOf` duplicates `extract.SchemaAvailability`: carried; existing deferred item (this story may not change `extract`).
+  - `[low]` `[reject]` (blind) HTML parsed by each step eagerly: one page per lookup, so the cost is negligible; lazy suppliers would add complexity.
+  - `[low]` `[reject]` (blind) `microdata` returns an empty-facts `Optional` for an empty Product scope: `extract`'s recognized filter discards it, so no caller sees it; a fix adds a branch.
+  - `[false]` `[reject]` (blind) request-shape tests cannot fail: `ac_2_11_3_requestsOnlyTheProductUrlOnceAndNeverSearch` asserts `http.requested` containsExactly `PRODUCT_URL` per fixture, which fails if the adapter requests anything else.
+  - `[low]` `[reject]` (blind) offline checks are text scans, not ArchUnit: the behavioural `FixtureHttp` assertion covers AC-10.2; a new ArchUnit rule adds surface for a case nobody meets in everyday use.
+  - `[false]` `[reject]` (blind) the YAML text test duplicates the Registry test and is brittle: carried (`retailers.yaml` is fixed by this story's Never rule).
+  - `[low]` `[patch]` (blind) `CelroAdapterContextTest` still says evoMAG is a stub and only asserts "not cel.ro": renamed to `ac_2_10_1_contextHoldsRealCelroAndEvomagAdapters` and asserts `EvomagAdapter.class` (made stale by the rebase onto story 2.10).
+  - `[false]` `[reject]` (blind) tests depend on working dir `backend/`: the Gradle test task always runs there; it is the project convention (`BundledConfigTest`, Code Map).
+  - `[low]` `[patch]` (blind) fixture gaps; `product-meta-microdata.html` missing from the single-request check: added it to `ac_2_11_3_requestsOnlyTheProductUrlOnceAndNeverSearch`. Other gaps (non-RON, GTIN mismatch, JSON-LD-no-price + microdata) rejected as low: carried GTIN row, and no evoMAG page shows them.
+  - `[maybe-false]` `[defer]` (edge) multi-type itemtype: carried; existing deferred item.
+  - `[maybe-false]` `[defer]` (edge) itemtype with trailing slash or non-schema.org host: carried; existing deferred item.
+  - `[maybe-false]` `[defer]` (edge) nested itemscope before the main offer: carried; existing deferred item.
+  - `[maybe-false]` `[defer]` (edge) first Product in document order is a related-product widget: carried; existing deferred item.
+  - `[maybe-false]` `[defer]` (edge) AggregateOffer lowPrice in microdata: carried; existing deferred item.
+  - `[maybe-false]` `[defer]` (edge) gtin/gtin8/12/14 in microdata: carried; existing deferred item.
+  - `[false]` `[reject]` (edge) no per-field fill from later steps: carried KEEP rule.
+  - `[low]` `[reject]` (edge) availability URL with a trailing slash reads UNKNOWN: unlikely in markup, and UNKNOWN is honest (C-7); the fix adds a branch.
+  - `[low]` `[patch]` (edge) single-request check skips `product-meta-microdata.html`: same fix as the blind row above.
+  - `[low]` `[patch]` (edge) `EvomagWiringTest` Javadoc says the real bean "replaces the test stub": rewritten. After the rebase, StubAdapters registers no evoMAG stub.
+  - `[maybe-false]` `[defer]` (edge, claim) microdata reaches nested scopes, contrary to "in the itemtype Product scope": carried; existing deferred item.
+  - `[false]` `[reject]` (edge, claim) the spec says StubAdapters changed, but the diff does not touch it: the fix would be a spec edit. The round-3 Auto Run Result records that the rebase dropped that edit for main's equivalent scan from story 2.10.
+  - `[medium]` `[patch]` (verification-gap) the Product-scope filter is untested against non-Product scopes: added `ac_2_11_1_microdataStepSkipsNonProductScopes` (a BreadcrumbList before the Product gives 40000; an Offer-only page gives empty).
+  - `[maybe-false]` `[defer]` (verification-gap other) multi-type itemtype: carried; existing deferred item.
+  - `[medium]` `[defer]` (verification-gap other) `availabilityOf` copies `SchemaAvailability`: carried; existing deferred item.
+  - `[false]` `[reject]` (intent) R2 (first step with a price) rather than R1 for the unparseable-price case: carried KEEP rule (round 1 row).
+  - `[false]` `[reject]` (intent) cross-step field loss differs from cel.ro's per-field merge: carried; the C-6 policy is recorded in Design Notes. Aligning the adapters belongs to the deferred shared-extract follow-up.
+  - `[medium]` `[defer]` (intent) microdata and availability mapping live in the retailer package, not `extract`: carried; existing deferred item.
+
 ## Design Notes
 
 Outcome choice: compute the three steps in order; take the first whose `priceMinor` is non-null; otherwise the first "recognized" result (any of price, currency, GTIN non-null or availability not UNKNOWN) with `priceMinor` null; otherwise `Unavailable(UNPARSEABLE)`. `eanOnPage` = the step's GTIN (evoMAG pages carry none per register, so usually null). `url` = the requested product URL.
@@ -195,3 +230,12 @@ Outcome choice: compute the three steps in order; take the first whose `priceMin
 - Follow-up review recommended: false. This is a follow-up pass and no high finding was patched (patched: high 0, medium 1, low 1).
 - Verification: `backend/gradlew -p backend check` exit 0 (Spotless, `-Werror`, ArchUnit, text scan and all tests, including the two new tests).
 - Residual risks: real evoMAG markup is still unverified (story 2.13). The deferred `StubAdapters` no-arg constructor issue (code_review CR-1, major) remains for story 2.10 or whichever adapter first uses constructor injection.
+
+### 2026-11-18 — Round 3 (rebase fix and follow-up pass)
+
+- Summary: fixed the ci_green gate blocker `rebase-outcome` (AD-18). The branch is rebased onto `origin/main` (cfbfe5afa2a4a405bc01526550a1b6fc1dc5c3a1). The conflict was in `backend/src/test/java/ro/pricechecker/lookup/StubAdapters.java`: story 2.10 (cel.ro) already made StubAdapters skip ids that a real adapter serves (classpath scan plus no-argument instantiation), so main's version is kept and this story no longer edits that file. `open_pr`, `ci_green` and `merge_pr` did not run only because the rebase failed; the orchestrator runs them again.
+- Files: `lookup/StubAdapters.java` (no longer in the diff; main's version is kept); `retailer/celro/CelroAdapterContextTest.java` (asserts the real `EvomagAdapter` for `evomag.ro`, renamed); `retailer/evomagro/EvomagPageTest.java` (`ac_2_11_1_microdataStepSkipsNonProductScopes`); `retailer/evomagro/EvomagAdapterTest.java` (adds `product-meta-microdata.html` to the single-request check); `retailer/evomagro/EvomagWiringTest.java` (Javadoc).
+- Review: 4 patches (1 medium: non-Product scope test; 3 low: stale cel.ro context test, request-check fixture, Javadoc). No new deferred items; the maybe-false findings are carried into the existing deferred items. The rejected findings and their reasons are in the round-3 triage log.
+- Follow-up review recommended: false. This is a follow-up pass and no high finding was patched (patched: high 0, medium 1, low 3).
+- Verification: `backend/gradlew -p backend check` gave BUILD SUCCESSFUL after the rebase and again after the patches. EvomagPageTest has 24 tests, and CelroAdapterContextTest and EvomagWiringTest pass.
+- Residual risks: real evoMAG markup is still unverified (story 2.13). The deferred StubAdapters no-argument-constructor limit now lives in main's version from story 2.10.

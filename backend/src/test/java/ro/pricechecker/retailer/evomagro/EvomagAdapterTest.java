@@ -45,6 +45,7 @@ class EvomagAdapterTest {
             "product-jsonld.html",
             "product-meta.html",
             "product-microdata.html",
+            "product-meta-microdata.html",
             "product-mixed.html",
             "no-product.html",
             "unparseable-price.html")) {
