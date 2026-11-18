@@ -296,8 +296,6 @@ stages:
         tools: [Read, Grep, Glob]
         inputs: [docs/standards/coding.md, docs/standards/testing.md]
         verdict_source: result_block
-        model: sonnet # AD-7: read-only reviewer, cheaper model
-        effort: medium
       - id: security
         kind: agent
         agent: security-compliance-reviewer
@@ -306,8 +304,6 @@ stages:
         tools: [Read, Grep, Glob]
         inputs: [docs/standards/security-compliance.md, docs/source-register.md]
         verdict_source: result_block
-        model: sonnet # AD-7: read-only reviewer, cheaper model
-        effort: medium
     parallel: [[code_review, code_lens, security]]
     gate:
       - {kind: tests, steps: [tests]}
