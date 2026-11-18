@@ -1,0 +1,26 @@
+#!/bin/bash
+# One-time owner bootstrap on the VM, run as root (story 3.3, ADR 0018).
+# Installs the deploy script where pc-dispatch looks for it and creates the
+# directories the deploy script and the backend need. Rerun it only when
+# deploy/scripts/deploy changes. It never touches files inside the config or
+# state directories.
+#
+#   sudo ./install            (from a copy of deploy/scripts on the VM)
+set -euo pipefail
+
+PC_ROOT="/opt/price-checker"
+DEPLOY_USER="deploy"
+here="$(cd "$(dirname "$0")" && pwd)"
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "install: run as root" >&2
+  exit 1
+fi
+id "$DEPLOY_USER" >/dev/null
+
+install -d -o root -g root -m 0755 "$PC_ROOT" "$PC_ROOT/bin"
+install -o root -g root -m 0755 "$here/deploy" "$PC_ROOT/bin/deploy"
+# Directories only: an existing directory keeps its contents.
+install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" -m 0750 "$PC_ROOT/config" "$PC_ROOT/state" "$PC_ROOT/app"
+
+echo "install: $PC_ROOT/bin/deploy installed; config, state and app directories ready"

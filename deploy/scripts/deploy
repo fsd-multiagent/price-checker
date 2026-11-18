@@ -1,0 +1,87 @@
+#!/bin/bash
+# VM deploy script (story 3.3, ADR 0015, ADR 0018). Installed by `install` as
+# /opt/price-checker/bin/deploy and run only through the forced command
+# pc-dispatch:  ssh deploy@<fqdn> deploy <git-sha> <fqdn>
+#
+# stdin: line 1 registry user, line 2 registry token, then a tar holding
+# compose.yaml and Caddyfile. The token reaches docker only on stdin
+# (--password-stdin), in a temporary DOCKER_CONFIG that is removed on exit,
+# and the registry session is logged out right after the pull and on any exit.
+#
+# Operator files under the config and state directories are never written,
+# created or deleted here (AD-9); the state directory is only checked.
+set -euo pipefail
+umask 027
+
+PC_ROOT="${PC_ROOT:-/opt/price-checker}"
+PC_APP_DIR="${PC_APP_DIR:-$PC_ROOT/app}"
+REGISTRY="ghcr.io"
+
+usage() {
+  echo "usage: deploy <40-hex git sha> <dns name>" >&2
+  exit 64
+}
+
+[ "$#" -eq 2 ] || usage
+sha="$1"
+site="$2"
+[[ "$sha" =~ ^[0-9a-f]{40}$ ]] || usage
+[[ "$site" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$ ]] || usage
+[ "${#site}" -le 253 ] || usage
+
+state_dir="$PC_ROOT/state"
+if [ ! -d "$state_dir" ] || [ ! -w "$state_dir" ]; then
+  echo "deploy: $state_dir is missing or not writable; the owner runs deploy/scripts/install once" >&2
+  exit 1
+fi
+if [ ! -d "$PC_APP_DIR" ] || [ ! -w "$PC_APP_DIR" ]; then
+  echo "deploy: $PC_APP_DIR is missing or not writable; the owner runs deploy/scripts/install once" >&2
+  exit 1
+fi
+
+registry_user=""
+registry_token=""
+IFS= read -r registry_user || true
+IFS= read -r registry_token || true
+if [ -z "$registry_user" ] || [ -z "$registry_token" ]; then
+  echo "deploy: stdin must start with the registry user and token lines" >&2
+  exit 65
+fi
+
+work="$(mktemp -d "${TMPDIR:-/tmp}/pc-deploy.XXXXXX")"
+export DOCKER_CONFIG="$work/docker"
+mkdir -m 0700 "$DOCKER_CONFIG"
+cleanup() {
+  docker logout "$REGISTRY" >/dev/null 2>&1 || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
+
+# Only these two members are extracted; anything else in the tar is ignored.
+mkdir "$work/bundle"
+tar -x -f - -C "$work/bundle" --no-same-owner compose.yaml Caddyfile
+for f in compose.yaml Caddyfile; do
+  if [ -L "$work/bundle/$f" ] || [ ! -f "$work/bundle/$f" ]; then
+    echo "deploy: bundle has no regular file $f" >&2
+    exit 65
+  fi
+  install -m 0640 "$work/bundle/$f" "$PC_APP_DIR/$f.new"
+  mv -f "$PC_APP_DIR/$f.new" "$PC_APP_DIR/$f"
+done
+
+export IMAGE_TAG="$sha"
+export SITE_ADDRESS="$site"
+BACKEND_UID="$(id -u)"
+BACKEND_GID="$(id -g)"
+export BACKEND_UID BACKEND_GID
+
+compose=(docker compose --project-name price-checker --project-directory "$PC_APP_DIR" -f "$PC_APP_DIR/compose.yaml")
+
+printf '%s\n' "$registry_token" | docker login "$REGISTRY" --username "$registry_user" --password-stdin >/dev/null
+registry_token=""
+
+"${compose[@]}" pull
+docker logout "$REGISTRY" >/dev/null
+
+"${compose[@]}" up -d --remove-orphans
+echo "deploy: $IMAGE_TAG is running on $SITE_ADDRESS"

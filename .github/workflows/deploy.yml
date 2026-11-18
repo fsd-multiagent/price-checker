@@ -1,0 +1,149 @@
+# Build and deploy on every push to main (story 3.3, ADR 0015, ADR 0018, I-1, I-7, S-10).
+# Job `images` builds the backend and web images from the repo root, tags them with the
+# full git SHA (never `latest`, I-6) and pushes them to GHCR with GITHUB_TOKEN.
+# Job `deploy` signs in to Azure over OIDC (no client secret, I-5), opens the jit-ssh-*
+# NSG rule for this runner's /32, runs the forced command `deploy <sha> <fqdn>` on the
+# VM and always removes the rule and the key. The registry user, GITHUB_TOKEN and a tar
+# of deploy/compose.yaml and deploy/Caddyfile travel on ssh stdin, never on argv.
+# Secrets reach run steps only through env. Actions are pinned to commit SHAs (S-12).
+#
+# Repository variables (names only):
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID   OIDC identity allowed to write
+#                                                             and delete rules on the NSG
+#   PROD_FQDN, PROD_RESOURCE_GROUP, PROD_NSG_NAME             terraform outputs fqdn,
+#                                                             resource_group_name, nsg_name
+#   PROD_SSH_HOST_KEY (required)                              the VM's "ssh-ed25519 AAAA..." host key
+# Repository secret:
+#   DEPLOY_SSH_KEY                                            deploy user's private key
+# Setup steps: deploy/scripts/README.md.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_PREFIX: ghcr.io/fsd-multiagent/price-checker
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build images tagged with the git SHA
+        run: |
+          docker build -f backend/Dockerfile -t "$IMAGE_PREFIX-backend:$GITHUB_SHA" .
+          docker build -f web/Dockerfile -t "$IMAGE_PREFIX-web:$GITHUB_SHA" .
+
+      - name: Push images to GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export DOCKER_CONFIG="$RUNNER_TEMP/docker-config"
+          mkdir -p -m 0700 "$DOCKER_CONFIG"
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s\n' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE_PREFIX-backend:$GITHUB_SHA"
+          docker push "$IMAGE_PREFIX-web:$GITHUB_SHA"
+
+  deploy:
+    needs: images
+    if: vars.PROD_FQDN != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read # the VM pulls with this job's GITHUB_TOKEN
+      id-token: write # OIDC token for the NSG rule (I-5)
+    concurrency:
+      # The kill-switch workflow uses the same group: both add the priority-100 jit-ssh rule.
+      group: prod-ssh
+      cancel-in-progress: false
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      PROD_FQDN: ${{ vars.PROD_FQDN }}
+      PROD_RESOURCE_GROUP: ${{ vars.PROD_RESOURCE_GROUP }}
+      PROD_NSG_NAME: ${{ vars.PROD_NSG_NAME }}
+      PROD_SSH_HOST_KEY: ${{ vars.PROD_SSH_HOST_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Azure login over OIDC
+        id: azure
+        run: |
+          oidc="$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r .value)"
+          echo "::add-mask::$oidc"
+          az login --service-principal --username "$AZURE_CLIENT_ID" --tenant "$AZURE_TENANT_ID" \
+            --federated-token "$oidc" --allow-no-subscriptions --output none
+          az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+
+      - name: Open the just-in-time SSH rule for this runner (ADR 0018)
+        id: open
+        run: |
+          ip="$(curl -sSf --max-time 10 https://api.ipify.org)"
+          if ! [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+            echo "::error::could not read the runner's public IPv4 address"
+            exit 1
+          fi
+          # A rule leaked by a cancelled run would hold priority 100; this group runs alone.
+          for stale in $(az network nsg rule list -g "$PROD_RESOURCE_GROUP" --nsg-name "$PROD_NSG_NAME" \
+              --query "[?starts_with(name, 'jit-ssh-')].name" -o tsv); do
+            echo "::warning::removing leaked rule $stale"
+            az network nsg rule delete -g "$PROD_RESOURCE_GROUP" --nsg-name "$PROD_NSG_NAME" -n "$stale" --output none
+          done
+          az network nsg rule create -g "$PROD_RESOURCE_GROUP" --nsg-name "$PROD_NSG_NAME" \
+            -n "jit-ssh-$GITHUB_RUN_ID" --priority 100 --direction Inbound --access Allow \
+            --protocol Tcp --source-address-prefixes "$ip/32" --source-port-ranges '*' \
+            --destination-address-prefixes '*' --destination-port-ranges 22 --output none
+
+      - name: Deploy over the forced command
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          umask 077
+          key="$RUNNER_TEMP/deploy_key"
+          known="$RUNNER_TEMP/known_hosts"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key"
+          # The host key is pinned, so a man in the middle never receives GITHUB_TOKEN.
+          if [ -z "$PROD_SSH_HOST_KEY" ]; then
+            echo "::error::set the PROD_SSH_HOST_KEY variable (deploy/scripts/README.md)"
+            exit 1
+          fi
+          printf '%s %s\n' "$PROD_FQDN" "$PROD_SSH_HOST_KEY" > "$known"
+          ssh_opts=(-i "$key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10
+            -o UserKnownHostsFile="$known" -o StrictHostKeyChecking=yes)
+          # Wait for the NSG rule: with no command pc-dispatch exits 64; 255 means ssh did not connect.
+          for attempt in 1 2 3 4 5 6 7 8 9; do
+            rc=0
+            ssh "${ssh_opts[@]}" "deploy@$PROD_FQDN" < /dev/null 2>/dev/null || rc=$?
+            [ "$rc" -ne 255 ] && break
+            [ "$attempt" -eq 9 ] && { echo "::error::ssh to the VM did not connect"; exit 1; }
+            sleep 10
+          done
+          {
+            printf '%s\n%s\n' "$GITHUB_ACTOR" "$GITHUB_TOKEN"
+            tar -c -f - -C deploy compose.yaml Caddyfile
+          } | ssh "${ssh_opts[@]}" "deploy@$PROD_FQDN" deploy "$GITHUB_SHA" "$PROD_FQDN"
+
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/deploy_key" "$RUNNER_TEMP/known_hosts"
+
+      - name: Close the just-in-time SSH rule
+        if: always() && steps.azure.outcome == 'success'
+        run: |
+          az network nsg rule delete -g "$PROD_RESOURCE_GROUP" --nsg-name "$PROD_NSG_NAME" \
+            -n "jit-ssh-$GITHUB_RUN_ID" --output none
+          az logout || true
