@@ -228,7 +228,8 @@ Versions were not checked on the web in this run (permission denied). Each row i
 | Node.js | 24 LTS |
 | TypeScript, React, Vite | current GA (React 19.x or newer) |
 | Vitest, Testing Library, axe-core, Playwright, ESLint, Prettier | current GA |
-| Caddy | 2.x |
+| Caddy | 2.x; images `caddy:2.10.2` (proxy) and `caddy:2.10.2-alpine` (web image) (story 3.2) |
+| Container base images | `eclipse-temurin:21.0.8_9-jdk-noble` / `-jre-noble` (backend), `node:24.11.1-bookworm-slim` and `openapitools/openapi-generator-cli:v7.27.0` (web build stages), exact tags checked by `DeployConfigTest` (story 3.2, S-12) |
 | Terraform, azurerm provider | 1.x, 4.x |
 
 ## Structural Seed
@@ -241,7 +242,8 @@ config/known-eans.yaml      # curated EAN→URL map; Health check and demo EANs 
 fixtures/<retailer-id>/     # recorded, stripped pages (T-2)
 backend/                    # Spring Boot, Gradle wrapper; src/main/java/ro/pricechecker/<feature>/
 web/                        # Vite + React + TypeScript; web/e2e/ Playwright
-deploy/compose.yaml, deploy/Caddyfile
+deploy/compose.yaml, deploy/Caddyfile   # prod stack and proxy (story 3.2)
+backend/Dockerfile, web/Dockerfile, web/Caddyfile, .dockerignore  # images; build context is the repo root
 infra/                      # Terraform (I-1)
 .github/workflows/          # ci, terraform-plan, deploy, kill-switch, health-check
 ```
