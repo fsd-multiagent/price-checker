@@ -51,7 +51,7 @@ class LookupFetchWiringTest {
   @TempDir Path dir;
 
   private final TestClock clock = new TestClock(Instant.parse("2026-11-18T10:00:00Z"));
-  private final Registry registry = TestRegistries.twoEnabled(4000);
+  private Registry registry = TestRegistries.twoEnabled(4000);
   private final FakeTransport transport = new FakeTransport();
   private final List<String> bindCalls = new CopyOnWriteArrayList<>();
   private final Map<String, RetailerHttp> boundById = new ConcurrentHashMap<>();
@@ -152,6 +152,54 @@ class LookupFetchWiringTest {
 
     assertThat(row(rows, "a.example").status()).isEqualTo(RowStatus.UNAVAILABLE);
     assertThat(row(rows, "b.example").status()).isEqualTo(RowStatus.FOUND);
+  }
+
+  @Test
+  @Tag("AC-0.102.3")
+  void ac_0_102_3_recordedBlockNeverBinds() throws IOException {
+    useRuntime("a.example: {fetching: allowed}", "b.example: {fetching: allowed}");
+    blocks.record("a.example", BlockStore.Reason.HTTP_403);
+    LookupService service = service(recordingBinder());
+
+    List<LookupRow> rows = service.lookup(Ean.parse(TestRegistries.EAN_A)).rows();
+
+    assertThat(row(rows, "a.example").status()).isEqualTo(RowStatus.UNAVAILABLE);
+    assertThat(row(rows, "b.example").status()).isEqualTo(RowStatus.FOUND);
+    assertThat(bindCalls).containsExactly("b.example");
+    assertThat(transport.urls).allMatch(u -> u.getHost().equals("b.example"));
+  }
+
+  @Test
+  @Tag("AC-0.102.3")
+  void ac_0_102_3_adapterDisabledRowNeverBinds() throws IOException {
+    registry = TestRegistries.fetchable(2000, 1, 4000);
+    useRuntime(
+        "a.example: {fetching: allowed}",
+        "b.example: {fetching: allowed}",
+        "c.example: {fetching: allowed}");
+    LookupService service = service(recordingBinder());
+
+    List<LookupRow> rows = service.lookup(Ean.parse(TestRegistries.EAN_A)).rows();
+
+    assertThat(row(rows, "a.example").status()).isEqualTo(RowStatus.FOUND);
+    assertThat(row(rows, "b.example").status()).isEqualTo(RowStatus.DISABLED);
+    assertThat(bindCalls).containsExactly("a.example");
+    assertThat(transport.urls).noneMatch(u -> u.getHost().equals("b.example"));
+  }
+
+  @Test
+  @Tag("AC-0.102.1")
+  void ac_0_102_1_cacheHitDoesNotBindOrFetchAgain() throws IOException {
+    useRuntime("a.example: {fetching: allowed}");
+    LookupService service = service(recordingBinder());
+    service.lookup(Ean.parse(TestRegistries.EAN_A));
+    int requests = transport.urls.size();
+
+    List<LookupRow> rows = service.lookup(Ean.parse(TestRegistries.EAN_A)).rows();
+
+    assertThat(row(rows, "a.example").status()).isEqualTo(RowStatus.FOUND);
+    assertThat(bindCalls).containsExactly("a.example");
+    assertThat(transport.urls).hasSize(requests);
   }
 
   private Optional<RetailerHttpBinder> recordingBinder() {

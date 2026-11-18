@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,7 @@ class LookupSkeletonAcceptanceGapsTest {
   private static final RetailerHttp HTTP = url -> "";
   private static final String EAN = TestRegistries.EAN_A;
 
-  private final List<String> calls = new ArrayList<>();
+  private final List<String> calls = new CopyOnWriteArrayList<>();
 
   /** a, b, d Approved and enabled; e Approved and disabled; c Proposed and disabled. */
   private static Registry fiveRetailers() {
