@@ -60,9 +60,13 @@ class DeployWorkflowTest {
             n=$(( $(cat "$log.restarts" 2>/dev/null || echo 0) + 1 ))
             echo "$n" > "$log.restarts"
           fi
-          printf 'true %s\\ntrue 0\\n' "$n" ;;
+          printf 'true %s\\ntrue 0\\ntrue 0\\n' "$n" ;;
         compose)
           for a in "$@"; do
+            if [ "$a" = ps ]; then
+              if [ "${FAKE_FAIL:-}" != noproxy ]; then echo proxy-container-id; fi
+              exit 0
+            fi
             if [ "$a" = pull ] && [ "${FAKE_FAIL:-}" = pull ]; then exit 1; fi
             if [ "$a" = up ] && [ "${FAKE_FAIL:-}" = up ]; then exit 1; fi
             if [ "$a" = up ]; then
@@ -318,6 +322,17 @@ class DeployWorkflowTest {
     assertThat(crash.stderr()).contains("restarted or stopped after start");
     assertThat(Files.readString(tmp.resolve("stdout.txt"))).doesNotContain("is running");
     assertThat(listing(tmp.resolve("tmpdir"))).isEmpty();
+    assertThat(dockerCalls().stream().filter(c -> c.startsWith("inspect")))
+        .as("the proxy is part of the settle check")
+        .isNotEmpty()
+        .allMatch(c -> c.endsWith(" proxy-container-id"));
+
+    Files.delete(log);
+    Files.deleteIfExists(tmp.resolve("bundle.tar"));
+    deleteTree(tmp.resolve("bundle-src"));
+    Run noProxy = deploy(Map.of("FAKE_FAIL", "noproxy"), goodStdin(), SHA, SITE);
+    assertThat(noProxy.exit()).isEqualTo(1);
+    assertThat(noProxy.stderr()).contains("proxy container is missing");
   }
 
   @Test

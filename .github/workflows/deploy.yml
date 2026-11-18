@@ -54,6 +54,10 @@ jobs:
           docker push "$IMAGE_PREFIX-backend:$GITHUB_SHA"
           docker push "$IMAGE_PREFIX-web:$GITHUB_SHA"
 
+      - name: Say that the deploy is skipped
+        if: vars.PROD_FQDN == ''
+        run: echo "::notice title=Deploy skipped::PROD_FQDN is not set, so the images were pushed but not deployed."
+
   deploy:
     needs: images
     if: vars.PROD_FQDN != ''

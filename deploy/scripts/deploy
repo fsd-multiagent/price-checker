@@ -106,9 +106,15 @@ fi
 
 # A backend that fails its start checks (Registry ConfigCheck, a bad Block file) can
 # look running for a moment and then restart; a restart during the settle time
-# fails the deploy.
+# fails the deploy. The proxy has no fixed container name, so compose names it.
+proxy_id="$("${compose[@]}" ps -q proxy)"
+if [ -z "$proxy_id" ]; then
+  echo "deploy: the proxy container is missing after start" >&2
+  exit 1
+fi
 restarts() {
-  docker inspect --format '{{.State.Running}} {{.RestartCount}}' price-checker-backend price-checker-web
+  docker inspect --format '{{.State.Running}} {{.RestartCount}}' \
+    price-checker-backend price-checker-web "$proxy_id"
 }
 before="$(restarts)"
 sleep "${PC_SETTLE_SECONDS:-20}"
