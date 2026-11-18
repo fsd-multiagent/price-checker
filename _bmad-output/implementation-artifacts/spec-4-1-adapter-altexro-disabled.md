@@ -212,3 +212,10 @@ Status: done
 - CR-3 / code_lens CR-1 (C-6, `RON` currency text) stay deferred as recorded in the frontmatter. CR-4 (D-2): ADR 0026 is still Proposed; the PR description must name it for the owner's acceptance.
 - No code change this round, so no follow-up review pass ran. `origin/main` is still 398a852, so no rebase was needed.
 - QA (Eufrosina (QA), round 9): no test gap behind the round 8 blockers; they come from the security verdict format (see above). The story has 33 tests named by criterion ID (T-1): 23 for 4.1.1, 8 for 4.1.2, 2 for 4.1.3, in `AltexroAdapterTest`, `AltexroAcceptanceGapsTest`, `AltexroGateTest` and `AltexroLookupContextTest`. No test was added. `backend/gradlew -p backend check` exit 0.
+
+### Round 10
+
+- The `ci_green-outcome` (AD-18) blocker on PR #81 (head 6827b27d7e88be36c21663ac7ba585174762642e) had two causes. In CI, `spotlessJava` failed because Maven Central answered HTTP 429 while resolving google-java-format, a transient error; the failed jobs were re-run. Locally, `backend/gradlew -p backend check` also failed 5 tests in `e2e.E2eJourneysApiTest`: story 2.14 (#80) added an e2e registry (`src/test/resources/e2e/`) that lists only `cel.ro` and `evomag.ro`, so `AdapterCatalog` refused to start with "adapter without config [altex.ro]" (AD-7).
+- Fix: `e2e/retailers.yaml` gets an `altex.ro` entry, `adapter: disabled`, with the same values as `config/retailers.yaml`, and `e2e/source-register.md` gets an `altex.ro` row marked `Not checked`. Altex is not Approved there, so a Lookup has no Altex row and the journeys' expected rows (`cel.ro`, `evomag.ro`) do not change. These two test resources are outside the story's touches, but the story's adapter bean makes them necessary.
+- `merge_pr-missing` follows from the CI failure; it needs no change of its own.
+- Verification: `backend/gradlew -p backend check` exit 0, with no failing test.
