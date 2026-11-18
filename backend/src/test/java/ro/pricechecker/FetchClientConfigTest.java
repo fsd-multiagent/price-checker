@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ConfigurableApplicationContext;
 import ro.pricechecker.fetch.FetchClient;
 import ro.pricechecker.fetch.UserAgent;
+import ro.pricechecker.lookup.LookupLog;
 import ro.pricechecker.registry.Registry;
 
 /** AC 2.4.5: the user agent is built at startup; a bad contact URL stops the context. */
@@ -21,7 +22,11 @@ class FetchClientConfigTest {
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
           .withUserConfiguration(
-              ClockConfig.class, RuntimeSwitchConfig.class, FetchClientConfig.class)
+              ClockConfig.class,
+              RuntimeSwitchConfig.class,
+              LookupLog.class,
+              BlockStoreConfig.class,
+              FetchClientConfig.class)
           .withBean(Registry.class);
 
   @Test

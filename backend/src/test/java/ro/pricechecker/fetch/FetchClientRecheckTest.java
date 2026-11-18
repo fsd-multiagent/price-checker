@@ -73,6 +73,7 @@ class FetchClientRecheckTest {
     return new FetchClient(
             TestRegistries.fetchable(minIntervalMs, 1, deadlineMs),
             runtime,
+            TestRegistries.blockStore(runtime, clock),
             transport,
             clock,
             sleeper,

@@ -56,7 +56,7 @@ public final class RuntimeSwitch {
     lastAttempt = now;
     String text;
     try {
-      text = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+      text = readText();
     } catch (NoSuchFileException e) {
       return Optional.of(Rejection.MISSING);
     } catch (IOException | SecurityException e) {
@@ -70,8 +70,35 @@ public final class RuntimeSwitch {
     return Optional.empty();
   }
 
+  /**
+   * Reads and parses the file now, outside the poll and without changing the current settings; for
+   * {@link BlockStore#record}, so a {@code clear-block} written but not yet polled cannot cancel a
+   * new Block (AD-9). Empty when the file is missing, unreadable or rejected.
+   */
+  Optional<RuntimeSettings> readFile() {
+    try {
+      return Optional.of(RuntimeSettings.parse(readText()));
+    } catch (IOException | SecurityException | IllegalArgumentException e) {
+      return Optional.empty();
+    }
+  }
+
+  private String readText() throws IOException {
+    return new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+  }
+
   /** Whether fetching is allowed for {@code domain} in the current settings (fail closed). */
   public boolean isAllowed(String domain) {
     return settings.isAllowed(domain);
+  }
+
+  /** The polled {@code clearGeneration} for {@code domain}; 0 when absent or before a good read. */
+  public long clearGeneration(String domain) {
+    return settings.clearGeneration(domain);
+  }
+
+  /** Whether the polled settings hold a {@code runnerBlock} for {@code domain} (AD-16). */
+  public boolean hasRunnerBlock(String domain) {
+    return settings.hasRunnerBlock(domain);
   }
 }

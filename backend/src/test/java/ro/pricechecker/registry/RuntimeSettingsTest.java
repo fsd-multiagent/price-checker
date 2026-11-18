@@ -41,7 +41,7 @@ class RuntimeSettingsTest {
 
   @Test
   @Tag("AC-2.3.1")
-  void ac_2_3_1_laterStoryKeysAreIgnored() {
+  void ac_2_3_1_laterStoryKeysDoNotChangeFetching() {
     RuntimeSettings settings =
         RuntimeSettings.parse(
             """
@@ -73,9 +73,50 @@ class RuntimeSettingsTest {
         "retailers:\n  a.example: {fetching: allowed}\n  b.example: {fetching: maybe}\n",
         "retailers:\n  a.example: {fetching: allowed}\n  a.example: {fetching: stopped}\n",
         "retailers:\n  1: {fetching: allowed}\n",
+        "retailers:\n  a.example: {fetching: allowed, clearGeneration: -1}\n",
+        "retailers:\n  a.example: {fetching: allowed, clearGeneration: 1.5}\n",
+        "retailers:\n  a.example: {fetching: allowed, clearGeneration: \"2\"}\n",
+        "retailers:\n  a.example: {fetching: allowed, clearGeneration: two}\n",
+        "retailers:\n  a.example: {fetching: allowed, clearGeneration: }\n",
+        "retailers:\n  a.example: {fetching: allowed, clearGeneration: 99999999999999999999}\n",
       })
   void ac_2_3_3_badFileIsRejectedWhole(String yaml) {
     assertThatThrownBy(() -> RuntimeSettings.parse(yaml))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  @Tag("AC-2.6.3")
+  void ac_2_6_3_clearGenerationIsReadAndDefaultsToZero() {
+    RuntimeSettings settings =
+        RuntimeSettings.parse(
+            """
+            retailers:
+              a.example: {fetching: allowed, clearGeneration: 3}
+              b.example: {fetching: stopped, clearGeneration: 5000000000}
+              c.example: {fetching: allowed}
+            """);
+    assertThat(settings.clearGeneration("a.example")).isEqualTo(3);
+    assertThat(settings.clearGeneration("b.example")).isEqualTo(5_000_000_000L);
+    assertThat(settings.clearGeneration("c.example")).isZero();
+    assertThat(settings.clearGeneration("d.example")).isZero();
+    assertThat(RuntimeSettings.NONE.clearGeneration("a.example")).isZero();
+  }
+
+  @Test
+  @Tag("AC-2.6.2")
+  void ac_2_6_2_runnerBlockPresentMeansBlocked() {
+    RuntimeSettings settings =
+        RuntimeSettings.parse(
+            """
+            retailers:
+              a.example:
+                fetching: allowed
+                runnerBlock: {blockedAt: "2026-11-18T04:00:00Z", reason: CHALLENGE}
+              b.example: {fetching: allowed}
+            """);
+    assertThat(settings.hasRunnerBlock("a.example")).isTrue();
+    assertThat(settings.hasRunnerBlock("b.example")).isFalse();
+    assertThat(RuntimeSettings.NONE.hasRunnerBlock("a.example")).isFalse();
   }
 }

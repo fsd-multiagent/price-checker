@@ -64,7 +64,15 @@ class RobotsTest {
     assertThat(runtime.refresh()).isEmpty();
     // robots.txt answers from the `robots` field; every other path is a page.
     transport.always(url -> url.getPath().equals("/robots.txt") ? robots.answer(url) : ok("page"));
-    return new FetchClient(registry, runtime, transport, clock, sleeper, UA, cache)
+    return new FetchClient(
+            registry,
+            runtime,
+            TestRegistries.blockStore(runtime, clock),
+            transport,
+            clock,
+            sleeper,
+            UA,
+            cache)
         .bind("a.example");
   }
 

@@ -1,6 +1,7 @@
 package ro.pricechecker.fetch;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpTimeoutException;
@@ -14,6 +15,7 @@ import java.util.Optional;
 import java.util.Set;
 import ro.pricechecker.adapter.RetailerHttp;
 import ro.pricechecker.adapter.UnavailableReason;
+import ro.pricechecker.registry.BlockStore;
 import ro.pricechecker.registry.Registry;
 import ro.pricechecker.registry.RetailerConfig;
 import ro.pricechecker.registry.RuntimeSwitch;
@@ -31,6 +33,13 @@ import ro.pricechecker.registry.RuntimeSwitch;
  * redirects, no permit) gives {@code Unavailable(REFUSED)} and is not kept. Only timeouts and 5xx
  * are retried, at most {@value #MAX_RETRIES} times with backoff inside the deadline; headers, user
  * agent and route never change on a retry (S-6).
+ *
+ * <p>Blocks (FR-11, S-6, story 2.6): a 403, a recognized challenge page ({@link ChallengePage}, on
+ * a 2xx or 5xx body) or a robots.txt disallow calls {@link BlockStore#record} and gives {@code
+ * Unavailable(BLOCKED)}, never retried. While {@link BlockStore#isBlocked} is true every request to
+ * that retailer, robots.txt included, is refused without sending ({@code Unavailable(BLOCKED)}).
+ * Nothing here ever retries a Block another way: no proxy, no other user agent, no other headers
+ * (AC-11.3).
  */
 public final class FetchClient {
 
@@ -42,6 +51,7 @@ public final class FetchClient {
 
   private final Registry registry;
   private final RuntimeSwitch runtimeSwitch;
+  private final BlockStore blocks;
   private final Transport transport;
   private final Clock clock;
   private final Sleeper sleeper;
@@ -54,17 +64,27 @@ public final class FetchClient {
   public FetchClient(
       Registry registry,
       RuntimeSwitch runtimeSwitch,
+      BlockStore blocks,
       Transport transport,
       Clock clock,
       Sleeper sleeper,
       UserAgent userAgent) {
-    this(registry, runtimeSwitch, transport, clock, sleeper, userAgent, new RobotsCache(clock));
+    this(
+        registry,
+        runtimeSwitch,
+        blocks,
+        transport,
+        clock,
+        sleeper,
+        userAgent,
+        new RobotsCache(clock));
   }
 
   /** With a given robots.txt cache, so tests can seed it. */
   FetchClient(
       Registry registry,
       RuntimeSwitch runtimeSwitch,
+      BlockStore blocks,
       Transport transport,
       Clock clock,
       Sleeper sleeper,
@@ -72,6 +92,7 @@ public final class FetchClient {
       RobotsCache robots) {
     this.registry = registry;
     this.runtimeSwitch = runtimeSwitch;
+    this.blocks = blocks;
     this.transport = transport;
     this.clock = clock;
     this.sleeper = sleeper;
@@ -154,7 +175,13 @@ public final class FetchClient {
           response = attempt(url, deadline);
           int status = response.status();
           if (status >= 200 && status < 300) {
+            if (ChallengePage.detect(response.body())) {
+              throw block(BlockStore.Reason.CHALLENGE);
+            }
             return new FetchedPage(url, response.body(), clock.instant());
+          }
+          if (status == 403) {
+            throw block(BlockStore.Reason.HTTP_403);
           }
           if (status == 404 || status == 410) {
             throw FetchFailure.notFound(clock.instant());
@@ -170,6 +197,10 @@ public final class FetchClient {
           if (status < 500 || status > 599) {
             // 4xx and anything else unexpected is never retried.
             throw unavailable(UnavailableReason.HTTP_ERROR);
+          }
+          if (ChallengePage.detect(response.body())) {
+            // A challenge behind a 5xx is a Block, not a server error to retry.
+            throw block(BlockStore.Reason.CHALLENGE);
           }
           failure = UnavailableReason.HTTP_ERROR;
         } catch (HttpTimeoutException e) {
@@ -217,8 +248,7 @@ public final class FetchClient {
         throw unavailable(UnavailableReason.REFUSED);
       }
       if (!rules.get().allows(url)) {
-        // A Block candidate (2.5.1); story 2.6 records it.
-        throw unavailable(UnavailableReason.BLOCKED);
+        throw block(BlockStore.Reason.ROBOTS);
       }
     }
 
@@ -267,12 +297,29 @@ public final class FetchClient {
 
     private void check(URI url) throws FetchFailure {
       String domain = config.domain();
-      if (!registry.isApproved(domain)
-          || !config.enabled()
-          || !runtimeSwitch.isAllowed(domain)
-          || !onRetailerHost(url, domain)) {
+      if (!registry.isApproved(domain) || !config.enabled() || !runtimeSwitch.isAllowed(domain)) {
         throw unavailable(UnavailableReason.REFUSED);
       }
+      if (blocks.isBlocked(domain)) {
+        throw unavailable(UnavailableReason.BLOCKED);
+      }
+      if (!onRetailerHost(url, domain)) {
+        throw unavailable(UnavailableReason.REFUSED);
+      }
+    }
+
+    /**
+     * Records a Block for this retailer and returns the {@code BLOCKED} failure to throw. A failed
+     * {@code blocks.json} write still leaves the Block active in memory (and logged), so the
+     * outcome is the same.
+     */
+    private FetchFailure block(BlockStore.Reason reason) {
+      try {
+        blocks.record(config.domain(), reason);
+      } catch (UncheckedIOException e) {
+        // The Block is active in memory and was logged; the write failure changes no outcome.
+      }
+      return unavailable(UnavailableReason.BLOCKED);
     }
 
     private URI redirectTarget(URI from, Optional<String> location) throws FetchFailure {

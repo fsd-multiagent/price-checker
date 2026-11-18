@@ -8,6 +8,7 @@ import ro.pricechecker.fetch.FetchClient;
 import ro.pricechecker.fetch.JdkTransport;
 import ro.pricechecker.fetch.Sleeper;
 import ro.pricechecker.fetch.UserAgent;
+import ro.pricechecker.registry.BlockStore;
 import ro.pricechecker.registry.Registry;
 import ro.pricechecker.registry.RuntimeSwitch;
 
@@ -32,8 +33,12 @@ public class FetchClientConfig {
 
   @Bean
   FetchClient fetchClient(
-      Registry registry, RuntimeSwitch runtimeSwitch, Clock clock, UserAgent userAgent) {
+      Registry registry,
+      RuntimeSwitch runtimeSwitch,
+      BlockStore blockStore,
+      Clock clock,
+      UserAgent userAgent) {
     return new FetchClient(
-        registry, runtimeSwitch, new JdkTransport(), clock, Sleeper.SYSTEM, userAgent);
+        registry, runtimeSwitch, blockStore, new JdkTransport(), clock, Sleeper.SYSTEM, userAgent);
   }
 }

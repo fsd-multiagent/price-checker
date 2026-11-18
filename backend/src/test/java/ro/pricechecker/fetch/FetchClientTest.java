@@ -42,7 +42,14 @@ class FetchClientTest {
     RuntimeSwitch runtime = TestRegistries.runtimeAllowing(clock, allowed);
     assertThat(runtime.refresh()).isEmpty();
     return new FetchClient(
-        registry, runtime, transport, clock, sleeper, UA, RobotsTest.allowAll(clock));
+        registry,
+        runtime,
+        TestRegistries.blockStore(runtime, clock),
+        transport,
+        clock,
+        sleeper,
+        UA,
+        RobotsTest.allowAll(clock));
   }
 
   /** a.example: 10 ms interval, concurrency 1, 4 s deadline; fetching allowed for all three. */
@@ -334,7 +341,7 @@ class FetchClientTest {
 
   @ParameterizedTest
   @Tag("AC-2.4.4")
-  @ValueSource(ints = {400, 401, 403, 405, 429, 451, 304, 999})
+  @ValueSource(ints = {400, 401, 405, 429, 451, 304, 999})
   void ac_2_4_4_fourHundredsAreNotRetried(int code) {
     transport.always(status(code));
     assertThat(outcomeOf(boundA(), PAGE)).isEqualTo(unavailable(UnavailableReason.HTTP_ERROR));
