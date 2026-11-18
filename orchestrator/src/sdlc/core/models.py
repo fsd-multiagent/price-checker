@@ -32,6 +32,8 @@ class Status(StrEnum):
     SUPERSEDED = "superseded"  # step records only: an attempt cut short by a plan limit (AD-18)
     # The run only (AD-27): only owner-review waits remain; a later command picks it up.
     AWAITING_OWNER = "awaiting_owner"
+    # The run only (issue #72): the owner paused or stopped it; `sdlc resume` continues it.
+    PAUSED = "paused"
 
 
 class StepKind(StrEnum):
@@ -578,6 +580,11 @@ class RunState(Frozen):
     limit_exceeded: bool = False
     # AD-24: the budget value the usage warning was last recorded for.
     usage_warned_limit: float | None = None
+    # Issue #72: an owner pause (`pause`) or stop (`stop`). `pause_requested_at` is set while
+    # the run finishes its running steps; `paused_at` once it is `paused`.
+    pause_kind: Literal["pause", "stop"] | None = None
+    pause_requested_at: str | None = None
+    paused_at: str | None = None
 
     @property
     def halted(self) -> bool:
@@ -856,8 +863,22 @@ class BudgetExhausted(_Event):
     reason: str
 
 
+class PauseRequested(_Event):
+    """Issue #72: the owner asked the run to pause; no new step starts, running ones finish."""
+
+    type: Literal["pause_requested"] = "pause_requested"
+
+
+class RunPaused(_Event):
+    """Issue #72: the run is `paused` after an owner pause or stop; `sdlc resume` continues."""
+
+    type: Literal["run_paused"] = "run_paused"
+    kind: Literal["pause", "stop"]
+
+
 class RunStopped(_Event):
-    """The loop stopped on a fatal error; audit only, the state stays as it was."""
+    """The loop stopped on a fatal error, or on an owner stop (reason `owner stop`, then
+    `RunPaused`); audit only, the state stays as it was."""
 
     type: Literal["run_stopped"] = "run_stopped"
     reason: str
@@ -896,6 +917,8 @@ Event = Annotated[
     | IntakeRecorded
     | IntakeRejected
     | BudgetExhausted
+    | PauseRequested
+    | RunPaused
     | RunStopped
     | RunFinished,
     Field(discriminator="type"),

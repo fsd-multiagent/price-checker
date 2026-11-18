@@ -66,6 +66,8 @@ def test_transition_table_is_the_ad5_diagram():
         # escalates it.
         (S.RUNNING, S.AWAITING_OWNER), (S.AWAITING_OWNER, S.PENDING),
         (S.AWAITING_OWNER, S.ESCALATED),
+        # Issue #72, the run only: an owner pause or stop; `sdlc resume` continues it.
+        (S.RUNNING, S.PAUSED), (S.PAUSED, S.PENDING),
     }  # fmt: skip
     assert not legal(S.PASSED, S.RUNNING)
     assert not legal(S.SKIPPED, S.PENDING)

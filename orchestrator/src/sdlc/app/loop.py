@@ -13,6 +13,7 @@ import fnmatch
 import glob
 import json
 import shlex
+import signal
 from collections.abc import Callable
 from pathlib import Path
 
@@ -59,6 +60,7 @@ from sdlc.core.models import (
     Outcome,
     OwnerReviewAwaited,
     PathsReverted,
+    PauseRequested,
     Pipeline,
     PrOpened,
     Proposal,
@@ -69,6 +71,7 @@ from sdlc.core.models import (
     ResetScope,
     RunFinished,
     RunKind,
+    RunPaused,
     RunResumed,
     RunStarted,
     RunState,
@@ -131,6 +134,35 @@ ISSUE_JSON = "issue.json"  # AD-27: the issue's title and body, as read at intak
 ISSUE_KINDS = (RunKind.STORY, RunKind.FIX)
 
 StoriesReader = Callable[[str], str | None]
+
+PAUSE_FILE = "pause"  # issue #72: beside the lock, `{"run_id": ..., "at": ...}`
+OWNER_STOP = "owner stop"
+
+
+def read_pause_request(path: Path) -> dict[str, str] | None:
+    """The pause request in `path`, or None when there is none or it does not parse."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("run_id"), str):
+        return None
+    return data
+
+
+def write_pause_request(path: Path, run_id: str, at: str) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"run_id": run_id, "at": at}) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def remove_pause_request(path: Path, run_id: str) -> bool:
+    """Remove the request when it names `run_id`; a request for another run stays."""
+    req = read_pause_request(path)
+    if req is None or req["run_id"] != run_id:
+        return False
+    path.unlink(missing_ok=True)
+    return True
 
 
 class LoopError(RuntimeError):
@@ -198,6 +230,15 @@ class Orchestrator:
         self._tasks: dict[asyncio.Task[list[Event]], int] = {}
         self._paused_until: str | None = None
         self.on_run: Callable[[str], None] | None = None  # told the run id (the lock file)
+        # Issue #72: the owner's pause request file, read on every tick and while waiting,
+        # and the stop flag set by SIGTERM (`sdlc stop`). `poll_s` is how often a wait looks.
+        self.pause_file: Path | None = None
+        self.poll_s = 1.0
+        self._stop_requested = False
+
+    def request_stop(self) -> None:
+        """Issue #72: `sdlc stop`: interrupt running steps and pause the run."""
+        self._stop_requested = True
 
     # ------------------------------------------------------------------ entry points
 
@@ -428,6 +469,8 @@ class Orchestrator:
         # Backfills pre-AD-24 usage records, and appends what the ledger lacks (AD-24).
         self.state = self.store.load(self.p, reconcile=True)
         self.echo(f"resume {run_id}")
+        if self.pause_file is not None and remove_pause_request(self.pause_file, run_id):
+            self.echo("   removed a leftover pause request")  # issue #72
         if self.on_run is not None:
             self.on_run(run_id)
         for scope in self.state.scopes:  # AD-27: a crash may have left git lock files
@@ -495,11 +538,124 @@ class Orchestrator:
         return TickInputs(approved_domains=parse_register(text).approved, now=now)
 
     async def _loop(self) -> int:
+        loop = asyncio.get_running_loop()
+        try:
+            loop.add_signal_handler(signal.SIGTERM, self.request_stop)
+            handler = True
+        except (NotImplementedError, RuntimeError, ValueError):  # not the main thread
+            handler = False
         try:
             return await self._ticks()
         except BaseException as exc:
             await self._stop(exc)
             raise
+        finally:
+            if handler:
+                loop.remove_signal_handler(signal.SIGTERM)
+
+    # ------------------------------------------------------------------ pause and stop (#72)
+
+    def _control(self) -> str | None:
+        """`stop` after SIGTERM, `pause` when the request names this run, else None. A
+        request for another run is ignored."""
+        assert self.state is not None
+        if self._stop_requested:
+            return "stop"
+        if self.pause_file is not None:
+            req = read_pause_request(self.pause_file)
+            if req is not None and req["run_id"] == self.state.run_id:
+                return "pause"
+        return None
+
+    async def _wait_tasks(self, *, pausing: bool = False) -> set[asyncio.Task[list[Event]]]:
+        """The tasks that finished; empty when a pause or stop came first (while pausing,
+        only a stop)."""
+        while True:
+            done, _ = await asyncio.wait(
+                self._tasks, timeout=self.poll_s, return_when=asyncio.FIRST_COMPLETED
+            )
+            if done or self._stop_requested or (not pausing and self._control() is not None):
+                return done
+
+    def _record(self, done: set[asyncio.Task[list[Event]]]) -> BaseException | None:
+        """Apply the finished tasks' events in seq order; the first failure is returned."""
+        failure: BaseException | None = None
+        for task in sorted(done, key=lambda t: self._tasks[t]):
+            self._tasks.pop(task)
+            try:
+                events = task.result()
+            except BaseException as exc:  # a simulated crash, or a bug in a step
+                failure = failure or exc
+                continue
+            for event in events:
+                self._apply(event)
+                if isinstance(event, StepFinished):
+                    self._after_step(event)
+        return failure
+
+    async def _cancel(self, tasks: list[asyncio.Task[list[Event]]]) -> list[int]:
+        """Cancel `tasks` and record each step as interrupted (its cap is charged, AD-11). A
+        task that already finished is recorded as it ended, not cancelled."""
+        failure = self._record({t for t in tasks if t.done()})
+        if failure is not None:
+            raise failure
+        tasks = [t for t in tasks if t in self._tasks]
+        seqs = [self._tasks.pop(t) for t in tasks]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        for seq in sorted(seqs):
+            r = self.state.step_record(seq) if self.state else None
+            if r is not None and r.status is Status.RUNNING:
+                self.echo(f"  interrupted step {seq} {r.scope}/{r.step} r{r.round}")
+                self._apply(StepInterrupted(at=self.ports.clock.now(), seq=seq))
+        return seqs
+
+    async def _pause(self, kind: str) -> int:
+        """Issue #72: pause lets agent steps finish (script waits are cancelled; a script
+        costs nothing); stop cancels every running step. Interrupted steps' scopes are reset
+        to their head once nothing runs (AD-6). The run ends `paused` with exit 0."""
+        assert self.state is not None
+        now = self.ports.clock.now
+        interrupted: list[int] = []
+        if kind == "pause":
+            self._apply(PauseRequested(at=now()))
+            scripts = [
+                t for t, seq in self._tasks.items() if self._step_kind_of(seq) is StepKind.SCRIPT
+            ]
+            interrupted += await self._cancel(scripts)
+            self.echo(f".. pausing ({len(self._tasks)} steps finishing)")
+            failure: BaseException | None = None
+            while self._tasks and not self._stop_requested:
+                done = await self._wait_tasks(pausing=True)
+                failure = self._record(done) or failure
+            if failure is not None:
+                raise failure
+            if self._stop_requested:
+                kind = "stop"
+        if kind == "stop":
+            interrupted += await self._cancel(list(self._tasks))
+        for scope_id in dict.fromkeys(self.state.step_record(s).scope for s in interrupted):
+            await self._discard(
+                scope_id, max(s for s in interrupted if self.state.step_record(s).scope == scope_id)
+            )
+        if kind == "stop":
+            self._apply(RunStopped(at=now(), reason=OWNER_STOP))
+        self._apply(RunPaused(at=now(), kind=kind))  # type: ignore[arg-type]
+        if self.pause_file is not None:
+            remove_pause_request(self.pause_file, self.state.run_id)
+        self.echo(f"run {self.state.run_id} paused at {self.state.paused_at} ({kind}); "
+                  f"continue with: sdlc resume {self.state.run_id}")  # fmt: skip
+        self.ports.notifier.notify("sdlc paused", f"run {self.state.run_id}: owner {kind}")
+        return 0
+
+    def _step_kind_of(self, seq: int) -> StepKind | None:
+        assert self.state is not None
+        r = self.state.step_record(seq)
+        try:
+            return self.p.stage(r.stage).step(r.step).kind
+        except KeyError:
+            return None
 
     async def _stop(self, exc: BaseException) -> None:
         """A fatal error: cancel and await the steps still running, then log the stop."""
@@ -517,6 +673,9 @@ class Orchestrator:
     async def _ticks(self) -> int:
         assert self.state is not None
         for _ in range(MAX_TICKS):
+            control = self._control()
+            if control is not None:
+                return await self._pause(control)
             actions = decide(self.p, self.state, await self._inputs())
             finish = next((a for a in actions if isinstance(a, Finish)), None)
             if finish is not None:
@@ -527,23 +686,15 @@ class Orchestrator:
                 )
                 return finish.exit_code
             for action in actions:
+                if self._control() is not None:  # issue #72: no new step after a request
+                    break
                 await self._do(action)
+            if self._control() is not None:
+                continue
             if all(isinstance(a, StartStep) for a in actions):
                 if not self._tasks:
                     raise LoopError("no progress: nothing to do and nothing running")
-                done, _ = await asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED)
-                failure: BaseException | None = None
-                for task in sorted(done, key=lambda t: self._tasks[t]):
-                    self._tasks.pop(task)
-                    try:
-                        events = task.result()
-                    except BaseException as exc:  # a simulated crash, or a bug in a step
-                        failure = failure or exc
-                        continue
-                    for event in events:
-                        self._apply(event)
-                        if isinstance(event, StepFinished):
-                            self._after_step(event)
+                failure = self._record(await self._wait_tasks())
                 if failure is not None:  # the other finished steps are recorded first
                     raise failure
         raise LoopError(f"loop exceeded {MAX_TICKS} ticks")
@@ -609,7 +760,14 @@ class Orchestrator:
                     self.ports.notifier.notify(
                         "sdlc paused", f"plan usage limit: until {action.until}"
                     )
-                await self.ports.clock.sleep_until(action.until)
+                sleeper = asyncio.ensure_future(self.ports.clock.sleep_until(action.until))
+                while not sleeper.done():  # issue #72: a pause or stop ends the wait
+                    await asyncio.wait({sleeper}, timeout=self.poll_s)
+                    if not sleeper.done() and self._control() is not None:
+                        sleeper.cancel()
+                        await asyncio.gather(sleeper, return_exceptions=True)
+                        return
+                sleeper.result()
                 self.echo(f".. resumed at {now()}")
             case _:
                 raise LoopError(f"unknown action {action!r}")
@@ -1450,6 +1608,11 @@ def format_status(state: RunState, now: str | None = None) -> str:
             f"episode since {state.limit_episode_start or '-'}"
             f"{'  (exceeded usage_limit_max_wait_h)' if state.limit_exceeded else ''}"
         )
+    if state.status is Status.PAUSED:  # issue #72
+        lines.append(f"paused at {state.paused_at or '-'} ({state.pause_kind or 'pause'})")
+    elif state.pause_requested_at is not None and state.status is Status.RUNNING:
+        finishing = sum(1 for r in state.steps if r.status is Status.RUNNING)
+        lines.append(f"pausing ({finishing} steps finishing) since {state.pause_requested_at}")
     lines += [
         "",
         f"{'scope':<28} {'stage':<14} {'status':<10} {'round':>5}  reason",

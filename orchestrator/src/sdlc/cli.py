@@ -1,9 +1,9 @@
 """`sdlc run [--from <stage>] [--dry-run]`, `sdlc story|fix <issue> [--dry-run]`,
-`sdlc status [<run-id>]`, `sdlc resume <run-id>`,
+`sdlc status [<run-id>]`, `sdlc resume <run-id>`, `sdlc pause|stop [<run-id>]` (issue #72),
 `sdlc usage [<run-id> | --all] [--by agent|stage|model|round|run] [--rebuild]` (AD-24).
 
 Exit codes:
-- 0: passed, or queued behind the lock
+- 0: passed, paused (owner pause or stop; the queue is not drained), or queued behind the lock
 - 1: internal error, failed preflight, or a refused issue
 - 2: escalated, blocked, or `awaiting_owner` (only owner-review waits remain)
 
@@ -30,6 +30,7 @@ import fcntl
 import hashlib
 import json
 import os
+import signal
 import sys
 import tempfile
 from collections.abc import Awaitable, Iterator, Sequence
@@ -40,7 +41,13 @@ from typing import Any
 from sdlc.adapters.clock import SystemClock
 from sdlc.adapters.fake import FixtureBook, fake_ports
 from sdlc.adapters.real import preflight, real_ports, telemetry_warnings
-from sdlc.app.loop import LoopError, Orchestrator, format_status
+from sdlc.app.loop import (
+    PAUSE_FILE,
+    LoopError,
+    Orchestrator,
+    format_status,
+    write_pause_request,
+)
 from sdlc.core.models import CoreError, Pipeline, ProposalStatus, RunKind, RunState, Status
 from sdlc.core.pipeline import PipelineError, load_pipeline
 from sdlc.core.usage import BY, aggregate, format_rows, state_records, totals
@@ -76,6 +83,12 @@ def _parser() -> argparse.ArgumentParser:
     st.add_argument("run_id", nargs="?")
     rs = sub.add_parser("resume", help="resume a crashed or escalated run")
     rs.add_argument("run_id")
+    for name, text in (
+        ("pause", "pause the running run once its running steps finish (issue #72)"),
+        ("stop", "stop the running run now: running steps are interrupted (issue #72)"),
+    ):
+        ctl = sub.add_parser(name, help=text)
+        ctl.add_argument("run_id", nargs="?", help="default: the run holding the lock")
     us = sub.add_parser("usage", help="usage per agent, stage, model, round or run (AD-24)")
     us.add_argument("run_id", nargs="?", help="default: the latest run")
     us.add_argument("--all", action="store_true", help="every run in the runs dir")
@@ -106,6 +119,8 @@ def _dispatch(args: argparse.Namespace, repo: Path) -> int:
             return _status(args, repo)
         if args.cmd == "usage":
             return _usage(args, repo)
+        if args.cmd in ("pause", "stop"):
+            return _control(args, repo)
         return _resume(args, repo)
     except CoreError as exc:
         print(f"sdlc: cannot continue: {exc}", file=sys.stderr)
@@ -349,6 +364,10 @@ def _locked(args: argparse.Namespace, repo: Path) -> int:
         raise
     if lock.adopted:
         lock.history(me, code)
+    if getattr(args, "paused", False):  # issue #72: a pause means "stop working"
+        lock.release()
+        print("sdlc: the run is paused; the queue is not drained")
+        return code
     _drain(lock, repo)
     return code
 
@@ -470,9 +489,75 @@ def _ports_for(state: RunState, pipeline: Pipeline, repo: Path, runs_dir: Path) 
     return real_ports(repo, s.allow_api_key, s.telemetry, s)
 
 
-def _on_run(args: argparse.Namespace) -> Any:
+def _wire(args: argparse.Namespace, orch: Orchestrator) -> None:
+    """Tell the lock the run id, and point the run at its pause request (issue #72)."""
     lock = getattr(args, "lock", None)
-    return None if lock is None else lock.record
+    if lock is not None:
+        orch.on_run = lock.record
+        orch.pause_file = lock.dir / PAUSE_FILE
+
+
+def _note_paused(args: argparse.Namespace, orch: Orchestrator) -> None:
+    if orch.state is not None and orch.state.status is Status.PAUSED:
+        args.paused = True
+
+
+def _alive(pid: Any) -> bool:
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _running(args: argparse.Namespace, repo: Path) -> tuple[Path, dict[str, Any]] | None:
+    """The lock dir and lock record of the run in progress: a dry-run's lock beside an
+    explicit `--runs-dir` first, then the repo's lock."""
+    dirs = [repo / "_bmad-output" / "sdlc"]
+    if args.runs_dir is not None:
+        dirs.insert(0, Path(args.runs_dir).resolve().parent)
+    for d in dict.fromkeys(dirs):
+        lock = RepoLock(d)
+        info = lock._info()
+        if not (info and info.get("run_id") and _alive(info.get("pid"))):
+            continue
+        if lock.path.is_file() and lock._try_flock():  # nobody holds it: a stale record
+            fcntl.flock(lock.fd, fcntl.LOCK_UN)  # type: ignore[arg-type]
+            os.close(lock.fd)  # type: ignore[arg-type]
+            continue
+        return d, info
+    return None
+
+
+def _control(args: argparse.Namespace, repo: Path) -> int:
+    """Issue #72: `sdlc pause` writes a request beside the lock and returns at once; `sdlc
+    stop` sends SIGTERM to the pid the lock records. Only the run holding the lock."""
+    held = _running(args, repo)
+    if held is None:
+        print("sdlc: no run is in progress", file=sys.stderr)
+        return 1
+    lock_dir, info = held
+    run_id = args.run_id or info["run_id"]
+    if run_id != info["run_id"]:
+        print(f"sdlc: run {run_id} is not in progress (run {info['run_id']} is)",
+              file=sys.stderr)  # fmt: skip
+        return 1
+    if args.cmd == "pause":
+        write_pause_request(lock_dir / PAUSE_FILE, run_id, _utc())
+        print(f"sdlc: asked run {run_id} to pause; running steps finish first "
+              f"(sdlc status {run_id})")  # fmt: skip
+        return 0
+    try:
+        os.kill(int(info["pid"]), signal.SIGTERM)
+    except OSError as exc:
+        print(f"sdlc: cannot signal process {info['pid']}: {exc}", file=sys.stderr)
+        return 1
+    print(f"sdlc: stopping run {run_id} (process {info['pid']})")
+    return 0
 
 
 # Per-stage limits a resume may change; together with `settings` they are left out of the digest.
@@ -529,7 +614,7 @@ def _run(args: argparse.Namespace, repo: Path) -> int:
         repo,
         repo / "sdlc" / "prompts",
     )
-    orch.on_run = _on_run(args)
+    _wire(args, orch)
     code = asyncio.run(
         orch.start(
             RunKind.FULL,
@@ -543,6 +628,7 @@ def _run(args: argparse.Namespace, repo: Path) -> int:
         )
     )
     assert orch.state is not None
+    _note_paused(args, orch)
     print()
     print(format_status(orch.state, orch.ports.clock.now()))
     print(f"\nstatus: sdlc --runs-dir {runs_dir} status {orch.state.run_id}")
@@ -576,7 +662,7 @@ def _run_real(
     s = pipeline.settings
     ports = real_ports(repo, s.allow_api_key, s.telemetry, s)
     orch = Orchestrator(pipeline, ports, runs_dir, repo, repo / "sdlc" / "prompts")
-    orch.on_run = _on_run(args)
+    _wire(args, orch)
     code = asyncio.run(
         _drive(
             ports,
@@ -590,6 +676,7 @@ def _run_real(
         )
     )
     assert orch.state is not None
+    _note_paused(args, orch)
     print()
     print(format_status(orch.state, ports.clock.now()))
     print(f"\nstatus: sdlc status {orch.state.run_id}")
@@ -615,7 +702,7 @@ def _issue_run(args: argparse.Namespace, repo: Path) -> int:
         ports = real_ports(repo, s.allow_api_key, s.telemetry, s)
         extra = {}
     orch = Orchestrator(pipeline, ports, runs_dir, repo, repo / "sdlc" / "prompts")
-    orch.on_run = _on_run(args)
+    _wire(args, orch)
     run = orch.start(
         kind,
         dry_run=args.dry_run,
@@ -626,6 +713,7 @@ def _issue_run(args: argparse.Namespace, repo: Path) -> int:
     )
     code = asyncio.run(_drive(ports, run))
     assert orch.state is not None
+    _note_paused(args, orch)
     print()
     print(format_status(orch.state, ports.clock.now()))
     where = f"--runs-dir {runs_dir} " if args.dry_run else ""
@@ -751,9 +839,10 @@ def _resume(args: argparse.Namespace, repo: Path) -> int:
         s = pipeline.settings
         ports = real_ports(repo, s.allow_api_key, s.telemetry, s)
     orch = Orchestrator(pipeline, ports, runs_dir, repo, repo / "sdlc" / "prompts")
-    orch.on_run = _on_run(args)
+    _wire(args, orch)
     code = asyncio.run(_drive(ports, orch.resume(args.run_id)))
     assert orch.state is not None
+    _note_paused(args, orch)
     print()
     print(format_status(orch.state, ports.clock.now()))
     return code
