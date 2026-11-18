@@ -18,6 +18,7 @@ class BuildPinningTest {
   private static final Path BUILD = Path.of("build.gradle.kts");
   private static final Path SETTINGS = Path.of("settings.gradle.kts");
   private static final Path WRAPPER = Path.of("gradle/wrapper/gradle-wrapper.properties");
+  private static final Path WEB_GENERATOR = Path.of("../web/openapitools.json");
   private static final Path SPINE =
       Path.of(
           "../_bmad-output/planning-artifacts/architecture/"
@@ -117,6 +118,15 @@ class BuildPinningTest {
   void s12_jsoupVersionIsPinnedAndListed() throws IOException {
     String jsoup = group(read(BUILD), "\"org.jsoup:jsoup:([0-9.]+)\"");
     assertThat(group(stackTable(), "\\| jsoup \\| ([^ |]+)")).isEqualTo(jsoup);
+  }
+
+  @Test
+  @Tag("AC-1.3.2")
+  void ac_1_3_2_spineStackTableListsThePinnedOpenApiGenerator() throws IOException {
+    String generator = group(read(BUILD), "id\\(\"org.openapi.generator\"\\) version \"([^\"]+)\"");
+    assertThat(generator).matches("\\d+\\.\\d+\\.\\d+");
+    assertThat(group(stackTable(), "\\| OpenAPI Generator[^|]*\\| ([^ |]+)")).isEqualTo(generator);
+    assertThat(group(read(WEB_GENERATOR), "\"version\"\\s*:\\s*\"([^\"]+)\"")).isEqualTo(generator);
   }
 
   @Test
