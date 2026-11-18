@@ -14,3 +14,4 @@
 retailers:
   evomag.ro: { fetching: stopped }
   cel.ro: { fetching: stopped }
+  altex.ro: { fetching: stopped }
