@@ -1,0 +1,14 @@
+# End-to-end test retailers (story 2.14). Ids match the real adapters; HTTP is the FixtureHttp stub.
+retailers:
+  cel.ro:
+    adapter: enabled
+    resolution: curated
+    minIntervalMs: 10
+    concurrency: 4
+    deadlineMs: 1500
+  evomag.ro:
+    adapter: enabled
+    resolution: curated
+    minIntervalMs: 10
+    concurrency: 4
+    deadlineMs: 1500

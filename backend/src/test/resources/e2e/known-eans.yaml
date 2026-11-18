@@ -1,0 +1,14 @@
+# End-to-end test EANs (story 2.14), one per journey so tests stay order-independent (T-5):
+#   5940000000011 UJ-1 (both retailers FOUND)
+#   5940000000028 UJ-2 (evomag.ro has no page, so FixtureHttp hangs past the deadline)
+#   5940000000035 cache (looked up twice)
+# FixtureHttp answers only these URLs.
+knownEans:
+  cel.ro:
+    - {ean: "5940000000011", url: "https://cel.ro/e2e/5940000000011"}
+    - {ean: "5940000000028", url: "https://cel.ro/e2e/5940000000028"}
+    - {ean: "5940000000035", url: "https://cel.ro/e2e/5940000000035"}
+  evomag.ro:
+    - {ean: "5940000000011", url: "https://evomag.ro/e2e/5940000000011"}
+    - {ean: "5940000000028", url: "https://evomag.ro/e2e/5940000000028"}
+    - {ean: "5940000000035", url: "https://evomag.ro/e2e/5940000000035"}
