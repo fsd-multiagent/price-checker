@@ -200,6 +200,78 @@ class EvomagPageTest {
 
   @Test
   @Tag("AC-2.11.1")
+  void ac_2_11_1_jsonLdWinsOverMicrodataAndMetaTags() {
+    String html =
+        """
+        <html><head>
+        <script type="application/ld+json">
+        {"@type": "Product", "gtin13": "5901234123457",
+         "offers": {"price": "100.00", "priceCurrency": "RON",
+                    "availability": "https://schema.org/InStock"}}
+        </script>
+        <meta property="og:type" content="product">
+        <meta property="product:price:amount" content="300.00">
+        <meta property="product:price:currency" content="RON">
+        </head><body>
+        <div itemscope itemtype="https://schema.org/Product">
+          <span itemprop="price" content="200.00">200,00 lei</span>
+          <meta itemprop="priceCurrency" content="RON">
+          <link itemprop="availability" href="https://schema.org/OutOfStock">
+        </div>
+        </body></html>
+        """;
+    assertThat(EvomagPage.extract(html, URL))
+        .isEqualTo(
+            new AdapterOutcome.Found(
+                new PageFacts(10000L, "RON", Availability.IN_STOCK, URL, GTIN)));
+  }
+
+  @Test
+  @Tag("AC-2.11.1")
+  void ac_2_11_1_metaTagsPriceUsedWhenMicrodataHasNoPrice() {
+    String html =
+        """
+        <html><head>
+        <meta property="og:type" content="product">
+        <meta property="product:price:amount" content="300.00">
+        <meta property="product:price:currency" content="RON">
+        </head><body>
+        <div itemscope itemtype="https://schema.org/Product">
+          <span itemprop="price">la cerere</span>
+          <link itemprop="availability" href="https://schema.org/OutOfStock">
+        </div>
+        </body></html>
+        """;
+    assertThat(EvomagPage.extract(html, URL))
+        .extracting(o -> ((AdapterOutcome.Found) o).facts().priceMinor())
+        .isEqualTo(30000L);
+  }
+
+  @Test
+  @Tag("AC-2.11.2")
+  void ac_2_11_2_microdataFactsWinOverMetaTagsWhenNeitherHasAPrice() {
+    String html =
+        """
+        <html><head>
+        <meta property="og:type" content="product">
+        <meta property="product:price:amount" content="la cerere">
+        <meta property="product:availability" content="in stock">
+        </head><body>
+        <div itemscope itemtype="https://schema.org/Product">
+          <span itemprop="price">la cerere</span>
+          <meta itemprop="priceCurrency" content="RON">
+          <link itemprop="availability" href="https://schema.org/OutOfStock">
+        </div>
+        </body></html>
+        """;
+    assertThat(EvomagPage.extract(html, URL))
+        .isEqualTo(
+            new AdapterOutcome.Found(
+                new PageFacts(null, "RON", Availability.OUT_OF_STOCK, URL, null)));
+  }
+
+  @Test
+  @Tag("AC-2.11.1")
   void ac_2_11_1_laterStepWithPriceWinsOverEarlierStepWithout() {
     String html =
         """
