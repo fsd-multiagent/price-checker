@@ -1,4 +1,4 @@
-# Rendered by Zamolxe (Orchestrator); run 20261118-081042-story merged into main's file.
+# Rendered by Zamolxe (Orchestrator); run 20261117-174705-full merged into main's file.
 generated: '2026-11-17T17:47:05Z'
 project: price-checker
 tracking_system: file-system
@@ -22,7 +22,7 @@ development_status:
   2-4-fetch-client: done
   2-5-robots-txt: done
   2-6-block-store: done
-  2-7-retry-after: in-progress
+  2-7-retry-after: review
   2-8-lookup-execution-cache: in-progress
   2-9-status-endpoint: backlog
   2-10-adapter-celro: done
@@ -39,8 +39,8 @@ development_status:
   3-5-health-profile: backlog
   3-6-health-check-workflow: backlog
   epic-3-retrospective: optional
-  epic-4: backlog
-  4-1-adapter-altexro-disabled: backlog
+  epic-4: in-progress
+  4-1-adapter-altexro-disabled: in-progress
   4-2-simulated-layout-change: backlog
   4-3-demo-ean-list-check: backlog
   epic-4-retrospective: optional
