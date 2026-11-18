@@ -178,7 +178,7 @@ class DeployConfigTest {
       assertThat(users).as("%s has USER", file).isNotEmpty();
       assertThat(users.get(users.size() - 1))
           .as("%s final USER", file)
-          .matches("USER [1-9]\\d*(:\\d+)?");
+          .matches("USER [1-9]\\d*(:[1-9]\\d*)?");
     }
   }
 
@@ -188,7 +188,17 @@ class DeployConfigTest {
     String ignore = Files.readString(Path.of("../.dockerignore"));
     assertThat(ignore.lines().map(String::strip).toList())
         .contains(
-            "**/.env", "**/.env.*", "**/*.tfstate*", "**/*.tfvars", ".git", "**/node_modules");
+            "**/.env",
+            "**/.env.*",
+            "**/*.tfstate*",
+            "**/*.tfvars",
+            ".git",
+            "**/node_modules",
+            "**/*.pem",
+            "**/*.key",
+            "**/*.p12",
+            "**/*.pfx",
+            "**/.claude/settings.local.json");
   }
 
   @Test
@@ -236,6 +246,21 @@ class DeployConfigTest {
     List<String[]> blocks = topLevelBlocks(caddyfileWithoutPlaceholderBraces(DEPLOY_CADDYFILE));
     List<String> siteHeaders = blocks.stream().map(b -> b[0]).filter(h -> !h.isEmpty()).toList();
     assertThat(siteHeaders).containsExactly("(DOLLAR)SITE_ADDRESS}");
+  }
+
+  @Test
+  @Tag("AC-3.2.2")
+  void ac_3_2_2_http3IsOffWhileNoUdpPortIsPublished() throws IOException {
+    Map<String, ?> proxy = map(services().get("proxy"));
+    assertThat(((List<?>) proxy.get("ports")).stream().map(Object::toString))
+        .noneMatch(p -> p.endsWith("/udp"));
+    String global =
+        topLevelBlocks(caddyfileWithoutPlaceholderBraces(DEPLOY_CADDYFILE)).stream()
+            .filter(b -> b[0].isEmpty())
+            .findFirst()
+            .orElseThrow()[1];
+    // Without a published UDP 443, Caddy would advertise HTTP/3 (Alt-Svc) that clients cannot use.
+    assertThat(global).containsPattern("(?m)^\\s*protocols\\s+h1\\s+h2\\s*$");
   }
 
   @Test

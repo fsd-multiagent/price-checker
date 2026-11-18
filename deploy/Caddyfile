@@ -1,4 +1,8 @@
 {
+	# Only TCP 443 is published, so do not advertise HTTP/3 (QUIC on UDP 443).
+	servers {
+		protocols h1 h2
+	}
 	log {
 		format filter {
 			wrap json

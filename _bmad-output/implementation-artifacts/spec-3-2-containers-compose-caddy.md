@@ -5,7 +5,7 @@ created: '2026-11-18'
 status: 'done'
 baseline_revision: 'c2c066f83ede02247b8dbe618d437189b50dbf5a'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: []
 deferred:
@@ -35,6 +35,16 @@ deferred:
     location: >-
       AGENTS.md
     severity: low
+  - summary: >-
+      Caddy loggers other than the access log may carry a client IP in the message text, which the request> field filter does not touch.
+    evidence: |-
+      Reviewers named the http.stdlib "TLS handshake error from <ip>:<port>" line. Whether Caddy 2.10.2 emits it
+      at the default INFO level (or only at DEBUG) was not checked. To settle it, run the proxy image, make a failed
+      TLS handshake and read the logs. If it shows up, add `exclude http.stdlib` (or a level) to the global log and
+      check it with caddy validate (NFR-7, AD-14).
+    location: >-
+      deploy/Caddyfile global log, web/Caddyfile global log
+    severity: medium (unverified)
 ---
 
 <intent-contract>
@@ -120,6 +130,51 @@ deferred:
     - `[low]` `[patch]` test rejected digest pins that the AC allows -- regex now accepts `@sha256:`.
     - `[low]` `[reject]` extra files beyond `touches` (`.dockerignore`, `web/Caddyfile`, test, gradle inputs) -- needed for S-10, AD-14 and T-1.
 
+### 2026-11-18 — Review pass (follow-up, round 2)
+- Context: round 1 failed only because Veronel (Security & Compliance) left no valid verdict, a reviewer step error. Both code reviews passed. Before this pass, code_review CR-2 was patched: the global `servers { protocols h1 h2 }` turns HTTP/3 off, because only TCP 443 is published.
+- verdicts: 36 findings — high 0, medium 4, low 26, false 1, maybe-false 5
+- findings:
+  - Blind Hunter:
+    - `[low]` `[reject]` spec says 9 tests, there are 14 -- the fix edits the spec; the count is corrected in Auto Run Result below.
+    - `[low]` `[reject]` filter check is not tied to the global block, so a commented line would pass -- carried: same claim rejected in round 1; caddy validate is deferred.
+    - `[maybe-false]` `[defer]` http.stdlib/TLS handshake messages may carry a client IP -- deferred, medium (unverified); needs a run of the proxy image.
+    - `[low]` `[patch]` non-root check accepted `USER 10001:0` -- the regex now requires a non-zero gid.
+    - `[low]` `[reject]` BACKEND_UID=0 override runs as root -- the operator sets the value in story 3.3's deploy step; a guard adds complexity.
+    - `[false]` `[reject]` web has no compose `user:` -- the image's final `USER 10001:10001` applies and is tested.
+    - `[low]` `[patch]` `.dockerignore` had no key/cert patterns -- added `**/*.pem`, `**/*.key`, `**/*.p12`, `**/*.pfx`, `**/.claude/settings.local.json`, and the S-10 test checks them.
+    - `[low]` `[reject]` no Cache-Control for index.html -- carried, same root cause as the stale-asset reject in round 1.
+    - `[low]` `[reject]` image has no git revision label and the user agent reads 0.0.1 -- not in the intent; the deploy tags images by SHA (story 3.3).
+    - `[low]` `[reject]` the Gradle layer is not cached -- build-time cost only, not a defect.
+    - `[low]` `[reject]` `*.jar` COPY breaks if a plain jar appears -- only `bootJar` runs; the deferred image build would catch it.
+    - `[low]` `[reject]` no check for SERVER_PORT in compose; NPE on a missing `server` key -- unlikely edit; the test still fails loudly.
+  - Edge Case Hunter:
+    - `[maybe-false]` `[defer]` host dirs absent at first `compose up` become root-owned -- carried: the state dir deferral.
+    - `[maybe-false]` `[defer]` UID override or wrong owner makes blocks.json writes fail -- carried: same deferral.
+    - `[low]` `[reject]` no healthchecks, 502 during deploy -- carried.
+    - `[low]` `[reject]` SITE_ADDRESS could be set to http:// or an IP -- the deploy step sets it (story 3.3); the compose check requires it to be set.
+    - `[maybe-false]` `[defer]` other loggers carry the IP in msg -- same as the Blind Hunter deferral.
+    - `[low]` `[reject]` `/api` without a slash goes to web -- carried.
+    - `[low]` `[reject]` a missing hashed asset returns index.html -- carried.
+    - `[low]` `[reject]` brace scan breaks on other placeholders or comments -- carried.
+    - `[low]` `[reject]` FROM in lowercase or with `--platform` -- carried.
+    - `[low]` `[patch]` `USER 10001:0` passes -- same patch as above.
+    - `[maybe-false]` `[defer]` the AC 3.2.3 test does not prove no IPs in all logs -- same as the logger deferral.
+  - Verification Gap:
+    - `[medium]` `[patch]` HTTP/3 opt-out had no check -- added `ac_3_2_2_http3IsOffWhileNoUdpPortIsPublished`.
+    - `[medium]` `[defer]` no image build, compose config or caddy validate -- carried: story 3.3 deferral.
+    - `[low]` `[reject]` `--ignore-scripts` is not asserted -- covered by the deferred image build.
+    - `[low]` `[reject]` uncommitted edits and the stale test count -- committed in this pass; the count is fixed below.
+  - Intent Alignment (descriptive):
+    - `[low]` `[reject]` packaging, serving and redirect are runtime outcomes, tested as text -- carried: the image-build deferral.
+    - `[medium]` `[defer]` C-broad privacy (other loggers) is not covered -- same as the logger deferral.
+    - `[low]` `[reject]` proxy runs as root (D-broad) -- carried.
+    - `[low]` `[reject]` `.env*` names beyond `.env.` (for example `.envrc`) are not excluded -- the repo has no such files; the S-10 globs cover `.env` and `.env.*`.
+    - `[low]` `[reject]` SITE_ADDRESS value is not checked -- same as the Edge Case reject.
+    - `[low]` `[reject]` no-secrets rule has no test -- holds by inspection; the COPY lines take only api/, config/, the register, backend/ and web/.
+    - `[low]` `[reject]` backend mount writability is untested -- carried: the state dir deferral.
+    - `[medium]` `[reject]` extra files and the HTTP/3 opt-out go beyond the named touches -- needed for S-10, AD-14, T-1 and code_review CR-2.
+    - `[low]` `[reject]` `web` also has a fixed container_name -- harmless; one replica.
+
 ## Design Notes
 
 The backend runs as `${BACKEND_UID:-10001}:${BACKEND_GID:-10001}` so story 3.3's deploy script can pass the `deploy` user's ids (the config dir is `deploy:deploy 0750`) and create `/opt/price-checker/state` writable by them. The web image reuses Caddy so one pinned server (with the same log filter) serves the SPA instead of nginx, whose default access log holds IPs.
@@ -153,3 +208,20 @@ Status: done
 **Verification:** `backend/gradlew -p backend spotlessApply check` pass; `DeployConfigTest` 9 tests, 0 failures. No Docker daemon or `caddy` on the host.
 
 **Residual risks:** story 3.3 must create `/opt/price-checker/state` writable by `BACKEND_UID`/`BACKEND_GID`, set `IMAGE_TAG` and `SITE_ADDRESS`, and build/validate the images before deploy.
+
+### Round 2 (follow-up pass, 2026-11-18)
+
+**Trigger:** round 1 failed only because the security step left no valid verdict (AD-18, AD-10). That is a reviewer step error with no finding attached, so no code change answers it; the security review simply needs to run again on this round. Both code reviews passed.
+
+**Changes:**
+- `deploy/Caddyfile` -- global `servers { protocols h1 h2 }`: HTTP/3 is off because compose publishes only TCP 443 (code_review CR-2, S-13).
+- `.dockerignore` -- adds `**/*.pem`, `**/*.key`, `**/*.p12`, `**/*.pfx`, `**/.claude/settings.local.json` (S-10).
+- `backend/src/test/java/ro/pricechecker/DeployConfigTest.java` -- new `ac_3_2_2_http3IsOffWhileNoUdpPortIsPublished`; the non-root check rejects gid 0; the S-10 check covers the new patterns. 15 tests (the round-1 note "9 tests" was stale: there were 14).
+
+**Review:** 36 findings. Patched 3 entries (medium 1, low 2). Deferred 1 new item (client IP in other Caddy loggers, medium unverified); the rest carried or rejected, with reasons in the triage log. code_review CR-1 (state dir ownership) and code_lens CR-1/CR-2 (no image build or caddy validate) were already deferred to story 3.3.
+
+**Follow-up review recommended:** false. This was a follow-up pass and no `high` entry was patched.
+
+**Verification:** `backend/gradlew -p backend spotlessApply check` passes, including all 15 `DeployConfigTest` tests. There is no Docker daemon or `caddy` binary on the host, so no image was built and neither Caddyfile was validated.
+
+**Residual risks:** unchanged from round 1. The `servers`/`protocols` global option is new Caddyfile syntax that only the deferred `caddy validate` will check.

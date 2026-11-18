@@ -13,3 +13,8 @@ web/src/generated
 _bmad-output
 orchestrator/.venv
 infra
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/.claude/settings.local.json
