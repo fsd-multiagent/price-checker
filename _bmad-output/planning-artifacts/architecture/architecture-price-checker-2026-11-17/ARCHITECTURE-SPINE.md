@@ -98,7 +98,16 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
   1. the retailer is Approved in the bundled register and its adapter is enabled in `retailers.yaml` (AD-8);
   2. fetching is `allowed` in `runtime.yaml` and `BlockStore` reports no active Block (AD-9);
   3. the URL is `https` on the retailer's register domain or `www.` of it (redirects to any other host refused);
-  4. robots.txt allows the path for our user agent — robots.txt is loaded single-flight, cached 24 h, and a 5xx or unparseable file disallows everything (RFC 9309);
+  4. robots.txt allows the path for our user agent — robots.txt is loaded single-flight per host on its first request, for the product token `price-checker`, cached 24 h (RFC 9309, story 2.5):
+
+     | robots.txt result | Effect | Kept |
+     |---|---|---|
+     | Rule disallows the path | `Unavailable(BLOCKED)` (Block candidate) | 24 h |
+     | Unparseable 2xx (NUL character, or no robots line) | every path disallowed, `BLOCKED` | 24 h |
+     | Empty, or a 4xx other than 429 | every path allowed | 24 h |
+     | Unreachable: 5xx, 429, timeout, I/O error, off-host or more than 3 redirects, no permit | `Unavailable(REFUSED)` for this request | not kept |
+
+     The robots.txt fetch is never retried and `Crawl-delay` is ignored (the register sets the rate);
   5. `BlockStore.notBefore(retailer)` is not in the future (see 429 below);
   6. a rate-limit and concurrency permit is free before the deadline; every attempt, redirect and robots.txt fetch takes a permit; otherwise fail fast → `UNAVAILABLE` (S-5).
 
@@ -112,7 +121,7 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
   | 200, page has no recognizable product facts | adapter → `Unavailable(UNPARSEABLE)` | `UNAVAILABLE` |
   | 404 or 410 on the curated URL | fetch → adapter → `NotFound` | `NOT_FOUND` |
   | timeout, 5xx after retries | fetch → `Unavailable(TIMEOUT \| HTTP_ERROR)` | `UNAVAILABLE` |
-  | a check before sending fails (not Approved, adapter disabled, fetching stopped, off-host URL or redirect, no permit before the deadline); nothing sent | fetch → `Unavailable(REFUSED)` (story 2.4) | `UNAVAILABLE` |
+  | a check before sending fails (not Approved, adapter disabled, fetching stopped, off-host URL or redirect, no permit before the deadline, robots.txt unreachable); nothing sent | fetch → `Unavailable(REFUSED)` (story 2.4) | `UNAVAILABLE` |
   | 403, challenge page (generic markers in `fetch`), robots.txt disallows the path | fetch → `BlockStore.record` | `UNAVAILABLE` (Block, AC-11.1) |
   | 429 | fetch sets `notBefore`; waits and retries once only if `notBefore` is within the deadline; not a Block (AC-11.4) | as the retry ends, else `UNAVAILABLE` |
   | any request while `notBefore` is in the future | fetch refuses, sends nothing | `UNAVAILABLE` |
@@ -212,7 +221,7 @@ Versions were not checked on the web in this run (permission denied). Each row i
 | Gradle foojay-resolver-convention (JDK 21 toolchain) | 1.0.0 |
 | Caffeine | 3.x |
 | jsoup | 1.24.1 (pinned in `backend/build.gradle.kts`, story 2.1) |
-| crawler-commons (robots.txt) | 1.x |
+| crawler-commons (robots.txt) | 1.6 (pinned in `backend/build.gradle.kts`, story 2.5) |
 | ArchUnit | 1.5.1 |
 | Spotless (Gradle plugin) + google-java-format | 8.11.0 + 2.0.0 |
 | OpenAPI Generator (`spring`, `typescript-fetch`) | 7.27.0 (Gradle plugin in `backend/build.gradle.kts`; `web/openapitools.json` via `@openapitools/openapi-generator-cli` 2.42.2, story 1.3) |
