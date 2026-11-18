@@ -77,8 +77,16 @@ class DeployWorkflowTest {
                     twoproxies) printf 'proxy-a\\nproxy-b\\n' ;;
                     *) echo proxy-container-id ;;
                   esac ;;
-                *" ps -a -q backend") echo backend-container-id ;;
-                *" ps -a -q web") echo web-container-id ;;
+                *" ps -a -q backend")
+                  case "${FAKE_FAIL:-}" in
+                    nobackend) ;;
+                    *) echo backend-container-id ;;
+                  esac ;;
+                *" ps -a -q web")
+                  case "${FAKE_FAIL:-}" in
+                    twowebs) printf 'web-a\\nweb-b\\n' ;;
+                    *) echo web-container-id ;;
+                  esac ;;
               esac
               exit 0
             fi
@@ -360,6 +368,36 @@ class DeployWorkflowTest {
       assertThat(Files.readString(tmp.resolve("stdout.txt"))).doesNotContain("is running");
       assertThat(listing(tmp.resolve("tmpdir"))).isEmpty();
       assertThat(indexOf(dockerCalls(), "inspect")).as(mode).isEqualTo(-1);
+    }
+  }
+
+  @Test
+  @Tag("AC-3.3.1")
+  void ac_3_3_1_settleCheckFindsBackendAndWebThroughComposeNotContainerNames() throws Exception {
+    Map<String, String> modes = Map.of("nobackend", "backend", "twowebs", "web");
+    for (Map.Entry<String, String> m : modes.entrySet()) {
+      Files.deleteIfExists(log);
+      Files.deleteIfExists(tmp.resolve("bundle.tar"));
+      if (Files.exists(tmp.resolve("bundle-src"))) {
+        deleteTree(tmp.resolve("bundle-src"));
+      }
+      Run bad = deploy(Map.of("FAKE_FAIL", m.getKey()), goodStdin(), SHA, SITE);
+      assertThat(bad.exit()).as(m.getKey()).isEqualTo(1);
+      assertThat(bad.stderr())
+          .as(m.getKey())
+          .contains("expected one " + m.getValue() + " container");
+      assertThat(Files.readString(tmp.resolve("stdout.txt"))).doesNotContain("is running");
+      assertThat(indexOf(dockerCalls(), "inspect")).as(m.getKey()).isEqualTo(-1);
+      assertThat(listing(tmp.resolve("tmpdir"))).isEmpty();
+    }
+
+    String script = Files.readString(DEPLOY_SCRIPT);
+    for (String line : Files.readAllLines(COMPOSE)) {
+      String t = line.strip();
+      if (t.startsWith("container_name:")) {
+        String name = t.substring("container_name:".length()).strip();
+        assertThat(script).as("deploy depends on container_name " + name).doesNotContain(name);
+      }
     }
   }
 
