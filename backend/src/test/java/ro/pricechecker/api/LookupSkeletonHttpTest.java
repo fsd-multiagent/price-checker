@@ -46,13 +46,18 @@ class LookupSkeletonHttpTest {
     }
 
     @Bean
-    LookupService lookupService(Clock clock) {
+    LookupService lookupService(Clock clock, LookupLog log) {
       Registry registry = TestRegistries.mixed();
       List<RetailerAdapter> adapters =
           List.of(throwing("a.example"), throwing("b.example"), throwing("c.example"));
       RetailerHttp http = url -> "";
       return new LookupService(
-          registry, new AdapterCatalog(adapters, registry), Optional.of(http), clock);
+          registry,
+          new AdapterCatalog(adapters, registry),
+          Optional.of(http),
+          clock,
+          TestRegistries.runtimeAllowing(clock, "a.example", "b.example", "c.example"),
+          log);
     }
 
     private static RetailerAdapter throwing(String id) {

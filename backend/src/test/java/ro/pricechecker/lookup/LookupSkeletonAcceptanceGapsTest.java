@@ -123,7 +123,13 @@ class LookupSkeletonAcceptanceGapsTest {
       adapters.add(adapter(id, outcomes.getOrDefault(id, AdapterOutcome.NotFound::new)));
     }
     return new LookupService(
-            registry, new AdapterCatalog(adapters, registry), Optional.of(HTTP), CLOCK)
+            registry,
+            new AdapterCatalog(adapters, registry),
+            Optional.of(HTTP),
+            CLOCK,
+            TestRegistries.runtimeAllowing(
+                CLOCK, "a.example", "b.example", "c.example", "d.example", "e.example"),
+            new LookupLog(CLOCK))
         .lookup(Ean.parse(EAN));
   }
 

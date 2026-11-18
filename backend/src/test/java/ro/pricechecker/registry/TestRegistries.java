@@ -3,7 +3,13 @@ package ro.pricechecker.registry;
 import static ro.pricechecker.registry.SourceRegisterTest.register;
 import static ro.pricechecker.registry.SourceRegisterTest.row;
 
-/** Test-only access to the package-private {@link Registry} constructor. */
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+
+/** Test-only access to the package-private {@link Registry} constructor and a test Kill switch. */
 public final class TestRegistries {
 
   public static final String EAN_A = "4006381333931";
@@ -43,5 +49,24 @@ public final class TestRegistries {
             - {ean: "96385074", url: "https://b.example/p/2"}
         """;
     return of(reg, retailers, eans);
+  }
+
+  /**
+   * A {@link RuntimeSwitch} over a temporary {@code runtime.yaml} with {@code fetching: allowed}
+   * for each given domain (and nothing else).
+   */
+  public static RuntimeSwitch runtimeAllowing(Clock clock, String... domains) {
+    StringBuilder yaml = new StringBuilder("retailers:\n");
+    for (String domain : domains) {
+      yaml.append("  ").append(domain).append(": {fetching: allowed}\n");
+    }
+    try {
+      Path file = Files.createTempFile("runtime", ".yaml");
+      file.toFile().deleteOnExit();
+      Files.writeString(file, yaml.toString());
+      return new RuntimeSwitch(file, clock);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
   }
 }

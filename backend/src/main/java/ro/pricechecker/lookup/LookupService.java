@@ -16,10 +16,12 @@ import ro.pricechecker.ean.Ean;
 import ro.pricechecker.registry.KnownEan;
 import ro.pricechecker.registry.Registry;
 import ro.pricechecker.registry.RetailerConfig;
+import ro.pricechecker.registry.RuntimeSwitch;
 
 /**
  * Builds one row per Approved retailer in the config (AD-8), then orders them and marks the Lowest
- * price (AD-4). Skeleton: sequential, no cache, Block or deadlines (stories 2.x).
+ * price (AD-4). A retailer stopped by the Kill switch ({@link RuntimeSwitch}, AD-9) gets a {@code
+ * DISABLED} row. Skeleton: sequential, no cache, Block or deadlines (stories 2.x).
  */
 @Service
 public class LookupService {
@@ -28,16 +30,26 @@ public class LookupService {
   private final AdapterCatalog adapters;
   private final Optional<RetailerHttp> http;
   private final Clock clock;
+  private final RuntimeSwitch runtime;
+  private final LookupLog log;
 
   public LookupService(
-      Registry registry, AdapterCatalog adapters, Optional<RetailerHttp> http, Clock clock) {
+      Registry registry,
+      AdapterCatalog adapters,
+      Optional<RetailerHttp> http,
+      Clock clock,
+      RuntimeSwitch runtime,
+      LookupLog log) {
     this.registry = registry;
     this.adapters = adapters;
     this.http = http;
     this.clock = clock;
+    this.runtime = runtime;
+    this.log = log;
   }
 
   public LookupResult lookup(Ean ean) {
+    runtime.refresh().ifPresent(log::runtimeConfigRejected);
     List<LookupRow> rows = new ArrayList<>();
     for (RetailerConfig config : registry.retailers()) {
       if (registry.approvedDomains().contains(config.domain())) {
@@ -58,7 +70,8 @@ public class LookupService {
 
   private LookupRow row(RetailerConfig config, Ean ean) {
     String id = config.domain();
-    if (!config.enabled()) {
+    // AD-10: adapter disabled or fetching stopped comes first, before any other check or call.
+    if (!config.enabled() || !runtime.isAllowed(id)) {
       return LookupRow.withoutFacts(id, id, RowStatus.DISABLED);
     }
     Optional<URI> url = knownUrl(id, ean);

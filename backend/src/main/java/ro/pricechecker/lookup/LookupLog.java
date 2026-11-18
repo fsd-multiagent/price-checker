@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 import ro.pricechecker.ean.EanError;
+import ro.pricechecker.registry.RuntimeSwitch;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -47,6 +48,18 @@ public class LookupLog {
     fields.put(Field.LEVEL, "INFO");
     fields.put(Field.EVENT, "ean_rejected");
     fields.put(Field.OUTCOME, error.name());
+    write(fields);
+  }
+
+  /**
+   * A rejected {@code runtime.yaml} read (AD-9): only the reason code travels in {@code outcome};
+   * never the file content or an exception message.
+   */
+  public void runtimeConfigRejected(RuntimeSwitch.Rejection reason) {
+    Map<Field, Object> fields = new EnumMap<>(Field.class);
+    fields.put(Field.LEVEL, "ERROR");
+    fields.put(Field.EVENT, "runtime_config_rejected");
+    fields.put(Field.OUTCOME, reason.name());
     write(fields);
   }
 
