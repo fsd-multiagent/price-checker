@@ -92,6 +92,13 @@ class LayoutChangeCoverageTest {
     assertThat(enabledCapableAdapterIds()).contains("cel.ro", "evomag.ro");
   }
 
+  /** A register row that the parser misses would silently drop an Adapter from the guards. */
+  @Test
+  @Tag("AC-4.2.1")
+  void ac_4_2_1_everyRealAdapterHasARegisterRow() throws IOException {
+    assertThat(registerStatus().keySet()).containsAll(realAdapterIds());
+  }
+
   @Test
   @Tag("AC-4.2.1")
   void ac_4_2_1_everyEnabledCapableAdapterHasAnAlteredFixture() throws IOException {

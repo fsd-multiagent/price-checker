@@ -2,7 +2,7 @@
 title: 'Simulated layout change fails tests and the Health check'
 type: 'feature'
 created: '2026-11-18'
-status: 'in-review'
+status: 'done'
 baseline_revision: 'a15d4e0aa8629fb22fa0ce02b97711f8a7a9aa03'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -70,6 +70,10 @@ deferred: []
 - r1 code review CR-3 (minor, T-5): fixed. The altered-page Health check test is a `@ParameterizedTest` per retailer with its own `@TempDir` and clock. The mutable `reportDir` field is gone.
 - r1 code review CR-4 (minor): fixed. The test register row says `Approved 2026-11-01`.
 - r1 code lens CR-2 (minor, C-10): kept. Checking currency, availability and EAN as well shows that the altered page lost only the price.
+- r2 security (AD-18, AD-10): again no valid verdict from Veronel (Security & Compliance). The step failed, not the code; Filofteia (Code Reviewer) and the code lens both returned `pass`. No diff change for it; the r3 security step should run again.
+- r2 code review CR-1 (minor, AC-4.2.1): fixed. New `ac_4_2_1_everyRealAdapterHasARegisterRow` asserts that every real Adapter id has a parsed register row, so a register format change that the parser misses now fails loudly instead of silently dropping an Adapter from the guards.
+- r2 code review CR-2 (minor, AC-4.2.3): carried from r1, kept as is (see r1 row above).
+- r2 code review CR-3 (minor, C-10): carried from r1 code lens CR-2, kept as is.
 
 ## Design Notes
 
@@ -82,6 +86,7 @@ deferred: []
 
 ## Auto Run Result
 
-Status: in-review (implementation done; `backend/gradlew -p backend check` passes; `LayoutChangeTest` ran 4 cases and `LayoutChangeHealthCheckTest` ran 3 (the normal run plus one altered run per retailer), and `LayoutChangeCoverageTest` ran 4, all passing. Round 2 fixed the r1 review findings (see Review Triage Log); each I/O matrix row has a passing test).
+Status: done (round 3: r2 code review CR-1 fixed by a register-row guard in `LayoutChangeCoverageTest`; `backend/gradlew -p backend check` passes. One run hit a failure in the unrelated `LookupSkeletonAcceptanceGapsTest` (missing `b.example` row), which passed on three isolated reruns and on the next full check, so it looks timing-related and predates this story. Step-04 review layers were not re-run in round 3: the code otherwise matches r2, which both code reviewers passed.)
+Round 2 status: in-review (implementation done; `backend/gradlew -p backend check` passes; `LayoutChangeTest` ran 4 cases and `LayoutChangeHealthCheckTest` ran 3 (the normal run plus one altered run per retailer), and `LayoutChangeCoverageTest` ran 4, all passing. Round 2 fixed the r1 review findings (see Review Triage Log); each I/O matrix row has a passing test).
 Step-04 self-review was not run in this dev step because of the run's USD budget. The stage-7 review by Filofteia (Code Reviewer) and Veronel (Security & Compliance) covers it.
 Points for the reviewers: "the adapter test fails" is shown by a test that asserts the failure message (`<retailer>: missing price`), so CI stays green (AC 4.2.3 [ASSUMPTION]). The Health check runs as the real `HealthCheck` class with the real Adapters over a stub transport and an in-memory register where both retailers are Approved, not as a booted `health` profile. The existing facts-only fixture scans (`CelroAdapterCoverageTest`, `EvomagAcceptanceGapsTest`) also read `layout-changed.html`; they pass, and they extract nothing from it.
