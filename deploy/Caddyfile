@@ -1,0 +1,23 @@
+{
+	log {
+		format filter {
+			wrap json
+			fields {
+				request>remote_ip delete
+				request>client_ip delete
+				request>remote_port delete
+				request>headers delete
+				request>uri delete
+			}
+		}
+	}
+}
+
+{$SITE_ADDRESS} {
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
+	handle {
+		reverse_proxy web:8080
+	}
+}

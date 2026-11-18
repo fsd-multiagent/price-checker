@@ -1,0 +1,39 @@
+# One VM, one backend replica (AD-14, AD-15). IMAGE_TAG and SITE_ADDRESS come from the deploy step (story 3.3).
+services:
+  proxy:
+    image: caddy:2.10.2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS to the VM DNS name}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - backend
+
+  web:
+    image: ghcr.io/fsd-multiagent/price-checker-web:${IMAGE_TAG:?set IMAGE_TAG to the git SHA}
+    container_name: price-checker-web
+    restart: unless-stopped
+    expose:
+      - "8080"
+
+  backend:
+    image: ghcr.io/fsd-multiagent/price-checker-backend:${IMAGE_TAG:?set IMAGE_TAG to the git SHA}
+    container_name: price-checker-backend
+    restart: unless-stopped
+    user: "${BACKEND_UID:-10001}:${BACKEND_GID:-10001}"
+    expose:
+      - "8080"
+    volumes:
+      - /opt/price-checker/config:/opt/price-checker/config:ro
+      - /opt/price-checker/state:/opt/price-checker/state
+
+volumes:
+  caddy_data:
+  caddy_config:

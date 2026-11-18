@@ -1,0 +1,15 @@
+# S-10: nothing secret, VCS or built reaches the image build context, at any depth.
+.git
+**/.env
+**/.env.*
+**/*.tfstate*
+**/*.tfvars
+**/.terraform
+**/node_modules
+**/build
+**/.gradle
+web/dist
+web/src/generated
+_bmad-output
+orchestrator/.venv
+infra

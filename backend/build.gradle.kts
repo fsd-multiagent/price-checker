@@ -98,6 +98,9 @@ tasks.processResources {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    // Story 3.2: DeployConfigTest reads these files, so a change must re-run it.
+    inputs.dir("../deploy")
+    inputs.files("Dockerfile", "../web/Dockerfile", "../web/Caddyfile", "../web/package.json", "../web/openapitools.json", "../.dockerignore")
 }
 
 spotless {

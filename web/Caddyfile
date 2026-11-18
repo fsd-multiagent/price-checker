@@ -1,0 +1,21 @@
+{
+	admin off
+	log {
+		format filter {
+			wrap json
+			fields {
+				request>remote_ip delete
+				request>client_ip delete
+				request>remote_port delete
+				request>headers delete
+				request>uri delete
+			}
+		}
+	}
+}
+
+:8080 {
+	root * /srv
+	try_files {path} /index.html
+	file_server
+}
