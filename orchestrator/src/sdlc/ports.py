@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from sdlc.core.issues import IssueInfo, LabelEvent
 from sdlc.core.models import StepResult
 
 
@@ -91,12 +92,28 @@ class Git(Protocol):
     async def remove_worktree(self, worktree: str, branch: str, remote: bool = False) -> None: ...
     # AD-26: `git apply --3way`; True only on exit 0 with no unmerged entries left.
     async def apply_3way(self, worktree: str, patch: str) -> bool: ...
+    # AD-27: the paths the branch changes since its branch point (what its PR shows).
+    async def branch_paths(self, worktree: str) -> list[str]: ...
+    # AD-27: remove the `*.lock` files of a worktree's git dir that no process holds; returns
+    # the paths removed.
+    async def clear_stale_locks(self, worktree: str) -> list[str]: ...
 
 
 class Gh(Protocol):
-    async def ensure_pr(self, head: str, base: str, title: str, body: str) -> int: ...
+    async def ensure_pr(
+        self, head: str, base: str, title: str, body: str, labels: tuple[str, ...] = ()
+    ) -> int: ...
     async def checks_green(self, pr: int, timeout_min: int, key: StepKey | None = None) -> bool: ...
-    async def merge(self, pr: int, head_sha: str, key: StepKey | None = None) -> str | None: ...
+    # AD-26, AD-27: refuses an owner-review PR, and one touching protected or review paths
+    # outside a factory story.
+    async def merge(
+        self,
+        pr: int,
+        head_sha: str,
+        key: StepKey | None = None,
+        factory: bool = False,
+        paths: list[str] | None = None,
+    ) -> str | None: ...
     async def ensure_escalation_issue(
         self, run_id: str, scope: str, title: str, body: str
     ) -> int: ...
@@ -109,13 +126,21 @@ class Gh(Protocol):
     async def ensure_proposal_issue(
         self, sha256: str, title: str, body: str, looked_up: bool = False
     ) -> ProposalRef: ...
+    # AD-27: issue runs and owner-review waits.
+    async def issue(self, number: int) -> IssueInfo: ...
+    async def label_events(self, number: int) -> tuple[LabelEvent, ...]: ...
+    async def comment_issue(self, number: int, body: str) -> None: ...
+    async def label_pr(self, pr: int, name: str) -> None: ...
+    # `(state, merge commit SHA, head SHA)`: state is OPEN, CLOSED or MERGED.
+    async def pr_state(self, pr: int) -> tuple[str, str | None, str | None]: ...
 
 
 class Commands(Protocol):
     """Project commands run by script steps: tests (T-8), `terraform plan`, the FR/AC check."""
 
+    # AD-27: `factory` lets the story change the block; only the branch point's block runs.
     async def run(
-        self, name: str, worktree: str, timeout_s: float, key: StepKey
+        self, name: str, worktree: str, timeout_s: float, key: StepKey, factory: bool = False
     ) -> tuple[int, str]: ...
 
 

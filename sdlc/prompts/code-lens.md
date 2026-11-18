@@ -1,5 +1,7 @@
 Review the diff of story `${story_key}` against `origin/main` for the project conventions in `docs/standards/`. You are read-only.
 
+${issue_text}
+
 Run `${run_id}`, scope `${scope}`, stage `${stage}`, step `${step}`, round ${round}.
 Your working directory is the worktree `${worktree}`. Write only inside it.
 

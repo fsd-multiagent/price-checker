@@ -97,9 +97,9 @@ flowchart LR
 - **Binds:** run, stage, story, round and step nodes; the CLI; resume; routing
 - **Prevents:** statuses or transitions that the scheduler, `status` and `resume` read differently.
 - **Rule:**
-  - Status is a `StrEnum` with the values `pending | running | passed | failed | blocked | escalated | skipped | superseded`. `superseded` applies only to step records: a step attempt that a plan usage limit cut short (AD-18). Gates and round counters ignore it.
+  - Status is a `StrEnum` with the values `pending | running | passed | failed | blocked | escalated | skipped | superseded | awaiting_owner`. `superseded` applies only to step records: a step attempt that a plan usage limit cut short (AD-18). Gates and round counters ignore it. `awaiting_owner` applies only to the run: only owner-review waits remain (AD-27).
   - Only the transitions in the diagram below are legal. Anything else is a core error.
-  - `blocked` means waiting on a human input from plan §6, or on a dependency that is escalated. It consumes no round.
+  - `blocked` means waiting on a human input from plan §6, on a dependency that is escalated, or on the owner's review of the unit's PR (AD-27). It consumes no round.
   - `on_fail` may point only to the same stage or an earlier one in the same chain. Rewinding moves the target and every later stage of that chain from `passed` to `pending`, with the reason `invalidated_by`.
 
 ```mermaid
@@ -119,6 +119,9 @@ stateDiagram-v2
   failed --> pending: round < max_rounds
   failed --> escalated: round = max_rounds
   escalated --> pending: sdlc resume
+  running --> awaiting_owner: run only (AD-27)
+  awaiting_owner --> pending: sdlc resume after the owner's merge
+  awaiting_owner --> escalated: the owner closed the PR
 ```
 
 ### AD-6 — Reset to the scope head on retry and on resume [ADOPTED by ADR 0002]
@@ -348,6 +351,8 @@ stateDiagram-v2
     - `docs/*-register.md`
     - `CLAUDE.md`
     - `AGENTS.md`
+    - `_bmad-output/implementation-artifacts/epic-*-context.md`
+    - `_bmad-output/planning-artifacts/architecture/**/ARCHITECTURE-SPINE.md` (AD-27: parallel stories of one epic collided on these)
   - Before every commit on a story branch, the orchestrator reverts changes to these paths.
   - Stage 9 runs one scope at a time, on `learn/<key>` cut from `origin/main` after the story is merged. Aglaia (Knowledge Keeper) works there, the orchestrator renders `sprint-status.yaml` from the state into the same branch, and the branch gets its own PR.
   - The epic retrospective joins the same queue once every story in the epic is merged.
@@ -478,7 +483,9 @@ stateDiagram-v2
 - **Prevents:** a stranger steering agents through an issue, factory changes merging unreviewed, a run hanging on a human, and issue runs colliding with planned stories.
 - **Rule (this implements AD-22):**
   - **One run at a time.**
-    - `sdlc` holds an `fcntl.flock` on `_bmad-output/sdlc/lock` for a `run`, `resume`, `story` or `fix`. The lock file also records the pid and the run id.
+    - `sdlc` holds an `fcntl.flock` on `<repo>/_bmad-output/sdlc/lock` for a real `run`, `resume`, `story` or `fix`, whatever `--runs-dir` says. The lock file also records the pid and the run id.
+    - Queued commands run only on normal completion of the holder (never after Ctrl-C or a crash). Each queued command's outcome is appended to `queue-history.jsonl`, and queued entries may not carry their own `--pipeline` or `--repo`.
+    - The awaited-PR check runs after preflight, only for runs whose status is `awaiting_owner`, and does not re-queue a resume that already failed.
     - A command that cannot take the lock appends its arguments to `_bmad-output/sdlc/queue.jsonl`, under a separate queue lock, and exits 0, saying it is queued.
     - When a run ends, the process pops the oldest queued command, still under the queue lock, and replaces itself with it (`os.execv`). So queued work always runs the code on disk, including code just merged. The lock is released when the queue is empty.
   - **Who may start an issue run.** `settings.owners` lists the GitHub logins allowed to authorise (default: the repo owner). `sdlc story|fix <issue>` refuses, and comments why, unless:
@@ -495,14 +502,19 @@ stateDiagram-v2
   - **Sprint status from an issue run** is merged into `origin/main`'s `sprint-status.yaml`, not substituted for it: epic-0 entries are added or updated, and the others are kept.
   - **Factory stories** (authorised as above), compared with a normal story:
     - `protected_paths` and `review_paths` are not reverted. `owner_only_paths` still are.
-    - The tests gate always runs the `sdlc-commands` block from `origin/main`. When the story changes the block, the gate also runs the story's new block, and both must pass (ADR 0004 is relaxed only this far).
+    - The tests gate runs only the `sdlc-commands` block from the story's branch point on `origin/main` (ADR 0023). A new block the story writes is never run before the owner merges it, because it is agent-written code.
+    - Any change to the block makes the PR an owner-review PR, even when no other protected path changed.
     - `AGENTS.md` changes outside the block are reverted like bookkeeping (AD-21). The block change is kept by splicing.
   - **Owner-review integration.** When a story's PR touches `protected_paths` (a factory story) or `review_paths` (any story):
     1. The PR is labelled `owner-review`. No auto-merge is enabled, and the PR is never rebased while it waits.
     2. The integrate unit records the awaited PR number in the state (`awaiting`), and the run reports it in `sdlc status` and through the notifier.
     3. The run continues with independent work. When only owner-review waits remain, it ends with exit 2, recording `status: awaiting_owner`, and releases the lock.
-    4. Every later `sdlc` command first checks the awaited PRs of earlier runs. If one has `MERGED`, it queues `sdlc resume <run>` ahead of new work, and the resume emits `Merged` and continues to learn. If one has `CLOSED`, it escalates that story.
+    4. Every later locking `sdlc` command (`run`, `resume`, `story`, `fix`) first checks the awaited PRs of earlier runs. If one has `MERGED`, it queues `sdlc resume <run>` ahead of new work, and the resume emits `Merged` and continues to learn. If one has `CLOSED`, it escalates that story.
     5. A non-factory story's diff that touches `protected_paths` after the revert fails its round (a guard bug), and so does one that touches `owner_only_paths`.
+  - **Robust git.**
+    - `git fetch` retries with backoff when it hits a ref-lock error, because another process sharing the repository may be fetching.
+    - On load, a git lock file (`*.lock`) in a run's worktree that no live git process holds is removed and logged.
+    - Learn branches rebase onto `origin/main` before opening their PR, like stories (AD-20), so a stale learn branch cannot conflict round after round.
   - **Closing the loop.** The PR body says `Closes #<issue>`. The orchestrator comments the run id and the outcome on the issue when the story merges or escalates.
   - **Starting runs from GitHub** (Actions triggers and a runner) stays deferred.
 
@@ -517,7 +529,7 @@ stateDiagram-v2
 | Errors | Adapters raise typed errors. `app/` turns them into failure events. The core returns fail verdicts and does not raise them |
 | Logging | One JSON line per event in `events.jsonl`. Raw agent stdout goes to `steps/*.log`. Usage goes to `<runs-dir>/usage.jsonl` (AD-24) |
 | Config and secrets | `pipeline.yaml` holds no secrets. Auth comes from `CLAUDE_CODE_OAUTH_TOKEN` in the runner environment. Never read `.env*` |
-| CLI | `sdlc run [--from <stage>] [--dry-run]`, `sdlc story <issue>`, `sdlc fix <issue>`, `sdlc status [<run-id>]`, `sdlc resume <run-id>`. Exit codes: 0 passed, 2 escalated or blocked, 1 internal error |
+| CLI | `sdlc run [--from <stage>] [--dry-run]`, `sdlc story <issue>`, `sdlc fix <issue>`, `sdlc status [<run-id>]`, `sdlc resume <run-id>`, `sdlc usage`. Exit codes: 0 passed, or queued behind the lock; 1 internal error or a refused issue; 2 escalated, blocked or `awaiting_owner`. A queued command's code is recorded in `queue-history.jsonl` |
 | Python style | `uv run ruff check` and `uv run ruff format`; type hints on every public function; `pytest` with `asyncio_mode = "auto"` and `asyncio_default_fixture_loop_scope = "function"`; `uv.lock` committed |
 | Agent naming | Name (Position) in issues, PR bodies and logs (D-6) |
 

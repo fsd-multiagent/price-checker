@@ -10,6 +10,9 @@
 - `auth_exit`: the exit code of `auth status`
 - `api_items`: the items `api --paginate .../issues` prints, one JSON object per line, as the
   `--jq` filter would (`number`, `body`, `pr`)
+- `issue`: the JSON printed by `issue view`
+- `graphql`: the JSON printed by `api graphql`
+- `timeline`: the items `api --paginate .../timeline` prints, one JSON object per line
 """
 
 from __future__ import annotations
@@ -43,6 +46,13 @@ def main() -> int:
     if args[:1] == ["--version"]:
         print(cfg.get("version", "gh version 2.96.0 (2026-01-01)"))
         return 0
+    if args[:2] == ["api", "graphql"]:
+        print(json.dumps(cfg.get("graphql", {})))
+        return 0
+    if args[:1] == ["api"] and any("/timeline" in a for a in args):
+        for item in cfg.get("timeline", []):
+            print(json.dumps(item))
+        return 0
     if args[:1] == ["api"]:
         for item in cfg.get("api_items", []):
             print(json.dumps(item))
@@ -71,11 +81,19 @@ def main() -> int:
             print("gh: transient failure", file=sys.stderr)
             return 1
         print(json.dumps(answer))
+    elif cmd == ["issue", "view"]:
+        print(json.dumps(cfg.get("issue", {})))
     elif cmd == ["issue", "list"]:
         print(json.dumps(cfg.get("issues", [])))
     elif cmd == ["issue", "create"]:
         print("https://github.com/example/repo/issues/7")
-    elif cmd in (["pr", "merge"], ["issue", "comment"], ["issue", "reopen"], ["label", "create"]):
+    elif cmd in (
+        ["pr", "merge"],
+        ["pr", "edit"],
+        ["issue", "comment"],
+        ["issue", "reopen"],
+        ["label", "create"],
+    ):
         pass
     else:
         print(f"gh stub: unsupported {args}", file=sys.stderr)

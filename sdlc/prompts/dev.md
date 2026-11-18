@@ -1,7 +1,9 @@
-/bmad-build-auto Implement story `${story_key}` (${story_title}) from `${epics_path}`. Commit only on the current branch.
+/bmad-build-auto Implement story `${story_key}` (${story_title}) from ${story_source}. Commit only on the current branch.
 
 Story sources (the only retailer domains it may contact): ${story_sources}
 Story touches: ${story_touches}
+
+${issue_text}
 
 Run `${run_id}`, scope `${scope}`, stage `${stage}`, step `${step}`, round ${round}.
 Your working directory is the worktree `${worktree}`. Write only inside it.

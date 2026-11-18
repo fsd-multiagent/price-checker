@@ -1,0 +1,14 @@
+# A stub issue that must be refused (AD-27): the owner's issue, last edited by a stranger.
+title: Edited story
+author: aserban-dev
+state: OPEN
+labels: []
+last_edited_at: "2026-11-18T10:00:00Z"
+editor: mallory
+timeline: []
+body: |
+  ```yaml
+  depends_on: []
+  touches: [web/src/ean/]
+  sources: []
+  ```

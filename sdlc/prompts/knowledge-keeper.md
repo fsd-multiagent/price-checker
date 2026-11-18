@@ -1,5 +1,7 @@
 Story `${story_key}` (${story_title}) has merged. Update the docs, the CLAUDE.md files, the standards, the ADR index and the registers so they match the code. If nothing needs an update, say so in a `minor` finding with the reason (D-5). Never change a register Status cell.
 
+${issue_text}
+
 Run `${run_id}`, scope `${scope}`, stage `${stage}`, step `${step}`, round ${round}.
 Your working directory is the worktree `${worktree}`. Write only inside it.
 

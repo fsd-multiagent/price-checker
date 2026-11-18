@@ -414,7 +414,7 @@ async def test_real_merge(stubs, tmp_path, monkeypatch):
     _, log = stubs
     merged = {"state": "MERGED", "mergeCommit": {"oid": "abc123"}}
     gh_config(tmp_path, monkeypatch, view=[{"state": "OPEN"}, "error", merged])
-    assert await GhCli(tmp_path, poll_s=0.01).merge(9, "deadbeef") == "abc123"
+    assert await GhCli(tmp_path, poll_s=0.01).merge(9, "deadbeef", paths=[]) == "abc123"
     (merge,) = _gh(log, "pr", "merge")
     assert merge == ["pr", "merge", "9", "--auto", "--squash", "--match-head-commit", "deadbeef"]
     assert "--admin" not in merge
@@ -423,23 +423,23 @@ async def test_real_merge(stubs, tmp_path, monkeypatch):
 
 async def test_real_merge_already_merged_on_resume(stubs, tmp_path, monkeypatch):
     gh_config(tmp_path, monkeypatch, view=[{"state": "MERGED", "mergeCommit": {"oid": "abc"}}])
-    assert await GhCli(tmp_path, poll_s=0.01).merge(9, "deadbeef") == "abc"
+    assert await GhCli(tmp_path, poll_s=0.01).merge(9, "deadbeef", paths=[]) == "abc"
     assert _gh(stubs[1], "pr", "merge") == []
 
 
 async def test_real_merge_timeout_disables_auto(stubs, tmp_path, monkeypatch):
     gh_config(tmp_path, monkeypatch, view=[{"state": "OPEN"}])
     slow = GhCli(tmp_path, poll_s=0.01, merge_timeout_min=0.002)
-    assert await slow.merge(9, "deadbeef") is None
+    assert await slow.merge(9, "deadbeef", paths=[]) is None
     assert _gh(stubs[1], "pr", "merge")[-1] == ["pr", "merge", "9", "--disable-auto"]
     gh_config(tmp_path, monkeypatch, view=[{"state": "CLOSED"}])
-    assert await GhCli(tmp_path, poll_s=0.01).merge(9, "deadbeef") is None
+    assert await GhCli(tmp_path, poll_s=0.01).merge(9, "deadbeef", paths=[]) is None
 
 
 async def test_real_merge_without_sha(stubs, tmp_path, monkeypatch):
     gh_config(tmp_path, monkeypatch, view=[{"state": "OPEN"}, {"state": "MERGED"}])
     with pytest.raises(AdapterError, match="merged without SHA"):
-        await GhCli(tmp_path, poll_s=0.01).merge(9, "deadbeef")
+        await GhCli(tmp_path, poll_s=0.01).merge(9, "deadbeef", paths=[])
 
 
 async def test_real_escalation_reuse(stubs, tmp_path, monkeypatch):

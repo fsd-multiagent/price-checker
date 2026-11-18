@@ -5,14 +5,19 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from sdlc.adapters.claude import parse_result
 from sdlc.adapters.fake.fixtures import FakeCrash, FixtureBook
+from sdlc.adapters.gh import refuse_paths
 from sdlc.adapters.git import refuse_main
-from sdlc.core.models import StepResult
+from sdlc.core.issues import IssueInfo, LabelEvent
+from sdlc.core.models import Settings, StepResult
 from sdlc.core.proposals import OWNER_REVIEW_LABEL, in_tier, proposal_marker
 from sdlc.ports import AdapterError, Invocation, Ports, ProposalRef, StagedChange, StepKey
 
@@ -144,11 +149,14 @@ class FakeCommands:
     def __init__(self, book: FixtureBook) -> None:
         self.book = book
         self.calls: list[tuple[str, str]] = []
+        self.factory_calls: list[tuple[str, str]] = []  # AD-27: factory-story gate runs
 
     async def run(
-        self, name: str, worktree: str, timeout_s: float, key: StepKey
+        self, name: str, worktree: str, timeout_s: float, key: StepKey, factory: bool = False
     ) -> tuple[int, str]:
         self.calls.append((name, worktree))
+        if factory:
+            self.factory_calls.append((name, worktree))
         entry = self.book.lookup(key.scope, key.step, key.round, "script")
         if entry.get("crash"):
             raise FakeCrash(f"simulated kill during {key.scope}/{key.step}")
@@ -172,6 +180,8 @@ class FakeGit:
         self.show_files: dict[str, str] = {}  # files `show` returns at any ref, by path
         self.show_at: dict[tuple[str, str], str | None] = {}  # (ref, path) overrides
         self.point = "branch-point"  # what `branch_point` returns (ADR 0023)
+        self.branch_files: dict[str, set[str]] = {}  # branch -> paths committed on it (AD-27)
+        self.pushed: dict[str, str] = {}  # branch -> the SHA last pushed
         self._n = 0
 
     def _branch(self, worktree: str) -> str:
@@ -253,11 +263,20 @@ class FakeGit:
             self.applied.append((worktree, patch))
         return self.apply_ok
 
+    async def clear_stale_locks(self, worktree: str) -> list[str]:
+        self.calls.append(("clear_stale_locks", worktree))
+        return []
+
+    async def branch_paths(self, worktree: str) -> list[str]:
+        self.calls.append(("branch_paths", worktree))
+        return sorted(self.branch_files.get(self._branch(worktree), ()))
+
     async def commit_all(self, worktree: str, message: str) -> str | None:
         branch = self._branch(worktree)
         committed = await self.changed_paths(worktree)
         sha = self._new_sha(branch)
         self.committed[sha] = committed
+        self.branch_files.setdefault(branch, set()).update(committed)
         self.heads[branch] = sha
         self._clean_at[worktree] = len(self.fs.log)
         self.calls.append(("commit", worktree, message, sha))
@@ -288,6 +307,20 @@ class FakeGit:
         if force and not branch.startswith("proposal/"):
             raise AdapterError(f"refusing to force-push {branch}")
         self.calls.append(("push", branch, self.heads[self._branch(worktree)], force))
+        self.pushed[branch] = self.heads[self._branch(worktree)]
+        # Kept on disk, so a later dry-run process (the owner's merge) still knows the head.
+        pushed = Path(self.root) / "fake-git-pushed.json"
+        if pushed.parent.is_dir():
+            known = json.loads(pushed.read_text(encoding="utf-8")) if pushed.is_file() else {}
+            pushed.write_text(json.dumps({**known, **self.pushed}), encoding="utf-8")
+
+    def pushed_head(self, branch: str) -> str | None:
+        if branch in self.pushed:
+            return self.pushed[branch]
+        path = Path(self.root) / "fake-git-pushed.json"
+        if path.is_file():
+            return json.loads(path.read_text(encoding="utf-8")).get(branch)
+        return None
 
     async def show(self, ref: str, path: str) -> str | None:
         self.calls.append(("show", ref, path))
@@ -300,9 +333,32 @@ class FakeGit:
         return None
 
 
+_TIERS = Settings(run_budget_usd=1)
+
+
 class FakeGh:
-    def __init__(self, book: FixtureBook | None = None) -> None:
+    """`issues` come from `<fixtures>/issues/<n>.yaml` (title, body, author, labels,
+    last_edited_at, editor, timeline) unless a test sets `issue_data`. PR states for the
+    owner-review scan come from `pr_states`, overlaid by `<runs dir>/fake-gh.json`
+    (`{"pr_states": {"<n>": "MERGED"}}`), which simulates the owner on a dry-run."""
+
+    def __init__(
+        self,
+        book: FixtureBook | None = None,
+        state_file: str | Path | None = None,
+        files_of: Callable[[str], list[str]] | None = None,
+        settings: Settings | None = None,
+    ) -> None:
         self.book = book
+        self.tiers = settings or _TIERS
+        self.state_file = Path(state_file) if state_file else None
+        self.files_of = files_of or (lambda head: [])
+        self.issue_data: dict[int, dict[str, Any]] = {}
+        self.pr_states: dict[int, str] = {}
+        self.pr_heads: dict[int, str] = {}
+        self.head_of: Callable[[int], str | None] = lambda pr: None
+        self.comments: list[tuple[int, str]] = []
+        self.pr_bodies: dict[int, str] = {}
         self.calls: list[tuple[Any, ...]] = []
         self.prs: dict[str, int] = {}
         self.issues: list[dict[str, Any]] = []
@@ -311,21 +367,39 @@ class FakeGh:
         self.proposal_items: list[dict[str, Any]] = []  # owner-review PRs and issues (AD-26)
         self._next = 100
 
-    async def ensure_pr(self, head: str, base: str, title: str, body: str) -> int:
+    async def ensure_pr(
+        self, head: str, base: str, title: str, body: str, labels: tuple[str, ...] = ()
+    ) -> int:
         self.calls.append(("ensure_pr", head, base))
         if head not in self.prs:  # AD-13: PRs are keyed by head branch
             self._next += 1
             self.prs[head] = self._next
+            self.pr_bodies[self._next] = body
+        if self.state_file is not None and self.state_file.parent.is_dir():  # later processes
+            self.state_file.with_name("fake-gh-prs.json").write_text(json.dumps(self.prs))
+        self.labels.setdefault(self.prs[head], set()).update(labels)  # set at creation
+        self.label_names.update(labels)
         return self.prs[head]
 
     async def checks_green(self, pr: int, timeout_min: int, key: StepKey | None = None) -> bool:
         self.calls.append(("checks_green", pr))
         return _script_ok(self.book, key)
 
-    async def merge(self, pr: int, head_sha: str, key: StepKey | None = None) -> str | None:
+    async def merge(
+        self,
+        pr: int,
+        head_sha: str,
+        key: StepKey | None = None,
+        factory: bool = False,
+        paths: list[str] | None = None,
+    ) -> str | None:
         self.calls.append(("merge", pr, head_sha))
         if OWNER_REVIEW_LABEL in self.labels.get(pr, set()):
             raise AdapterError(f"refusing to merge PR #{pr}: labelled {OWNER_REVIEW_LABEL}")
+        if not factory:
+            head = next((h for h, n in self.prs.items() if n == pr), None)
+            files = paths if paths is not None else (self.files_of(head) if head else [])
+            refuse_paths(pr, files, self.tiers.protected_paths, self.tiers.review_paths)
         if not _script_ok(self.book, key):
             return None
         return _sha(f"merge:{pr}:{head_sha}")
@@ -380,6 +454,66 @@ class FakeGh:
             self.prs[head] = self._next
         return ProposalRef(kind=kind, number=self._next, created=True)
 
+    # ------------------------------------------------------------------ AD-27
+
+    def _issue_raw(self, number: int) -> dict[str, Any]:
+        if number in self.issue_data:
+            return self.issue_data[number]
+        if self.book is not None:
+            path = self.book.root / "issues" / f"{number}.yaml"
+            if path.is_file():
+                return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        raise AdapterError(f"gh issue view {number}: no such issue")
+
+    async def issue(self, number: int) -> IssueInfo:
+        self.calls.append(("issue", number))
+        raw = self._issue_raw(number)
+        return IssueInfo(
+            number=number,
+            title=str(raw.get("title", "")),
+            body=str(raw.get("body", "")),
+            author=str(raw.get("author", "")),
+            state=str(raw.get("state", "OPEN")),
+            labels=tuple(raw.get("labels") or ()),
+            last_edited_at=raw.get("last_edited_at"),
+            editor=raw.get("editor"),
+        )
+
+    async def label_events(self, number: int) -> tuple[LabelEvent, ...]:
+        self.calls.append(("label_events", number))
+        return tuple(
+            LabelEvent(id=str(e["id"]), event=e["event"], label=e["label"], actor=e.get("actor"))
+            for e in self._issue_raw(number).get("timeline") or ()
+        )
+
+    async def comment_issue(self, number: int, body: str) -> None:
+        self.calls.append(("comment_issue", number))
+        self.comments.append((number, body))
+        if self.state_file is not None:  # visible to a test after a CLI dry-run
+            log = self.state_file.with_name("fake-gh-comments.jsonl")
+            log.parent.mkdir(parents=True, exist_ok=True)
+            with log.open("a", encoding="utf-8") as f:
+                f.write(json.dumps({"issue": number, "body": body}) + "\n")
+
+    async def label_pr(self, pr: int, name: str) -> None:
+        self.calls.append(("label_pr", pr, name))
+        self.label_names.add(name)
+        self.labels.setdefault(pr, set()).add(name)
+
+    async def pr_state(self, pr: int) -> tuple[str, str | None, str | None]:
+        """The PR's head is what was pushed for it unless `pr_heads` (or `pr_heads` in the
+        state file) says otherwise: the owner pushed to it before merging."""
+        self.calls.append(("pr_state", pr))
+        states = {str(k): v for k, v in self.pr_states.items()}
+        heads = {str(k): v for k, v in self.pr_heads.items()}
+        if self.state_file is not None and self.state_file.is_file():
+            data = json.loads(self.state_file.read_text(encoding="utf-8"))
+            states.update({str(k): v for k, v in (data.get("pr_states") or {}).items()})
+            heads.update({str(k): v for k, v in (data.get("pr_heads") or {}).items()})
+        state = str(states.get(str(pr), "OPEN")).upper()
+        merge = _sha(f"owner-merge:{pr}") if state == "MERGED" else None
+        return state, merge, heads.get(str(pr), self.head_of(pr))
+
 
 def _script_ok(book: FixtureBook | None, key: StepKey | None) -> bool:
     """A script entry with a non-zero `exit_code` makes the fake rebase, CI or merge fail."""
@@ -388,12 +522,30 @@ def _script_ok(book: FixtureBook | None, key: StepKey | None) -> bool:
     return int(book.lookup(key.scope, key.step, key.round, "script").get("exit_code", 0)) == 0
 
 
-def fake_ports(book: FixtureBook, root: str) -> Ports:
+def fake_ports(book: FixtureBook, root: str, settings: Settings | None = None) -> Ports:
+    """`settings` gives the fake gh the pipeline's path tiers, as `real_ports` does."""
     fs = FakeFs()
+    git = FakeGit(book, root, fs)
+    gh = FakeGh(
+        book,
+        state_file=Path(root) / "fake-gh.json",
+        files_of=lambda head: sorted(git.branch_files.get(head, ())),
+        settings=settings,
+    )
+
+    def head_of(pr: int) -> str | None:
+        prs = dict(gh.prs)
+        saved = Path(root) / "fake-gh-prs.json"
+        if not prs and saved.is_file():
+            prs = json.loads(saved.read_text(encoding="utf-8"))
+        branch = next((h for h, n in prs.items() if n == pr), None)
+        return git.pushed_head(branch) if branch else None
+
+    gh.head_of = head_of
     return Ports(
         claude=FakeClaude(book, fs),
-        git=FakeGit(book, root, fs),
-        gh=FakeGh(book),
+        git=git,
+        gh=gh,
         commands=FakeCommands(book),
         fs=fs,
         clock=FakeClock(),

@@ -24,8 +24,15 @@ class ParsedStories(NamedTuple):
 
 
 def parse_epics(text: str) -> ParsedStories:
+    """`epics.md`: epic 0 is reserved for stories from issues (AD-27)."""
     blocks = fenced_blocks(text, "yaml")
-    return parse_story_blocks(blocks)
+    parsed = parse_story_blocks(blocks)
+    reserved = [
+        f"story '{s.key}': epic 0 is reserved for issue runs (AD-27)"
+        for s in parsed.stories
+        if s.epic == 0
+    ]
+    return ParsedStories(parsed.stories, (*parsed.errors, *reserved))
 
 
 def parse_story_blocks(blocks: list[str]) -> ParsedStories:
@@ -54,13 +61,27 @@ def parse_story_blocks(blocks: list[str]) -> ParsedStories:
     return ParsedStories(tuple(stories), tuple(errors))
 
 
-def _parse_one(body: str, n: int) -> tuple[Story | None, list[str]]:
+def load_block(body: str, n: int) -> tuple[dict[str, Any] | None, list[str]]:
+    """One block's YAML mapping, or the problems."""
     try:
         data: Any = yaml.safe_load(body)
     except yaml.YAMLError as exc:
         return None, [f"story block #{n}: invalid YAML ({exc.__class__.__name__})"]
     if not isinstance(data, dict):
         return None, [f"story block #{n}: must be a mapping"]
+    return data, []
+
+
+def _parse_one(body: str, n: int) -> tuple[Story | None, list[str]]:
+    data, problems = load_block(body, n)
+    if data is None:
+        return None, problems
+    return story_from(data, n)
+
+
+def story_from(data: dict[str, Any], n: int) -> tuple[Story | None, list[str]]:
+    """The shared schema of a story entry (AD-15): `key`, `title`, `depends_on`, `touches`,
+    `sources`; unknown fields are ignored."""
     key = data.get("key")
     name = f"story '{key}'" if key else f"story block #{n}"
     problems = [f"{name}: missing '{field}'" for field in REQUIRED if field not in data]

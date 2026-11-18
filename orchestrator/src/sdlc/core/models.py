@@ -30,6 +30,8 @@ class Status(StrEnum):
     ESCALATED = "escalated"
     SKIPPED = "skipped"
     SUPERSEDED = "superseded"  # step records only: an attempt cut short by a plan limit (AD-18)
+    # The run only (AD-27): only owner-review waits remain; a later command picks it up.
+    AWAITING_OWNER = "awaiting_owner"
 
 
 class StepKind(StrEnum):
@@ -200,6 +202,9 @@ class Settings(Frozen):
         "docs/*-register.md",
         "CLAUDE.md",
         "AGENTS.md",
+        # AD-21 (AD-27): parallel stories of one epic must not carry these.
+        "_bmad-output/implementation-artifacts/epic-*-context.md",
+        "_bmad-output/planning-artifacts/architecture/**/ARCHITECTURE-SPINE.md",
     )
     ci_timeout_min: int = 30
     run_budget_usd: float
@@ -233,6 +238,9 @@ class Settings(Frozen):
         "docs/standards/",
     )
     review_paths: tuple[str, ...] = (".github/workflows/",)
+    # AD-27: the GitHub logins allowed to authorise an issue run (author, last editor and the
+    # `factory` label). Empty: no issue run is ever authorised.
+    owners: tuple[str, ...] = ()
 
 
 class Pipeline(Frozen):
@@ -344,6 +352,9 @@ class Story(Frozen):
     depends_on: tuple[str, ...] = ()
     touches: tuple[str, ...] = ()
     sources: tuple[str, ...]
+    # AD-27: an issue story's acceptance criteria. Untrusted text: it reaches prompts only
+    # inside the fenced "Untrusted issue text" section.
+    acceptance: tuple[str, ...] = ()
 
     @property
     def epic(self) -> int:
@@ -480,6 +491,31 @@ class Proposal(Frozen):
         return f"proposal/{self.sha256[:8]}"
 
 
+class Awaiting(Frozen):
+    """AD-27: a unit whose PR waits for the owner's review. It is blocked, consumes no round,
+    and is never rebased; a later command settles it when the PR is merged or closed."""
+
+    scope: str
+    stage: str
+    pr: int
+    since: str
+    head: str | None = None  # the SHA pushed for review; a merge of another head escalates
+
+
+class IssueIntake(Frozen):
+    """AD-27: what authorised an issue run, re-checked by `sdlc resume`. The same snapshot is
+    written to the run's `stories.yaml`."""
+
+    issue: int
+    title_sha256: str
+    body_sha256: str
+    author: str
+    editor: str | None = None  # the last editor, when the body was edited
+    factory: bool = False
+    label_event_id: str | None = None  # the `labeled factory` timeline event (factory only)
+    label_actor: str | None = None
+
+
 class Budget(Frozen):
     limit: float
     spent: float = 0.0
@@ -504,6 +540,9 @@ class RunState(Frozen):
     stories_loaded: bool = False
     escalations: tuple[Escalation, ...] = ()
     proposals: tuple[Proposal, ...] = ()  # AD-26
+    awaiting: tuple[Awaiting, ...] = ()  # AD-27: PRs waiting for the owner
+    issue: IssueIntake | None = None  # AD-27: the issue a `story` or `fix` run came from
+    intake_rejected: str | None = None  # AD-27: the issue failed intake or its re-check
     next_seq: int = 1
     next_learn_seq: int = 1
     fixtures: str | None = None
@@ -520,8 +559,20 @@ class RunState(Frozen):
 
     @property
     def halted(self) -> bool:
-        """No new step starts: the budget is exhausted or a limit episode ran too long."""
-        return self.budget.exhausted or self.limit_exceeded
+        """No new step starts: the budget is exhausted, a limit episode ran too long, or the
+        issue the run came from failed its check (AD-27)."""
+        return self.budget.exhausted or self.limit_exceeded or self.intake_rejected is not None
+
+    @property
+    def factory(self) -> bool:
+        """AD-27: a factory story, authorised by an owner-applied `factory` label."""
+        return self.issue is not None and self.issue.factory
+
+    def awaited(self, scope: str, stage: str | None = None) -> Awaiting | None:
+        for a in self.awaiting:
+            if a.scope == scope and (stage is None or a.stage == stage):
+                return a
+        return None
 
     def unit(self, scope: str, stage: str) -> Unit | None:
         for u in self.units:
@@ -739,6 +790,45 @@ class ProposalFailed(_Event):
     reason: str
 
 
+class OwnerReviewAwaited(_Event):
+    """AD-27: the unit's PR touches protected paths (a factory story) or review paths; it is
+    labelled owner-review and the unit is blocked until the owner merges or closes it."""
+
+    type: Literal["owner_review_awaited"] = "owner_review_awaited"
+    scope: str
+    stage: str
+    pr: int
+    head: str | None = None
+
+
+class AwaitedSettled(_Event):
+    """AD-27: the owner merged the reviewed head (`merged`; a `Merged` event follows), or
+    the PR was closed or merged with another head (`reason`): the unit escalates."""
+
+    type: Literal["awaited_settled"] = "awaited_settled"
+    scope: str
+    stage: str
+    pr: int
+    merged: bool
+    sha: str | None = None
+    reason: str | None = None
+
+
+class IntakeRecorded(_Event):
+    """AD-27: an issue run's authorisation snapshot."""
+
+    type: Literal["intake_recorded"] = "intake_recorded"
+    intake: IssueIntake
+
+
+class IntakeRejected(_Event):
+    """AD-27: the issue has no valid story block, or changed after intake; the story (or the
+    run, when there is no story) escalates, and no new step starts."""
+
+    type: Literal["intake_rejected"] = "intake_rejected"
+    reason: str
+
+
 class BudgetExhausted(_Event):
     type: Literal["budget_exhausted"] = "budget_exhausted"
     reason: str
@@ -779,6 +869,10 @@ Event = Annotated[
     | ProposalCaptured
     | ProposalDelivered
     | ProposalFailed
+    | OwnerReviewAwaited
+    | AwaitedSettled
+    | IntakeRecorded
+    | IntakeRejected
     | BudgetExhausted
     | RunStopped
     | RunFinished,

@@ -8,6 +8,7 @@ store before the next decision (AD-4).
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import fnmatch
 import glob
 import json
@@ -25,9 +26,21 @@ from sdlc.adapters.commands import (
 )
 from sdlc.adapters.git import commit_message
 from sdlc.core import gates as core_gates
-from sdlc.core.epics_parser import parse_epics
+from sdlc.core.epics_parser import ParsedStories, parse_epics
+from sdlc.core.issues import (
+    Authorisation,
+    IssueInfo,
+    authorise,
+    merged_keys,
+    parse_issue_story,
+    read_snapshot,
+    recheck,
+    snapshot,
+    untrusted_section,
+)
 from sdlc.core.models import (
     Action,
+    AwaitedSettled,
     BlockUnit,
     BudgetExhausted,
     CoreError,
@@ -38,10 +51,13 @@ from sdlc.core.models import (
     ExhaustBudget,
     Finish,
     GateEvaluated,
+    IntakeRecorded,
+    IntakeRejected,
     LearnQueue,
     Merged,
     OpenEscalation,
     Outcome,
+    OwnerReviewAwaited,
     PathsReverted,
     Pipeline,
     PrOpened,
@@ -88,6 +104,7 @@ from sdlc.core.models import (
 from sdlc.core.outcome import derive_outcome
 from sdlc.core.prompts import bullet_list, render_prompt
 from sdlc.core.proposals import (
+    OWNER_REVIEW_LABEL,
     change_key,
     factory_rules,
     file_diff,
@@ -99,22 +116,29 @@ from sdlc.core.proposals import (
 )
 from sdlc.core.register_parser import parse_register
 from sdlc.core.scheduler import decide, round_records
-from sdlc.core.sprint_status import render_sprint_status
+from sdlc.core.sprint_status import merge_sprint_status
 from sdlc.core.state import apply, initial_state, usage_warning_due
 from sdlc.core.usage import UNKNOWN_ROLE, agent_slug, render_summary, status_line
 from sdlc.ports import Invocation, Ports, ProposalRef, StepKey
-from sdlc.store import RunStore
+from sdlc.store import RunStore, list_runs
 
 SPRINT_STATUS = "_bmad-output/implementation-artifacts/sprint-status.yaml"
 USAGE_SUMMARY = ".sdlc/usage-summary.md"  # AD-24: written before an epic's retrospective
 DEFAULT_EPICS = "_bmad-output/planning-artifacts/epics.md"
 MAX_TICKS = 100_000
+STORIES_YAML = "stories.yaml"  # AD-22, AD-27: the issue run's story and its authorisation
+ISSUE_JSON = "issue.json"  # AD-27: the issue's title and body, as read at intake
+ISSUE_KINDS = (RunKind.STORY, RunKind.FIX)
 
 StoriesReader = Callable[[str], str | None]
 
 
 class LoopError(RuntimeError):
     pass
+
+
+class IssueRefused(LoopError):
+    """AD-27: the issue may not start a run; the reason is commented on the issue."""
 
 
 def make_run_id(now: str, kind: RunKind) -> str:
@@ -173,6 +197,7 @@ class Orchestrator:
         self.store: RunStore | None = None
         self._tasks: dict[asyncio.Task[list[Event]], int] = {}
         self._paused_until: str | None = None
+        self.on_run: Callable[[str], None] | None = None  # told the run id (the lock file)
 
     # ------------------------------------------------------------------ entry points
 
@@ -187,8 +212,14 @@ class Orchestrator:
         pipeline_path: str | None = None,
         pipeline_sha256: str | None = None,
         stories_reader: StoriesReader | None = None,
+        issue: int | None = None,
     ) -> int:
         stories = None
+        intake = None
+        if kind in ISSUE_KINDS:
+            if issue is None or from_stage is not None:
+                raise LoopError(f"a {kind.value} run takes an issue number and no --from")
+            intake = await self._intake(issue)  # raises IssueRefused before any run dir
         if from_stage is not None:  # validate before the run dir exists
             reader = stories_reader or (lambda rel: self.ports.fs.read_text(str(self.repo / rel)))
             stories = stories_for_from(self.p, kind, from_stage, reader)
@@ -216,10 +247,170 @@ class Orchestrator:
         self.echo(
             f"run {run_id} ({kind.value}{', dry-run' if dry_run else ''}) in {self.store.dir}"
         )
+        if self.on_run is not None:
+            self.on_run(run_id)
         self._apply(RunStarted(at=self.ports.clock.now()))
         if stories is not None:
             self._apply(StoriesLoaded(at=self.ports.clock.now(), stories=stories))
+        if intake is not None:
+            self._record_intake(kind, *intake)
         return await self._loop()
+
+    # ------------------------------------------------------------------ issue runs (AD-27)
+
+    async def _intake(self, number: int) -> tuple[IssueInfo, Authorisation, ParsedStories]:
+        """Authorise the issue, then parse its story block. A refusal is commented on the
+        issue and raises IssueRefused: no run starts. A bad block starts a run that escalates
+        at once (its errors are commented through the escalation)."""
+        gh, git = self.ports.gh, self.ports.git
+        busy = self._runs_of_issue(number)
+        if busy:  # it would reuse the same branch and PR
+            raise IssueRefused(f"issue #{number} already has run(s) {', '.join(busy)} in progress")
+        info = await gh.issue(number)
+        events = await gh.label_events(number)
+        auth = authorise(info, events, self.p.settings.owners)
+        if not auth.ok:
+            why = f"Zamolxe (Orchestrator) will not start a run from this issue: {auth.refusal}."
+            try:
+                await gh.comment_issue(number, why + " Only an owner can authorise one (AD-27).")
+            except Exception as exc:  # the refusal stands without its comment
+                self.echo(f"!! could not comment on issue #{number}: {exc!r}")
+            raise IssueRefused(f"issue #{number} refused: {auth.refusal}")
+        await self._fetch()  # depends_on is checked against origin/main
+        epics = await git.show(BASE_REF, self._epics_path())
+        main_keys = frozenset(s.key for s in parse_epics(epics or "").stories)
+        done = merged_keys(await git.show(BASE_REF, SPRINT_STATUS))
+        return info, auth, parse_issue_story(info, main_keys, done)
+
+    def _runs_of_issue(self, number: int) -> list[str]:
+        """Runs from the same issue that are not finished (passed or escalated)."""
+        out = []
+        for run_id in list_runs(self.runs_dir):
+            try:
+                other = RunState.model_validate_json(
+                    (self.runs_dir / run_id / "state.json").read_text(encoding="utf-8")
+                )
+            except (OSError, ValueError):
+                continue
+            if (
+                other.issue is not None
+                and other.issue.issue == number
+                and other.status not in (Status.PASSED, Status.ESCALATED)
+            ):
+                out.append(run_id)
+        return out
+
+    async def _fetch(self) -> None:
+        """AD-27: a fetch that still fails after the adapter's retries is reported, and the
+        run goes on with the origin/main it has; only script steps fail on it."""
+        try:
+            await self.ports.git.fetch()
+        except Exception as exc:
+            self.echo(f"!! git fetch failed; going on with the last fetched origin/main: {exc}")
+
+    def _record_intake(
+        self, kind: RunKind, info: IssueInfo, auth: Authorisation, parsed: ParsedStories
+    ) -> None:
+        assert self.store is not None and auth.intake is not None
+        now = self.ports.clock.now
+        self._apply(IntakeRecorded(at=now(), intake=auth.intake))
+        self.store.write_artifact(ISSUE_JSON, json.dumps({"title": info.title, "body": info.body}))
+        self.store.write_artifact(STORIES_YAML, snapshot(auth.intake, kind.value, parsed.stories))
+        what = "factory story" if auth.intake.factory else "story"
+        if parsed.errors:
+            self.echo(f"!! issue #{info.number} has no valid story block: {parsed.errors}")
+            self._apply(IntakeRejected(at=now(), reason="; ".join(parsed.errors)))
+            return
+        self.echo(f"   issue #{info.number}: {what} {parsed.stories[0].key}")
+        self._apply(StoriesLoaded(at=now(), stories=parsed.stories))
+
+    async def _recheck_issue(self) -> str | None:
+        """AD-27 on `sdlc resume`: the issue must still be authorised and unchanged."""
+        assert self.state is not None and self.store is not None
+        stored = read_snapshot(self.store.read_artifact(STORIES_YAML)) or self.state.issue
+        if stored is None:
+            return None
+        info = await self.ports.gh.issue(stored.issue)
+        events = await self.ports.gh.label_events(stored.issue)
+        if info.state != "OPEN" and await self._story_merged():
+            info = dataclasses.replace(info, state="OPEN")  # its PR closed it (`Closes #n`)
+        return recheck(stored, authorise(info, events, self.p.settings.owners))
+
+    async def _story_merged(self) -> bool:
+        """The run's story merged, or one of its awaited PRs did."""
+        assert self.state is not None
+        if any(s.merged_sha for s in self.state.scopes if s.id.startswith("story:")):
+            return True
+        for a in self.state.awaiting:
+            if (await self.ports.gh.pr_state(a.pr))[0] == "MERGED":
+                return True
+        return False
+
+    async def _settle_awaited(self, *, resume: bool) -> bool:
+        """AD-27: look up each awaited PR. Closed: the unit escalates now. Merged: on a resume
+        the unit passes and the story is `Merged`; otherwise it only reports True, so the
+        caller queues `sdlc resume`."""
+        assert self.state is not None
+        merged = False
+        now = self.ports.clock.now
+        for a in self.state.awaiting:
+            state, sha, head = await self.ports.gh.pr_state(a.pr)
+            reason = None
+            if state == "MERGED" and sha and a.head is not None and head == a.head:
+                merged = True
+                if resume:
+                    self.echo(f"   owner merged PR #{a.pr} for {a.scope}")
+                    self._apply(
+                        AwaitedSettled(
+                            at=now(), scope=a.scope, stage=a.stage, pr=a.pr, merged=True, sha=sha
+                        )
+                    )
+                    self._apply(Merged(at=now(), scope=a.scope, sha=sha))
+                    await self._comment(f"`{a.scope}` merged (PR #{a.pr}, by the owner).")
+                continue
+            if state == "MERGED":  # not the commit that was reviewed: a human must look
+                reason = (
+                    f"PR #{a.pr} merged with head {(head or '?')[:12]}, not the head "
+                    f"{(a.head or '?')[:12]} the orchestrator opened it with"
+                )
+            elif state == "CLOSED":
+                reason = f"PR #{a.pr} closed by the owner without merging"
+            if reason is None:
+                continue
+            self.echo(f"!! {reason}: {a.scope} escalated")
+            self._apply(
+                AwaitedSettled(
+                    at=now(), scope=a.scope, stage=a.stage, pr=a.pr, merged=False, reason=reason
+                )
+            )
+            if not resume:  # a resume opens it in its first tick
+                await self._escalate(OpenEscalation(scope=a.scope, reason=reason))
+        return merged
+
+    async def check_awaited(self, run_id: str) -> bool:
+        """AD-27, for any later command: settle the run's closed PRs; True when one is merged
+        (the caller then queues `sdlc resume <run_id>`)."""
+        self.store = RunStore(self.runs_dir / run_id, warn=self._warn)
+        self.state = self.store.load(self.p)
+        if not self.state.awaiting:
+            return False
+        return await self._settle_awaited(resume=False)
+
+    async def _comment(self, text: str) -> None:
+        """Closing the loop (AD-27): the run id and the outcome, on the source issue."""
+        assert self.state is not None
+        if self.state.issue is None:
+            return
+        body = f"Zamolxe (Orchestrator), run `{self.state.run_id}`: {text}"
+        try:
+            await self.ports.gh.comment_issue(self.state.issue.issue, body)
+        except Exception as exc:  # a missed comment never stops the run
+            self.echo(f"!! could not comment on issue #{self.state.issue.issue}: {exc!r}")
+
+    def _factory_scope(self, scope: str) -> bool:
+        """AD-27: a story scope of a factory story run."""
+        assert self.state is not None
+        return self.state.factory and scope.startswith("story:")
 
     def _warn(self, message: str) -> None:
         self.echo(f"!! {message}")
@@ -237,7 +428,14 @@ class Orchestrator:
         # Backfills pre-AD-24 usage records, and appends what the ledger lacks (AD-24).
         self.state = self.store.load(self.p, reconcile=True)
         self.echo(f"resume {run_id}")
-        await self.ports.git.fetch()  # the register and the merge checks read origin/main
+        if self.on_run is not None:
+            self.on_run(run_id)
+        for scope in self.state.scopes:  # AD-27: a crash may have left git lock files
+            if scope.worktree:
+                for lock in await self.ports.git.clear_stale_locks(scope.worktree):
+                    self.echo(f"   removed the stale git lock {lock}")
+        changed = await self._recheck_issue()  # AD-27: before anything changes
+        await self._fetch()  # the register and the merge checks read origin/main
         # AD-6: abort any rebase first, then reset interrupted steps to the scope head.
         for scope in self.state.scopes:
             if scope.worktree:
@@ -255,6 +453,10 @@ class Orchestrator:
         self._apply(
             RunResumed(at=self.ports.clock.now(), budget_limit=self.p.settings.run_budget_usd)
         )
+        if changed is not None:
+            self.echo(f"!! {changed}")
+            self._apply(IntakeRejected(at=self.ports.clock.now(), reason=changed))
+        await self._settle_awaited(resume=True)
         return await self._loop()
 
     # ------------------------------------------------------------------ the loop
@@ -353,7 +555,7 @@ class Orchestrator:
             case StartUnit():
                 scope = self.state.scope(action.scope)
                 if scope is None or scope.worktree is None:
-                    await self.ports.git.fetch()  # AD-20: cut from a fresh origin/main
+                    await self._fetch()  # AD-20: cut from a fresh origin/main
                     path, head = await self.ports.git.ensure_worktree(action.branch, "origin/main")
                     self._apply(
                         WorktreeReady(
@@ -418,17 +620,20 @@ class Orchestrator:
         scope = self.state.scope(scope_id)
         if scope is None or scope.worktree is None or scope.head_sha is None:
             return None
-        diff = await self._fix_diff(scope.worktree, scope.head_sha)
+        diff = await self._fix_diff(scope.worktree, scope.head_sha, self._factory_scope(scope_id))
         await self.ports.git.reset_hard(scope.worktree, scope.head_sha)
         if not diff.strip():
             return None
         return self.store.write_artifact(f"steps/{seq}.discarded.patch", diff)
 
-    async def _fix_diff(self, worktree: str, head_sha: str) -> str:
+    async def _fix_diff(self, worktree: str, head_sha: str, factory: bool = False) -> str:
         """AD-26: the discarded diff for the fix prompt leaves out all three tiers and the
         `sdlc-commands` block, so a retry never replays a proposal. The block goes back to the
-        scope head's first; the worktree is reset right after."""
+        scope head's first; the worktree is reset right after. A factory story's diff keeps
+        protected and review paths and the block: they are its work (AD-27)."""
         s = self.p.settings
+        if factory:
+            return await self.ports.git.diff(worktree, head_sha, exclude=s.owner_only_paths)
         at_head = await self.ports.git.show(head_sha, AGENTS_MD)
         if at_head is not None:
             path = f"{worktree}/{AGENTS_MD}"
@@ -528,6 +733,7 @@ class Orchestrator:
             else ""
         )
         story = self.state.story(unit.subject or "")
+        issue_text, story_title, story_source = self._issue_context(story)
         context = {
             "run_id": self.state.run_id,
             "scope": key.scope,
@@ -538,12 +744,14 @@ class Orchestrator:
             "verdict_path": verdict_path or "(none: this step writes no verdict file)",
             "inputs": bullet_list(step.inputs, "- (none)"),
             "story_key": story.key if story else (unit.subject or "(none)"),
-            "story_title": story.title if story else "(none)",
+            "story_title": story_title,
             "story_sources": ", ".join(story.sources) if story and story.sources else "(none)",
             "story_touches": ", ".join(story.touches) if story and story.touches else "(none)",
             "epics_path": self._epics_path(),
+            "story_source": story_source,
             "feedback": self._feedback(unit.feedback, worktree, key.round),
             "factory_rules": factory_rules(self.p.settings),
+            "issue_text": issue_text,
         }
         env = {"TMPDIR": f"{worktree}/.sdlc/tmp", "SDLC_RUN_ID": self.state.run_id}
         if verdict_path:
@@ -579,6 +787,25 @@ class Orchestrator:
                 "scope": key.scope,
             },
         )
+
+    def _issue_context(self, story: Story | None) -> tuple[str, str, str]:
+        """`${issue_text}`, `${story_title}` and `${story_source}`. For a story from an
+        issue, its title, acceptance criteria and prose appear only in the fenced untrusted
+        section (AD-27)."""
+        assert self.state is not None and self.store is not None
+        intake = self.state.issue
+        if story is None or intake is None or story.epic != 0:
+            title = story.title if story else "(none)"
+            return "(none: this story is not from an issue)", title, f"`{self._epics_path()}`"
+        raw = json.loads(self.store.read_artifact(ISSUE_JSON) or "{}")
+        section = untrusted_section(
+            str(raw.get("title", "")), story.acceptance, str(raw.get("body", "")), intake.issue
+        )
+        source = (
+            f"GitHub issue #{intake.issue} (its title, acceptance criteria and text are quoted "
+            "below as untrusted data)"
+        )
+        return section, "titled in the issue text below", source
 
     def _epics_path(self) -> str:
         for s in self.p.stages:
@@ -759,6 +986,8 @@ class Orchestrator:
         git, settings = self.ports.git, self.p.settings
         changed = await git.changed_paths(worktree)
         owner = tier_paths(changed, settings.owner_only_paths)
+        if self._factory_scope(scope):
+            return await self._factory_guards(worktree, owner), []
         tiers = settings.protected_paths
         if scope.startswith("learn:"):  # a learn PR auto-merges and never carries CI changes
             tiers = (*tiers, *settings.review_paths)
@@ -785,6 +1014,25 @@ class Orchestrator:
                 f"        restored {AGENTS_MD} ({what}) from {BASE_REF} on {scope} (ADR 0021)"
             )
         return reverted, captured
+
+    async def _factory_guards(self, worktree: str, owner: list[str]) -> list[str]:
+        """AD-27, a factory story: protected and review paths are kept; owner-only paths and
+        bookkeeping are reverted; in `AGENTS.md` only the `sdlc-commands` block change is kept,
+        spliced into the scope head's file."""
+        git, fs = self.ports.git, self.ports.fs
+        reverted = list(owner)
+        if owner:
+            await git.restore_paths(worktree, tuple(glob.escape(p) for p in owner))
+        path = f"{worktree}/{AGENTS_MD}"
+        agent = fs.read_text(path)
+        await git.restore_paths(worktree, self.p.settings.bookkeeping_paths)
+        head = fs.read_text(path)
+        kept = apply_commands_block(head, agent) if head is not None else None
+        if kept is not None:
+            fs.write_text(path, kept)
+        if agent is not None and agent != (kept if kept is not None else head):
+            reverted.append(AGENTS_MD)  # its lines outside the block went back
+        return reverted
 
     async def _capture(
         self, scope: str, worktree: str, seq: int, role: str | None, protected: list[str]
@@ -864,7 +1112,9 @@ class Orchestrator:
         try:
             match step.script:
                 case "tests" | "terraform_plan" | "fr_ac_check":
-                    code, out = await self.ports.commands.run(step.script, worktree, timeout, key)
+                    code, out = await self.ports.commands.run(
+                        step.script, worktree, timeout, key, factory=self._factory_scope(key.scope)
+                    )
                 case "rebase":
                     await git.fetch()
                     ok = await git.rebase(worktree, "origin/main", key=key)
@@ -875,16 +1125,8 @@ class Orchestrator:
                         await git.abort_rebase(worktree)  # never leave it mid-rebase
                         code, out = 1, "rebase conflict; rebase aborted"
                 case "open_pr":
-                    await git.push(worktree, scope.branch)
-                    title = f"sdlc({state.run_id}): {key.scope}"
-                    body = (
-                        f"Opened by Zamolxe (Orchestrator) for {key.scope} in run {state.run_id}."
-                    )
-                    number = await gh.ensure_pr(scope.branch, "main", title, body)
-                    events.append(
-                        PrOpened(at=self.ports.clock.now(), scope=key.scope, number=number)
-                    )
-                    code, out = 0, f"PR #{number}"
+                    code, out, opened, head = await self._open_pr(key, worktree)
+                    events += opened
                 case "ci_green":
                     ok = scope.pr is not None and await gh.checks_green(
                         scope.pr, self.p.settings.ci_timeout_min, key=key
@@ -894,16 +1136,25 @@ class Orchestrator:
                     if scope.pr is None or not scope.head_sha:
                         code, out = 1, "no PR or no head SHA to merge"
                     else:
-                        sha = await gh.merge(scope.pr, scope.head_sha, key=key)
+                        sha = await gh.merge(
+                            scope.pr,
+                            scope.head_sha,
+                            key=key,
+                            factory=self._factory_scope(key.scope),
+                            paths=await git.branch_paths(worktree),  # AD-27: not the PR's list
+                        )
                         if sha:
                             events.append(
                                 Merged(at=self.ports.clock.now(), scope=key.scope, sha=sha)
                             )
+                            if key.scope.startswith("story:"):
+                                await self._comment(f"`{key.scope}` merged (PR #{scope.pr}).")
                         code, out = (0, f"merged {sha}") if sha else (1, "not merged")
                 case "render_sprint_status":
-                    self.ports.fs.write_text(
-                        f"{worktree}/{SPRINT_STATUS}", render_sprint_status(self.p, state)
-                    )
+                    # AD-27: merged into main's file, never substituted for it.
+                    main = await git.show(BASE_REF, SPRINT_STATUS)
+                    text = merge_sprint_status(self.p, state, main)
+                    self.ports.fs.write_text(f"{worktree}/{SPRINT_STATUS}", text)
                     reverted, _ = await self._pre_commit_guards(key.scope, worktree, key.seq, None)
                     head = await git.commit_all(
                         worktree, commit_message(state.run_id, key.scope, key.step, key.round)
@@ -932,6 +1183,81 @@ class Orchestrator:
                 head_sha=head if code == 0 else None,
             ),
         ]
+
+    async def _open_pr(
+        self, key: StepKey, worktree: str
+    ) -> tuple[int, str, list[Event], str | None]:
+        """Push and open the PR; returns the code, the output, the events and the new head
+        when a learn branch was rebased. AD-27:
+        - a learn branch rebases onto origin/main first, so a stale one cannot conflict;
+        - a story branch that carries owner-only paths, or protected paths outside a factory
+          story, fails (a guard bug);
+        - a PR touching review paths, protected paths in a factory story, or (any story) the
+          `sdlc-commands` block, is created labelled owner-review and waits."""
+        assert self.state is not None
+        state, git, gh, settings = self.state, self.ports.git, self.ports.gh, self.p.settings
+        scope = state.scope(key.scope)
+        assert scope is not None
+        rebased: str | None = None
+        if key.scope.startswith("learn:"):
+            await git.fetch()
+            if not await git.rebase(worktree, BASE_REF, key=key):
+                await git.abort_rebase(worktree)
+                return 1, "learn branch: rebase conflict; rebase aborted (AD-27)", [], None
+            rebased = await git.head(worktree)
+        paths = await git.branch_paths(worktree)
+        factory = self._factory_scope(key.scope)
+        if key.scope.startswith("story:"):
+            bad = tier_paths(paths, settings.owner_only_paths)
+            if not factory:
+                bad += tier_paths(paths, settings.protected_paths)
+            if bad:
+                return (
+                    1,
+                    (
+                        f"guard bug: the branch still changes {', '.join(sorted(bad)[:10])} after "
+                        "the pre-commit revert (AD-26, AD-27); not pushed"
+                    ),
+                    [],
+                    None,
+                )
+        review = tier_paths(paths, settings.review_paths)
+        if factory:
+            review += tier_paths(paths, settings.protected_paths)
+        if key.scope.startswith("story:") and await self._block_changed(worktree):
+            review.append(f"{AGENTS_MD} (the sdlc-commands block)")
+        await git.push(worktree, scope.branch)
+        pushed = await git.head(worktree)
+        title = f"sdlc({state.run_id}): {key.scope}"
+        lines = [f"Opened by Zamolxe (Orchestrator) for {key.scope} in run {state.run_id}."]
+        if review:
+            lines += ["", f"Waits for owner review (`{OWNER_REVIEW_LABEL}`): it touches "
+                      f"{', '.join(sorted(review)[:10])}. Zamolxe (Orchestrator) never merges "
+                      "it (AD-27)."]  # fmt: skip
+        if state.issue is not None and key.scope.startswith("story:"):
+            lines += ["", f"Closes #{state.issue.issue}"]
+        labels = (OWNER_REVIEW_LABEL,) if review else ()  # set when the PR is created
+        number = await gh.ensure_pr(scope.branch, "main", title, "\n".join(lines), labels)
+        now = self.ports.clock.now
+        events: list[Event] = [PrOpened(at=now(), scope=key.scope, number=number)]
+        if not review:
+            return 0, f"PR #{number}", events, rebased
+        events.append(
+            OwnerReviewAwaited(at=now(), scope=key.scope, stage=key.stage, pr=number, head=pushed)
+        )
+        self.echo(f"   owner review: PR #{number} for {key.scope} waits for the owner's merge")
+        self.ports.notifier.notify(
+            "Zamolxe (Orchestrator) owner review",
+            f"PR #{number} for {key.scope} waits for your review and merge",
+        )
+        return 0, f"PR #{number}, awaiting owner review", events, rebased
+
+    async def _block_changed(self, worktree: str) -> bool:
+        """AD-27: the `sdlc-commands` block differs from the branch point's (ADR 0023)."""
+        point = await self.ports.git.branch_point(worktree)
+        at_point = await self.ports.git.show(point or BASE_REF, AGENTS_MD)
+        mine = self.ports.fs.read_text(f"{worktree}/{AGENTS_MD}")
+        return commands_block(mine) != commands_block(at_point)
 
     # ------------------------------------------------------------------ gates
 
@@ -1014,6 +1340,7 @@ class Orchestrator:
         )
         self.echo(f"!! escalation issue #{number} for {action.scope}: {action.reason}")
         self._apply(EscalationOpened(at=self.ports.clock.now(), scope=action.scope, issue=number))
+        await self._comment(f"`{action.scope}` escalated (issue #{number}): {action.reason}")
 
     # ------------------------------------------------------------------ proposals
 
@@ -1133,12 +1460,15 @@ def format_status(state: RunState, now: str | None = None) -> str:
         )
     for e in state.escalations:
         lines.append(f"escalation: {e.scope} issue #{e.issue}: {e.reason}")
+    for a in state.awaiting:  # AD-27
+        lines.append(f"awaiting owner: PR #{a.pr} for {a.scope}/{a.stage} since {a.since}")
     lines += owner_review_lines(state)  # AD-26
     return "\n".join(lines)
 
 
 __all__ = [
     "CoreError",
+    "IssueRefused",
     "LoopError",
     "Orchestrator",
     "format_status",

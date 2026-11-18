@@ -62,6 +62,10 @@ def test_transition_table_is_the_ad5_diagram():
         (S.PASSED, S.PENDING),
         (S.FAILED, S.PENDING), (S.FAILED, S.ESCALATED),
         (S.ESCALATED, S.PENDING),
+        # AD-27, the run only: owner-review waits end the run; a later command resumes or
+        # escalates it.
+        (S.RUNNING, S.AWAITING_OWNER), (S.AWAITING_OWNER, S.PENDING),
+        (S.AWAITING_OWNER, S.ESCALATED),
     }  # fmt: skip
     assert not legal(S.PASSED, S.RUNNING)
     assert not legal(S.SKIPPED, S.PENDING)

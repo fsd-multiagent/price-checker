@@ -2,9 +2,10 @@
 title: 'Zamolxe (Orchestrator) issue runs, factory stories, owner-review integration, lock and queue'
 type: 'feature'
 created: '2026-11-18'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
+baseline_commit: '08379f6bab8fbf98f947da86f1d34132488a8251'
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-orchestrator-2026-11-16/ARCHITECTURE-SPINE.md'
   - '{project-root}/docs/adr/0022-factory-changes-by-proposal-and-issue.md'
@@ -107,13 +108,13 @@ Run `20261117-174705-full` must stay resumable.
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] The lock and the queue in `cli.py`.
-- [ ] Issue intake: gh adapter, authorisation, parser, keys, `stories.yaml` snapshot and its re-check on resume.
-- [ ] Factory stories: the guards, the two-block gate, owner-review integration, `awaiting_owner`, and the awaited-PR scan.
-- [ ] `review_paths` waits for any story; the extended merge refusal.
-- [ ] The sprint-status merge; the bookkeeping additions.
-- [ ] The prompts.
-- [ ] Tests: one per matrix row (`test_issue_runs_<row>`).
+- [x] The lock and the queue in `cli.py`.
+- [x] Issue intake: gh adapter, authorisation, parser, keys, `stories.yaml` snapshot and its re-check on resume.
+- [x] Factory stories: the guards, the two-block gate, owner-review integration, `awaiting_owner`, and the awaited-PR scan.
+- [x] `review_paths` waits for any story; the extended merge refusal.
+- [x] The sprint-status merge; the bookkeeping additions.
+- [x] The prompts.
+- [x] Tests: one per matrix row (`test_issue_runs_<row>`).
 
 **Acceptance Criteria:**
 - AC-1: Given the repo, when `uv run pytest -q` and ruff run in `orchestrator/`, then all pass, with the live test skipped.
@@ -121,6 +122,23 @@ Run `20261117-174705-full` must stay resumable.
 - AC-3: Given a dry-run `sdlc story <n>` with a stub issue, when it runs, then the story builds, its owner-review PR waits, the run ends `awaiting_owner`, and a simulated merge plus the next command completes it.
 
 ## Implementation Notes
+
+- The lock and queue sit beside the runs dir: `_bmad-output/sdlc/{lock,queue.jsonl,queue.lock}` by default; a dry-run without `--runs-dir` uses `<tmp>/runs`, with the lock in `<tmp>`. The lock is handed across `os.execv` (inheritable fd named in `SDLC_LOCK_FD`, adopted and made non-inheritable again, so agents never hold it). A clean release truncates the lock file, so a non-empty file found on acquire names a holder that died ("took over the stale lock").
+- `run`, `resume`, `story` and `fix` check awaited PRs first. `status` and `usage` stay read-only (no `gh` call): `status` lists `awaiting owner: PR #n`. A merged PR queues `sdlc resume <run>` and the current command behind it; the resume settles it (`AwaitedSettled`, then `Merged` semantics) and comments on the issue. A closed PR is settled at once by the scanning command: the unit escalates, the escalation issue opens, and a run left only `awaiting_owner` becomes `escalated`.
+- `awaiting_owner` is a run-only status (like `superseded` for steps): `running -> awaiting_owner -> pending | escalated`. AD-5 in the spine is updated. The awaited unit is `blocked` (no round consumed); units that wait on it stay pending, so a run whose only waits are owner reviews ends `awaiting_owner`.
+- Owner review applies to any `open_pr` whose branch touches `review_paths` (and `protected_paths` in a factory story), so an infra PR touching workflows also waits instead of failing on the merge refusal.
+- The stage table is unchanged (the digest of run `20261117-174705-full` still matches); only settings, prompts and code changed. `depends_on` keys of an issue story are checked against `origin/main`'s `epics.md` and its `sprint-status.yaml` (`done`), then dropped from the run's story.
+- Dry-run issues come from `orchestrator/tests/fixtures/dryrun/issues/<n>.yaml`; the owner's merge is simulated with `<runs-dir>/fake-gh.json`.
+
+- Review fixes (2026-11-18, after the part-2 review and AD-27's amendment):
+  - Factory gate: only the branch point's block runs; any change to the block makes a story's PR an owner-review PR, created with the label (never labelled after the fact).
+  - Merge refusal decides from `git.branch_paths` (passed to `merge`); without paths, a missing or truncated `files` list (`changedFiles` != len) refuses.
+  - Intake: one GraphQL read (title, body, state, author, labels, `lastEditedAt`, `editor`); closed issues are refused; every `renamed` actor must be an owner; `touches`/`sources`/`depends_on` must be plain paths, domains and keys. A resume escalates a changed or closed issue, except that an issue closed by the story's own merge (`Closes #n`) is accepted. A second run for an unfinished issue is refused.
+  - Owner merge: `AwaitedSettled` then `Merged`; a merge whose head is not the head the orchestrator pushed escalates (`Awaiting.head`).
+  - Lock and queue: real runs always lock `<repo>/_bmad-output/sdlc/`; drain only on normal completion (Ctrl-C releases and re-raises); `queue-history.jsonl`; entries never carry `--repo`/`--pipeline` (the drainer passes its repo); a contender re-tries the lock under the queue lock after queueing, and the holder releases under the queue lock; the awaited check runs after preflight, only for `awaiting_owner` runs, with `auto-resume.json` per run so a failed automatic resume is not re-queued (shown by `sdlc status`).
+  - Robust git: fetch retries ref-lock errors (5 tries, backoff); a fetch outside a script step only warns; `clear_stale_locks` on resume.
+  - **Deviation:** learn branches rebase inside their `open_pr` script, not in a new `rebase` step of `sdlc/pipeline.yaml`: a new step changes the stage-table digest, and run `20261117-174705-full` must stay resumable.
+  - Sprint status is always merged into `main`'s file (full runs too); invalid YAML there fails the step (and escalates after its rounds). `bookkeeping_paths` live only in the model default.
 
 ## Spec Change Log
 
@@ -132,3 +150,33 @@ Run `20261117-174705-full` must stay resumable.
 - `cd orchestrator && uv run pytest -q` -- expected: all pass, live skipped
 - `cd orchestrator && uv run ruff check && uv run ruff format --check` -- expected: clean
 - `cd orchestrator && uv run sdlc run --dry-run; echo $?` -- expected: 0
+
+## Review Triage Log
+
+Pass 1 (2026-11-18). Reviewers: BH = Blind Hunter (16 findings), VG = Verification Gap (5 + 1), EC = Edge Case Hunter (21). Grouped by root cause; all fixed except where noted.
+
+| # | Finding | Verdict | Route |
+|---|---|---|---|
+| 1 | BH9, EC5: the factory gate runs the agent-written block before review | high | spine amended (branch-point block only); patch |
+| 2 | EC1, EC19: a block-only factory change auto-merges | high | patch (any block change means owner review) |
+| 3 | BH6, EC6: the merge refusal fails open (`files` missing or over 100) | high | patch (`branch_paths`, fail closed) |
+| 4 | BH3, BH5, EC8, EC9, EC10: closed issues, title renames and split reads | high | patch (one GraphQL read, renames, OPEN only) |
+| 5 | EC4, EC20: `touches` reaches prompts unfenced | medium | patch (field validation) |
+| 6 | BH4, EC11: two runs on one issue | medium | patch (refuse at intake) |
+| 7 | EC16: unlabelled protected PR if labelling fails | medium | patch (label at creation) |
+| 8 | BH8, BH10: no `Merged` event on owner merge; stale merge accepted | medium | patch (`Merged` and head SHA check) |
+| 9 | BH1, BH2, EC13: queue drained on Ctrl-C or crash; outcomes lost | high | patch (normal completion only; `queue-history.jsonl`) |
+| 10 | EC3: queue race strands a command | medium | patch |
+| 11 | EC7: queued `--pipeline`/`--repo` | medium | patch (refused) |
+| 12 | EC14, EC15: lock follows `--runs-dir` | medium | patch (repo lock for real runs) |
+| 13 | BH16, EC2, EC12, EC21, VG3: `_check_awaited` before preflight, loops, resumes escalated runs | medium | patch |
+| 14 | BH7, EC17: sprint status wipes epic 0, or replaces an invalid file | medium | patch (always merge; invalid fails) |
+| 15 | BH12: bookkeeping list in two places; AD-21 not updated | low | patch |
+| 16 | BH13, EC18: the fake uses default tiers | low | patch |
+| 17 | BH14: prompt wording for issue stories | low | patch |
+| 18 | BH11: docs (AD-5, CLI row, AD-27, deferred-work, ticks) | low | patch |
+| 19 | BH15, VG1, VG2, VG5, VG-o1: test gaps and misnamed tests | medium | patch |
+| 20 | VG4: the timeline jq is untested against GitHub's real payload | maybe-false | defer (opt-in live test) |
+| 21 | Live crash: a concurrent `git fetch` ref lock ended the run | high | patch (retry; warn outside script steps) |
+| 22 | Live crash: a stale worktree `HEAD.lock` blocked every resume | high | patch (`clear_stale_locks` on resume) |
+| 23 | Live escalation #26: learn branches never rebase | high | patch (rebase inside learn `open_pr`; no new pipeline step, to keep the stage-table digest) |

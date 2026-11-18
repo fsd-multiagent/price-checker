@@ -216,8 +216,11 @@ def split_command(cmd: str) -> list[str]:
 
 class ProjectCommands:
     async def run(
-        self, name: str, worktree: str, timeout_s: float, key: StepKey
+        self, name: str, worktree: str, timeout_s: float, key: StepKey, factory: bool = False
     ) -> tuple[int, str]:
+        """Run the `name` commands of the block at the branch point (ADR 0023). A factory
+        story (AD-27) may change the block, but its new block is agent-written and never runs
+        before the owner merges it; any other branch that changed the block fails (ADR 0004)."""
         if not Path(worktree).is_dir():
             return 1, f"{name}: worktree {worktree} does not exist"
         if name == "fr_ac_check":
@@ -234,13 +237,13 @@ class ProjectCommands:
             return 1, f"no {name} commands in {AGENTS_MD}: {exc}"
         point = await self._branch_point(worktree)
         base = await self._block_at(worktree, point or BASE_REF)
-        if base != block:
+        if base != block and (not factory or base is None):
             where = f"the branch point {point[:12]} on {BASE_REF}" if point else BASE_REF
             return 1, (
                 f"sdlc-commands in the worktree differ from {where}: this branch changed "
                 f"the gate block (ADR 0004)"
             )
-        cmds = base.get(name) if base else None
+        cmds = list(base.get(name) or ()) if base else []
         if not cmds:
             return 1, f"no {name} commands in {AGENTS_MD}"
         try:
@@ -249,6 +252,9 @@ class ProjectCommands:
             return 1, f"{name}: {exc}"
         deadline = time.monotonic() + timeout_s
         log: list[str] = []
+        if base != block:
+            log.append(f"factory story: the branch point's {name} commands; the story's new "
+                       "block runs only after the owner merges it (AD-27)")  # fmt: skip
         for cmd, argv in zip(cmds, argvs, strict=True):
             left = deadline - time.monotonic()
             if left <= 0:

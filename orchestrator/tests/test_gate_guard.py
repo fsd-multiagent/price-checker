@@ -78,7 +78,9 @@ def _weaken_every_worktree(dr) -> None:
 
     def read_text(path: str) -> str | None:
         if path.endswith(f"/{AGENTS_MD}") and path not in fs.files:
-            return WEAKENED
+            # Story branches revert AGENTS.md to their head (AD-21): the fake has no content
+            # to revert to, so a story worktree reads the base file.
+            return BASE if "/story/" in path else WEAKENED
         return real_read(path)
 
     git.show = show  # type: ignore[method-assign]

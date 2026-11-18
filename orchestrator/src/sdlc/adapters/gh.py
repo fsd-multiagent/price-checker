@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from sdlc.adapters.proc import ProcResult, run_proc
-from sdlc.core.proposals import OWNER_REVIEW_LABEL, proposal_marker
+from sdlc.core.issues import IssueInfo, LabelEvent
+from sdlc.core.models import Settings
+from sdlc.core.proposals import OWNER_REVIEW_LABEL, in_tier, proposal_marker
 from sdlc.ports import AdapterError, ProposalRef, StepKey
 
 ESCALATION_LABEL = "escalation"
@@ -18,6 +20,18 @@ OWNER_REVIEW_DESCRIPTION = "Factory change proposed by an agent; only the owner 
 _PASS = frozenset({"pass", "skipping"})
 _FAIL = frozenset({"fail", "cancel"})
 _NO_SHA_POLLS = 3  # polls to wait for the merge commit SHA after the PR reports MERGED
+_DEFAULTS = Settings(run_budget_usd=1)
+# AD-27: one query, so the text, the state and its last editor are read together.
+_ISSUE_QUERY = (
+    "query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, "
+    "name: $repo) { issue(number: $number) { number title body state author { login } "
+    "lastEditedAt editor { login } labels(first: 100) { nodes { name } } } } }"
+)
+_LABEL_EVENTS_JQ = (
+    '.[] | select(.event == "labeled" or .event == "unlabeled" or .event == "renamed") | '
+    '{id: ((.id // .node_id) | tostring), event: .event, label: (.label.name // ""), '
+    "actor: .actor.login}"
+)
 
 
 def escalation_marker(run_id: str, scope: str) -> str:
@@ -46,8 +60,12 @@ class GhCli:
         poll_s: float = 60.0,
         merge_timeout_min: float = 30.0,
         call_timeout_s: float = 120.0,
+        protected_paths: tuple[str, ...] = _DEFAULTS.protected_paths,
+        review_paths: tuple[str, ...] = _DEFAULTS.review_paths,
     ) -> None:
         self.repo = Path(repo).resolve()
+        self.protected_paths = protected_paths
+        self.review_paths = review_paths
         self.poll_s = poll_s
         self.merge_timeout_min = merge_timeout_min
         self.call_timeout_s = call_timeout_s
@@ -72,8 +90,15 @@ class GhCli:
                 return None
             raise AdapterError(f"gh {' '.join(args[:2])}: output is not JSON: {exc}") from exc
 
-    async def ensure_pr(self, head: str, base: str, title: str, body: str) -> int:
-        """AD-13: PRs are keyed by head branch; reuse the open one, else create it."""
+    async def ensure_pr(
+        self, head: str, base: str, title: str, body: str, labels: tuple[str, ...] = ()
+    ) -> int:
+        """AD-13: PRs are keyed by head branch; reuse the open one, else create it. `labels`
+        are set when the PR is created (AD-27: an owner-review PR is never unlabelled), and
+        added to a reused one."""
+        for name in labels:
+            if name == OWNER_REVIEW_LABEL:
+                await self._owner_review_label()
         found = await self._json(
             "pr", "list", "--head", head, "--base", base, "--state", "open", "--json", "number"
         )
@@ -81,10 +106,15 @@ class GhCli:
             entry = found[0]
             if not isinstance(entry, dict) or "number" not in entry:
                 raise AdapterError(f"gh pr list returned an entry without a number: {entry!r}")
-            return int(entry["number"])
+            number = int(entry["number"])
+            for name in labels:
+                await self._gh("pr", "edit", str(number), "--add-label", name)
+            return number
+        flags = [x for name in labels for x in ("--label", name)]
         res = await self._gh(
-            "pr", "create", "--head", head, "--base", base, "--title", title, "--body", body
-        )
+            "pr", "create", "--head", head, "--base", base, "--title", title, "--body", body,
+            *flags,
+        )  # fmt: skip
         return _number_from_url(res.stdout)
 
     async def checks_green(self, pr: int, timeout_min: int, key: StepKey | None = None) -> bool:
@@ -112,8 +142,9 @@ class GhCli:
     async def _view(self, pr: int) -> dict[str, Any] | None:
         """`gh pr view`, or None when the call fails (a transient error is polled again)."""
         view = await self._json(
-            "pr", "view", str(pr), "--json", "state,mergeCommit,labels", check=False
-        )
+            "pr", "view", str(pr), "--json", "state,mergeCommit,labels,files,changedFiles",
+            check=False,
+        )  # fmt: skip
         return view if isinstance(view, dict) else None
 
     async def _first_view(self, pr: int) -> dict[str, Any]:
@@ -126,16 +157,29 @@ class GhCli:
                 await asyncio.sleep(self.poll_s)
         raise AdapterError(f"cannot read PR #{pr} before merging it")
 
-    async def merge(self, pr: int, head_sha: str, key: StepKey | None = None) -> str | None:
+    async def merge(
+        self,
+        pr: int,
+        head_sha: str,
+        key: StepKey | None = None,
+        factory: bool = False,
+        paths: list[str] | None = None,
+    ) -> str | None:
         """Auto-merge pinned to `head_sha` (never `--admin`); the merge SHA, or None.
 
         A PR that is already merged (a resume) returns its SHA without a new merge call. On a
-        timeout, auto-merge is turned off again.
+        timeout, auto-merge is turned off again. Refused (AD-26, AD-27): a PR labelled
+        owner-review, and one touching protected or review paths outside a factory story.
+        `paths` are the branch's own changed paths (`git diff`); without them the PR's file
+        list is read, and a missing or truncated list refuses (fail closed).
         """
         if not head_sha:
             raise AdapterError("refusing to merge without a head SHA (AD-20)")
         view = await self._first_view(pr)
         refuse_owner_review(pr, view)
+        if not factory:
+            files = paths if paths is not None else pr_files(pr, view)
+            refuse_paths(pr, files, self.protected_paths, self.review_paths)
         state = _state(view)
         if state != "MERGED":
             if state == "CLOSED":
@@ -250,6 +294,75 @@ class GhCli:
     async def _owner_review_label(self) -> None:
         await self.ensure_label(OWNER_REVIEW_LABEL, OWNER_REVIEW_COLOR, OWNER_REVIEW_DESCRIPTION)
 
+    # ------------------------------------------------------------------ AD-27
+
+    async def issue(self, number: int) -> IssueInfo:
+        """The issue's title, body, state, author, labels and last editor (GraphQL
+        `lastEditedAt` and `editor`), in one query so they describe the same moment."""
+        data = await self._json(
+            "api", "graphql", "-F", "owner={owner}", "-F", "repo={repo}",
+            "-F", f"number={number}", "-f", f"query={_ISSUE_QUERY}",
+        )  # fmt: skip
+        try:
+            node = data["data"]["repository"]["issue"]
+            if not isinstance(node, dict):
+                raise TypeError("not an object")
+        except (KeyError, TypeError) as exc:
+            raise AdapterError(f"gh api graphql: no issue #{number} in {data!r}"[:300]) from exc
+        editor = node.get("editor")
+        nodes = (node.get("labels") or {}).get("nodes") or ()
+        return IssueInfo(
+            number=int(node.get("number") or number),
+            title=str(node.get("title") or ""),
+            body=str(node.get("body") or ""),
+            author=str((node.get("author") or {}).get("login") or ""),
+            state=str(node.get("state") or "").upper(),
+            labels=tuple(str(x.get("name", "")) for x in nodes if isinstance(x, dict)),
+            last_edited_at=node.get("lastEditedAt"),
+            editor=str(editor["login"]) if isinstance(editor, dict) and editor.get("login")
+            else None,
+        )  # fmt: skip
+
+    async def label_events(self, number: int) -> tuple[LabelEvent, ...]:
+        """The `labeled`, `unlabeled` and `renamed` events of the issue's REST timeline."""
+        res = await self._gh(
+            "api", "--paginate", f"repos/{{owner}}/{{repo}}/issues/{number}/timeline?per_page=100",
+            "--jq", _LABEL_EVENTS_JQ,
+        )  # fmt: skip
+        out: list[LabelEvent] = []
+        for line in res.stdout.splitlines():
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise AdapterError(f"gh api timeline: a line is not JSON: {exc}") from exc
+            out.append(
+                LabelEvent(
+                    id=str(item.get("id")),
+                    event=str(item.get("event")),
+                    label=str(item.get("label") or ""),
+                    actor=item.get("actor"),
+                )
+            )
+        return tuple(out)
+
+    async def comment_issue(self, number: int, body: str) -> None:
+        await self._gh("issue", "comment", str(number), "--body", body)
+
+    async def label_pr(self, pr: int, name: str) -> None:
+        if name == OWNER_REVIEW_LABEL:
+            await self._owner_review_label()
+        await self._gh("pr", "edit", str(pr), "--add-label", name)
+
+    async def pr_state(self, pr: int) -> tuple[str, str | None, str | None]:
+        """`(state, merge commit SHA, head SHA)`."""
+        view = await self._json("pr", "view", str(pr), "--json", "state,mergeCommit,headRefOid")
+        if not isinstance(view, dict):
+            raise AdapterError(f"gh pr view {pr}: no PR")
+        head = view.get("headRefOid")
+        return _state(view), _merge_sha(view), str(head) if head else None
+
 
 def _labelled(view: dict[str, Any] | None) -> bool:
     labels = (view or {}).get("labels") or []
@@ -263,6 +376,32 @@ def refuse_owner_review(pr: int, view: dict[str, Any] | None) -> None:
         raise AdapterError(
             f"refusing to merge PR #{pr}: it is labelled {OWNER_REVIEW_LABEL}; only the owner "
             "merges it (AD-26)"
+        )
+
+
+def pr_files(pr: int, view: dict[str, Any] | None) -> list[str]:
+    """The PR's changed paths; refuses (fail closed) when the list is missing or shorter
+    than `changedFiles` (gh caps it)."""
+    files = (view or {}).get("files")
+    count = (view or {}).get("changedFiles")
+    if not isinstance(files, list) or not isinstance(count, int) or count != len(files):
+        raise AdapterError(
+            f"refusing to merge PR #{pr}: its file list is missing or incomplete, so its "
+            "paths cannot be checked (AD-26, AD-27)"
+        )
+    return [str(f.get("path")) for f in files if isinstance(f, dict) and f.get("path")]
+
+
+def refuse_paths(
+    pr: int, files: list[str], protected: tuple[str, ...], review: tuple[str, ...]
+) -> None:
+    """AD-26, AD-27: outside a factory story, a PR touching protected or review paths is the
+    owner's to merge."""
+    hit = [f for f in files if in_tier(f, protected) or in_tier(f, review)]
+    if hit:
+        raise AdapterError(
+            f"refusing to merge PR #{pr}: it touches {', '.join(hit[:5])} (protected or review "
+            "paths); only the owner merges it (AD-26, AD-27)"
         )
 
 

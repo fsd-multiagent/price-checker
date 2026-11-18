@@ -1,0 +1,23 @@
+# A stub GitHub issue for `sdlc story 12 --dry-run` (AD-27): written by an owner, never edited,
+# labelled `factory` by an owner. Its story edits a protected path, so its PR waits for the
+# owner: the run ends awaiting_owner (exit 2). Simulate the owner's merge by writing
+# {"pr_states": {"<pr>": "MERGED"}} to <runs dir>/fake-gh.json, then run any sdlc command
+# that takes the lock, for example `sdlc --runs-dir <runs dir> resume <run id>`.
+title: Tune the QA prompt
+author: aserban-dev
+state: OPEN
+labels: [factory]
+last_edited_at: null
+editor: null
+timeline:
+  - {id: "9001", event: labeled, label: factory, actor: aserban-dev}
+body: |
+  Eufrosina (QA) should name the acceptance criterion in every test.
+
+  ```yaml
+  depends_on: []
+  touches: [sdlc/prompts/qa.md]
+  sources: []
+  acceptance:
+    - "AC-1: the QA prompt asks for the criterion ID in each test name"
+  ```

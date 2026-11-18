@@ -463,7 +463,7 @@ async def test_proposals_merge_refusal_rechecked_on_every_poll(stubs, tmp_path, 
     labelled = {"state": "OPEN", "labels": [{"name": OWNER_REVIEW_LABEL}]}
     gh_config(tmp_path, monkeypatch, view=[{"state": "OPEN", "labels": []}, labelled])
     with pytest.raises(AdapterError, match="owner-review"):
-        await GhCli(tmp_path, poll_s=0.01).merge(9, "deadbeef")
+        await GhCli(tmp_path, poll_s=0.01).merge(9, "deadbeef", paths=[])
     merges = [c["argv"] for c in calls(log, "gh") if c["argv"][:2] == ["pr", "merge"]]
     assert merges[0][3] == "--auto" and merges[-1] == ["pr", "merge", "9", "--disable-auto"]
 
@@ -473,8 +473,8 @@ async def test_proposals_merge_refusal_fails_the_step(tmp_path):
     gh = dr.ports.gh
     real_pr = gh.ensure_pr
 
-    async def labelled(head, base, title, body):
-        number = await real_pr(head, base, title, body)
+    async def labelled(head, base, title, body, labels=()):
+        number = await real_pr(head, base, title, body, labels)
         if head == "story/1-1-ean-input":
             gh.labels[number] = {OWNER_REVIEW_LABEL}
         return number

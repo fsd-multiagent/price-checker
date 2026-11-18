@@ -40,12 +40,23 @@ def _story_units(state: RunState, key: str) -> list[Unit]:
     return [u for u in state.units if u.scope == f"story:{key}"]
 
 
+def _stuck(state: RunState, unit: Unit) -> bool:
+    """Escalated, or blocked on something other than an owner review: a unit that waits for
+    the owner's merge is only waited on (AD-27)."""
+    if unit.status is Status.BLOCKED and state.awaited(unit.scope, unit.stage) is not None:
+        return False
+    return unit.status in STUCK
+
+
 def block_reason(
     pipeline: Pipeline, state: RunState, unit: Unit, approved: frozenset[str]
 ) -> str | None:
     """Why the unit must wait for a human, or None. A blocked unit consumes no round."""
+    awaited = state.awaited(unit.scope, unit.stage)
+    if awaited is not None:  # AD-27: until the owner merges or closes the PR
+        return f"awaiting owner review of PR #{awaited.pr}"
     for p in prerequisites(pipeline, state, unit):
-        if p.status in STUCK:
+        if _stuck(state, p):
             return f"waiting on {p.scope}/{p.stage}, which is {p.status}"
     stage = pipeline.stage(unit.stage)
     if stage.family != "story":
@@ -55,7 +66,7 @@ def block_reason(
         return None
     for dep in story.depends_on:
         for p in _story_units(state, dep):
-            if p.status in STUCK:
+            if _stuck(state, p):
                 return f"depends on story {dep}, which is {p.status}"
     unapproved = [s for s in story.sources if s not in approved]
     if unapproved:

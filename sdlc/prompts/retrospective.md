@@ -1,4 +1,6 @@
-/bmad-retrospective -H Run the retrospective for `${story_key}` using `${epics_path}`.
+/bmad-retrospective -H Run the retrospective for `${story_key}` using ${story_source}.
+
+${issue_text}
 
 Run `${run_id}`, scope `${scope}`, stage `${stage}`, step `${step}`, round ${round}.
 Your working directory is the worktree `${worktree}`. Write only inside it.
