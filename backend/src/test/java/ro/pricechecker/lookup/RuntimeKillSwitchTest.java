@@ -22,6 +22,7 @@ import ro.pricechecker.adapter.AdapterOutcome;
 import ro.pricechecker.adapter.PageFacts;
 import ro.pricechecker.adapter.RetailerAdapter;
 import ro.pricechecker.adapter.RetailerHttp;
+import ro.pricechecker.cache.ResultCache;
 import ro.pricechecker.ean.Ean;
 import ro.pricechecker.registry.MutableClock;
 import ro.pricechecker.registry.Registry;
@@ -68,6 +69,8 @@ class RuntimeKillSwitchTest {
               Optional.of(http),
               clock,
               new RuntimeSwitch(file(), clock),
+              TestRegistries.blockStore(TestRegistries.runtimeAllowing(clock), clock),
+              new ResultCache<>(Duration.ofMinutes(15), clock),
               new LookupLog(clock));
     }
     return service;
@@ -102,7 +105,14 @@ class RuntimeKillSwitchTest {
 
   private static List<JsonNode> logLines(CapturedOutput output) {
     JsonMapper json = JsonMapper.builder().build();
-    return output.getOut().lines().map(json::readTree).toList();
+    // Story 2.8: every Lookup also logs one lookup_row line per retailer; only rejections count
+    // here.
+    return output
+        .getOut()
+        .lines()
+        .map(json::readTree)
+        .filter(n -> "runtime_config_rejected".equals(n.path("event").stringValue()))
+        .toList();
   }
 
   @Test
@@ -135,7 +145,8 @@ class RuntimeKillSwitchTest {
     write(A_ALLOWED);
     clock.advance(Duration.ofSeconds(15));
     assertThat(statusOfA()).isEqualTo(RowStatus.FOUND);
-    assertThat(calls).containsExactly("a.example", "a.example");
+    // Story 2.8: the FOUND verdict from the first Lookup is still within the cache TTL.
+    assertThat(calls).containsExactly("a.example");
   }
 
   @Test
@@ -187,7 +198,7 @@ class RuntimeKillSwitchTest {
       throws IOException {
     write(A_ALLOWED);
     assertThat(statusOfA()).isEqualTo(RowStatus.FOUND);
-    assertThat(output.getOut()).isEmpty();
+    assertThat(logLines(output)).isEmpty();
 
     write("retailers: {a.example: [ \"secret-content\"");
     clock.advance(Duration.ofSeconds(15));

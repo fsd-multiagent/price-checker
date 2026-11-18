@@ -27,6 +27,7 @@ import ro.pricechecker.adapter.PageFacts;
 import ro.pricechecker.adapter.RetailerAdapter;
 import ro.pricechecker.adapter.RetailerHttp;
 import ro.pricechecker.adapter.UnavailableReason;
+import ro.pricechecker.cache.ResultCache;
 import ro.pricechecker.ean.Ean;
 import ro.pricechecker.lookup.AdapterCatalog;
 import ro.pricechecker.lookup.LookupLog;
@@ -224,6 +225,8 @@ class RetryAfterAcceptanceGapsTest {
             Optional.of(boundA(store)),
             clock,
             runtime,
+            store,
+            new ResultCache<>(Duration.ofMinutes(15), clock),
             new LookupLog(clock));
     Ean ean = Ean.parse(TestRegistries.EAN_A);
     transport.then(tooMany("3600"));

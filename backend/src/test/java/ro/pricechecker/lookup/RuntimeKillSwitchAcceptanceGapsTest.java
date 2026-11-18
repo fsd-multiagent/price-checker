@@ -23,6 +23,7 @@ import ro.pricechecker.adapter.AdapterOutcome;
 import ro.pricechecker.adapter.PageFacts;
 import ro.pricechecker.adapter.RetailerAdapter;
 import ro.pricechecker.adapter.RetailerHttp;
+import ro.pricechecker.cache.ResultCache;
 import ro.pricechecker.ean.Ean;
 import ro.pricechecker.registry.MutableClock;
 import ro.pricechecker.registry.Registry;
@@ -67,6 +68,8 @@ class RuntimeKillSwitchAcceptanceGapsTest {
         Optional.of(http),
         clock,
         new RuntimeSwitch(dir.resolve("runtime.yaml"), clock),
+        TestRegistries.blockStore(TestRegistries.runtimeAllowing(clock), clock),
+        new ResultCache<>(Duration.ofMinutes(15), clock),
         new LookupLog(clock));
   }
 
