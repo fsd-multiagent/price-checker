@@ -81,9 +81,9 @@ public final class ConfigCheck {
     }
     Optional<RegisterLimits> limits = register.limits(d);
     if (limits.isEmpty()) {
-      // Limits only constrain fetching (AD-8): an entry that is disabled and not Approved cannot
-      // fetch, so its register Limits may be unparseable (e.g. "—"), but its own values must
-      // still be sane.
+      // ADR 0024 (amends ADR 0009): Limits only constrain fetching, so an entry that is disabled
+      // and not Approved may have unparseable register Limits (e.g. "—"), but its own values
+      // must still be positive.
       if (r.enabled() || approved.contains(d)) {
         violations.add(d + ": register Limits cannot be parsed");
         return;

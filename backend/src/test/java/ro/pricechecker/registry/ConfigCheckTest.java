@@ -113,6 +113,8 @@ class ConfigCheckTest {
     assertThat(check(List.of(slow), twoEans("a.example"))).isEmpty();
   }
 
+  // AC 1.5.2 as amended by ADR 0024: unparseable Limits fail for an Approved or enabled entry;
+  // a disabled, not Approved entry is covered by the ac_4_1_2 tests below.
   @Test
   void ac_1_5_2_unparseableRegisterLimits() {
     SourceRegister reg =

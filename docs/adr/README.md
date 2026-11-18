@@ -38,3 +38,4 @@
 | [0023](0023-gate-block-compared-at-branch-point.md) | Compare the gate block with the story's branch point on main, not with today's main | Accepted | 2026-11-18 |
 | [0024](0024-ci-secret-and-vulnerability-scanners.md) | Scan each event's commit range with gitleaks and runtime dependencies with Trivy, both pinned binaries with a canary | Proposed | 2026-11-18 |
 | [0025](0025-model-and-effort-per-step.md) | Let a step set its own model, effort and max turns, so read-only reviewers can run cheaper than the developer | Proposed | 2026-11-18 |
+| [0024](0024-register-limits-required-only-for-fetching-entries.md) | Require parseable register Limits only for retailer entries that can fetch (amends 0009) | Proposed | 2026-11-18 |

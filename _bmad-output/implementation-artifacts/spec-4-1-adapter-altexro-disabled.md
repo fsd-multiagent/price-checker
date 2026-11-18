@@ -11,13 +11,6 @@ context:
 warnings: []
 deferred:
   - summary: >-
-      ConfigCheck now accepts unparseable register Limits for disabled, not Approved entries, which narrows AD-8 and AC 1.5.2; needs an ADR or AD-8 amendment from Loredan (Architect) or the owner (D-2).
-    evidence: |-
-      Register row for Altex has Limits "—" (owner-only file); the story requires an Altex entry in retailers.yaml.
-    location: >-
-      backend/src/main/java/ro/pricechecker/registry/ConfigCheck.java:84
-    severity: medium
-  - summary: >-
       No test pins the no-price fallback (first step with any fact wins when several steps disagree).
     evidence: |-
       unparseable-price.html yields facts from JSON-LD only, so dropping the withFacts guard passes all tests.
@@ -111,6 +104,8 @@ deferred:
 
 ## Spec Change Log
 
+- 2026-11-18 (round 2): review blocker CR-1 (D-2) — the ConfigCheck narrowing changed ADR 0009 / AD-8 / AC 1.5.2 without an ADR. Added ADR 0024 (Proposed, amends ADR 0009), indexed it, marked ADR 0009 amended, and aligned AD-8 and AC 1.5.2 wording; code, test and config comments cite ADR 0024. Behaviour unchanged.
+
 ## Review Triage Log
 
 ## Design Notes
@@ -157,4 +152,8 @@ Status: done
 - **Review:** 0 patches, 10 deferred (6 frontmatter items after grouping), 10 rejected with reasons above.
 - **Follow-up review recommended:** false (no patches applied).
 - **Verification:** `backend/gradlew -p backend check` exit 0 (Spotless, compile -Werror, all tests, ArchUnit). altex.ro never contacted; `docs/source-register.md` untouched.
-- **Residual risk:** the ConfigCheck relaxation departs from AD-8 wording and needs an architect/owner decision.
+- **Residual risk:** ADR 0024 is Proposed; Loredan (Architect) or the owner must accept it.
+
+### Round 2
+
+- Fixed CR-1 (D-2): ADR 0024 records the Limits exemption for disabled, not Approved entries and amends ADR 0009; AD-8 and AC 1.5.2 updated. `backend/gradlew -p backend check` exit 0.

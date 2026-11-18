@@ -77,7 +77,7 @@ class RegistryAcceptanceGapsTest {
           assertThat(r.enabled()).as(r.domain()).isFalse();
           assertThat(r.resolution()).as(r.domain()).isEqualTo("curated");
           assertThat(r.deadlineMs()).as(r.domain()).isEqualTo(4000);
-          // A disabled, not Approved entry may have unparseable register Limits (story 4.1).
+          // A disabled, not Approved entry may have unparseable register Limits (ADR 0024).
           if (register.limits(r.domain()).isEmpty()) {
             assertThat(register.isApproved(r.domain())).as(r.domain()).isFalse();
             assertThat(r.minIntervalMs()).as(r.domain()).isPositive();
