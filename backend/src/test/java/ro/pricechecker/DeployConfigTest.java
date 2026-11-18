@@ -71,8 +71,22 @@ class DeployConfigTest {
   }
 
   private static String caddyfileWithoutPlaceholderBraces(Path path) throws IOException {
+    return withoutPlaceholderBraces(Files.readString(path));
+  }
+
+  private static String withoutPlaceholderBraces(String caddyfile) {
     // "{$SITE_ADDRESS}" is an env placeholder, not a block: protect it from the brace scan.
-    return Files.readString(path).replace("{$", "(DOLLAR)").replace("{path}", "(path)");
+    return caddyfile.replace("{$", "(DOLLAR)").replace("{path}", "(path)");
+  }
+
+  private static boolean siteBlockHasLog(String caddyfile) {
+    Pattern log = Pattern.compile("(?m)^\\s*log\\b");
+    return topLevelBlocks(withoutPlaceholderBraces(caddyfile)).stream()
+        .anyMatch(b -> !b[0].isEmpty() && log.matcher(b[1]).find());
+  }
+
+  private static List<String> exposeLines(Path dockerfile) throws IOException {
+    return Files.readAllLines(dockerfile).stream().filter(l -> l.startsWith("EXPOSE ")).toList();
   }
 
   @Test
@@ -188,6 +202,89 @@ class DeployConfigTest {
     assertThat(site[1])
         .containsPattern("handle /api/\\*\\s*\\{\\s*reverse_proxy backend:8080")
         .containsPattern("handle\\s*\\{\\s*reverse_proxy web:8080");
+  }
+
+  @Test
+  @Tag("AC-3.2.1")
+  void ac_3_2_1_backendRunsAsTheImageUserAndProxyMountsTheDeployCaddyfile() throws IOException {
+    Map<String, Object> services = services();
+    String backendUser = (String) map(services.get("backend")).get("user");
+    String imageUser =
+        Files.readAllLines(Path.of("Dockerfile")).stream()
+            .filter(l -> l.startsWith("USER "))
+            .reduce((a, b) -> b)
+            .orElseThrow()
+            .substring("USER ".length());
+    // "${BACKEND_UID:-10001}:${BACKEND_GID:-10001}" falls back to the image's non-root user.
+    assertThat(backendUser.replaceAll("\\$\\{[A-Z_]+:-(\\d+)\\}", "$1")).isEqualTo(imageUser);
+    List<String> proxyMounts =
+        ((List<?>) map(services.get("proxy")).get("volumes"))
+            .stream().map(Object::toString).toList();
+    assertThat(proxyMounts).contains("./Caddyfile:/etc/caddy/Caddyfile:ro");
+  }
+
+  @Test
+  @Tag("AC-3.2.2")
+  void ac_3_2_2_proxyPublishesOnly80And443AndTheSiteIsANamedHostSoCaddyRedirects()
+      throws IOException {
+    Map<String, ?> proxy = map(services().get("proxy"));
+    assertThat(((List<?>) proxy.get("ports")).stream().map(Object::toString).toList())
+        .containsExactlyInAnyOrder("80:80", "443:443");
+    // A required DNS name, not ":443" or an IP: Caddy then gets a certificate and redirects 80.
+    assertThat((String) map(proxy.get("environment")).get("SITE_ADDRESS"))
+        .startsWith("${SITE_ADDRESS:?");
+    List<String[]> blocks = topLevelBlocks(caddyfileWithoutPlaceholderBraces(DEPLOY_CADDYFILE));
+    List<String> siteHeaders = blocks.stream().map(b -> b[0]).filter(h -> !h.isEmpty()).toList();
+    assertThat(siteHeaders).containsExactly("(DOLLAR)SITE_ADDRESS}");
+  }
+
+  @Test
+  @Tag("AC-3.2.2")
+  void ac_3_2_2_apiRouteKeepsItsPrefixAndNoOtherUpstreamIsUsed() throws IOException {
+    String text = Files.readString(DEPLOY_CADDYFILE);
+    // The backend serves /api/..., so the prefix must reach it unchanged.
+    assertThat(text).doesNotContain("handle_path", "strip_prefix", "rewrite");
+    Matcher upstream = Pattern.compile("reverse_proxy\\s+(\\S+)").matcher(text);
+    List<String> upstreams = new ArrayList<>();
+    while (upstream.find()) {
+      upstreams.add(upstream.group(1));
+    }
+    assertThat(upstreams).containsExactlyInAnyOrder("backend:8080", "web:8080");
+  }
+
+  @Test
+  @Tag("AC-3.2.2")
+  void ac_3_2_2_upstreamPortsMatchWhatEachContainerListensOn() throws IOException {
+    Map<String, Object> services = services();
+    for (String name : List.of("web", "backend")) {
+      assertThat(((List<?>) map(services.get(name)).get("expose")).stream().map(Object::toString))
+          .as("%s expose", name)
+          .containsExactly("8080");
+    }
+    assertThat(exposeLines(Path.of("Dockerfile"))).containsExactly("EXPOSE 8080");
+    assertThat(exposeLines(Path.of("../web/Dockerfile"))).containsExactly("EXPOSE 8080");
+    // Spring Boot listens on 8080 unless server.port says otherwise.
+    Map<String, Object> server =
+        map(
+            map(new Yaml().load(Files.readString(Path.of("src/main/resources/application.yaml"))))
+                .get("server"));
+    assertThat(server.getOrDefault("port", 8080)).isEqualTo(8080);
+    List<String> webSites =
+        topLevelBlocks(caddyfileWithoutPlaceholderBraces(WEB_CADDYFILE)).stream()
+            .map(b -> b[0])
+            .filter(h -> !h.isEmpty())
+            .toList();
+    assertThat(webSites).containsExactly(":8080");
+  }
+
+  @Test
+  @Tag("AC-3.2.3")
+  void ac_3_2_3_logScanFindsASiteLevelLogAndIgnoresPlaceholders() {
+    String withSiteLog = "{\n\tlog\n}\n\n{$SITE_ADDRESS} {\n\tlog {\n\t\toutput stdout\n\t}\n}\n";
+    String globalOnly = "{\n\tlog\n}\n\n{$SITE_ADDRESS} {\n\ttry_files {path} /index.html\n}\n";
+    assertThat(siteBlockHasLog(withSiteLog)).isTrue();
+    assertThat(siteBlockHasLog(globalOnly)).isFalse();
+    assertThat(topLevelBlocks(withoutPlaceholderBraces(globalOnly))).hasSize(2);
   }
 
   @Test
