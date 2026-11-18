@@ -95,10 +95,10 @@ def test_register_uses_the_guard_rule():
     assert parse_register(None).approved == frozenset()
 
 
-def test_real_register_has_no_approved_rows_yet():
+def test_real_register_approved_rows():
     reg = parse_register((REPO / "docs" / "source-register.md").read_text(encoding="utf-8"))
     assert "emag.ro" in reg.listed
-    assert reg.approved == frozenset()
+    assert reg.approved == {"cel.ro", "evomag.ro"}  # owner approval 2026-11-18
 
 
 def test_json_blocks():

@@ -59,11 +59,11 @@ class RegistryAcceptanceGapsTest {
   }
 
   /**
-   * AC 1.5.2: the shipped config holds the two Proposed retailers, each disabled, curated, with
-   * deadlineMs 4000 and limits no looser than the register's Limits column.
+   * AC 1.5.2: the shipped config holds the register's retailers, each enabled exactly when
+   * Approved, curated, with deadlineMs 4000 and limits no looser than the register's Limits column.
    */
   @Test
-  void ac_1_5_2_shippedEntriesAreDisabledCuratedWithRegisterLimits() {
+  void ac_1_5_2_shippedEntriesAreEnabledOnlyWhenApprovedCuratedWithRegisterLimits() {
     SourceRegister register =
         SourceRegister.parse(Registry.readResource(Registry.REGISTER_RESOURCE));
     List<RetailerConfig> retailers =
@@ -73,8 +73,9 @@ class RegistryAcceptanceGapsTest {
     assertThat(retailers)
         .allSatisfy(r -> {
           assertThat(register.rows()).as(r.domain()).containsKey(r.domain());
-          assertThat(r.adapter()).as(r.domain()).isEqualTo("disabled");
-          assertThat(r.enabled()).as(r.domain()).isFalse();
+          // Owner approval 2026-11-18: an adapter is enabled exactly when its retailer is Approved.
+          assertThat(r.enabled()).as(r.domain()).isEqualTo(register.isApproved(r.domain()));
+          assertThat(r.adapter()).as(r.domain()).isEqualTo(r.enabled() ? "enabled" : "disabled");
           assertThat(r.resolution()).as(r.domain()).isEqualTo("curated");
           assertThat(r.deadlineMs()).as(r.domain()).isEqualTo(4000);
           // A disabled, not Approved entry may have unparseable register Limits (ADR 0026).

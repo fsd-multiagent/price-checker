@@ -172,11 +172,13 @@ class CelroAdapterTest {
 
   @Test
   @Tag("AC-2.10.3")
-  void ac_2_10_3_celroStaysDisabledInRetailersYaml() {
-    assertThat(new Registry().retailers())
+  void ac_2_10_3_celroEnabledInRetailersYamlOnlyBecauseApproved() {
+    Registry registry = new Registry();
+    assertThat(registry.isApproved("cel.ro")).isTrue(); // owner approval 2026-11-18
+    assertThat(registry.retailers())
         .filteredOn(r -> r.domain().equals("cel.ro"))
         .singleElement()
         .extracting(RetailerConfig::adapter)
-        .isEqualTo("disabled");
+        .isEqualTo("enabled");
   }
 }
