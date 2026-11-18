@@ -9,8 +9,9 @@ from sdlc import cli
 from sdlc.core.models import Effort
 from sdlc.core.pipeline import PipelineError, load_pipeline
 
-CHEAP_PROMPTS = ("brief-coverage", "security-prd", "security-architecture", "code-lens",
-                 "security-story")  # fmt: skip
+# code-lens and security-story stay on the stage model: on sonnet/medium they often ended
+# with an empty final message and no verdict block (result_block), failing the round.
+CHEAP_PROMPTS = ("brief-coverage", "security-prd", "security-architecture")
 
 
 def _with_build_stage_limits(text: str) -> str:
@@ -23,8 +24,9 @@ async def test_ac1_step_model_overrides_a_stage_model_and_others_keep_it(tmp_pat
     assert await run_dry(dr) == 0
     invocations = dr.ports.claude.invocations  # type: ignore[attr-defined]
     by_step = {i.key.step: i.argv for i in invocations}
-    assert by_step["code_lens"][-6:] == ("--model", "sonnet", "--effort", "medium",
-                                         "--max-turns", "40")  # fmt: skip
+    for step_id in ("code_lens", "security"):
+        assert by_step[step_id][-6:] == ("--model", "opus", "--effort", "high",
+                                         "--max-turns", "40"), step_id  # fmt: skip
     assert by_step["code_review"][-6:] == ("--model", "opus", "--effort", "medium",
                                            "--max-turns", "40")  # fmt: skip
     for step_id in ("dev", "qa"):
@@ -37,7 +39,7 @@ def test_ac1_step_values_override_settings_defaults_without_stage_values():
     text = text.replace("default_effort: null", "default_effort: high", 1)
     p = load_pipeline(text)
     build = p.stage("build")
-    assert build.limits_for(build.step("code_lens"), p.settings) == ("sonnet", Effort.MEDIUM, None)
+    assert build.limits_for(build.step("code_lens"), p.settings) == ("opus", Effort.HIGH, None)
     assert build.limits_for(build.step("code_review"), p.settings) == ("opus", Effort.MEDIUM, None)
     assert build.limits_for(build.step("dev"), p.settings) == ("opus", Effort.HIGH, None)
 

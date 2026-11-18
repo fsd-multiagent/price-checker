@@ -312,8 +312,6 @@ def test_ac4_real_pipeline_step_tuning(pipeline):
         ("analysis", "coverage"),
         ("design", "security_prd"),
         ("architecture", "security_arch"),
-        ("build", "code_lens"),
-        ("build", "security"),
     }
     for stage_id, step_id in cheap:
         stage = pipeline.stage(stage_id)
@@ -321,16 +319,16 @@ def test_ac4_real_pipeline_step_tuning(pipeline):
         assert (limits.model, limits.effort) == ("sonnet", Effort.MEDIUM), (stage_id, step_id)
     build = pipeline.stage("build")
     assert build.limits_for(build.step("code_review"), s).effort is Effort.MEDIUM
-    for step_id in ("dev", "qa"):
+    for step_id in ("dev", "qa", "code_lens", "security"):
         step = build.step(step_id)
-        assert (step.model, step.effort, step.max_turns) == (None, None, None)
+        assert (step.model, step.effort, step.max_turns) == (None, None, None), step_id
 
 
 async def test_ac5_dry_run_shows_step_model_and_effort(tmp_path):
     dr = make_dry_run(tmp_path)
     assert await run_dry(dr) == 0
     invocations = dr.ports.claude.invocations  # type: ignore[attr-defined]
-    for step_id in ("coverage", "security_prd", "security_arch", "code_lens", "security"):
+    for step_id in ("coverage", "security_prd", "security_arch"):
         inv = next(i for i in invocations if i.key.step == step_id)
         assert "--model sonnet --effort medium" in " ".join(inv.argv), step_id
     dev = next(i for i in invocations if i.key.step == "dev")

@@ -28,7 +28,7 @@ Option A. A step value overrides the stage value, which overrides `default_model
 
 | Step | `model` | `effort` |
 |---|---|---|
-| `coverage` (judge), `security_prd`, `security_arch`, `code_lens`, `security` | `sonnet` | `medium` |
+| `coverage` (judge), `security_prd`, `security_arch` | `sonnet` | `medium` |
 | `code_review` | stage value | `medium` |
 | `dev`, `qa` | stage value | stage value |
 
@@ -41,3 +41,7 @@ Option A. A step value overrides the stage value, which overrides `default_model
 ## Compliance
 
 No compliance impact on S-1 to S-13. The change covers only which model runs an orchestrator step and how hard it thinks. Reviewer prompts, tools and rules are unchanged.
+
+## Amendment 2026-11-18
+
+`code_lens` and `security` in the build stage go back to the stage model and effort. On `sonnet` with `medium` effort they often ended with an empty final message, so their `result_block` verdict was missing and the round failed: 15 rounds in run `20261117-174705-full` and all 3 rounds of story 0-90. Stories 3-3, 4-1 and 0-90 escalated because of it. The planning reviewers keep the cheaper model.
