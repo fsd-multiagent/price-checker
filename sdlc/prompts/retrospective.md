@@ -1,4 +1,6 @@
-/bmad-retrospective -H Run the retrospective for `${story_key}` using `${epics_path}`.
+/bmad-retrospective -H Run the retrospective for `${story_key}` using ${story_source}.
+
+${issue_text}
 
 Run `${run_id}`, scope `${scope}`, stage `${stage}`, step `${step}`, round ${round}.
 Your working directory is the worktree `${worktree}`. Write only inside it.
@@ -11,8 +13,10 @@ ${inputs}
 Read the usage summary. For each stage where usage looks wasteful or too tight (many rounds,
 attempts cut short, high cost for little output), record the change you recommend to that
 stage's `model`, `effort` or `max_turns` in `sdlc/pipeline.yaml` as an action item in the
-retrospective. Do not edit anything under `sdlc/`: the owner changes the pipeline through a
-reviewed PR, and the orchestrator reverts `sdlc/**` on this branch.
+retrospective. You may also make the change in `sdlc/pipeline.yaml`: it becomes an owner-review
+proposal, as below, and the orchestrator reverts `sdlc/**` on this branch.
+
+${factory_rules}
 
 Feedback from the previous round:
 ${feedback}

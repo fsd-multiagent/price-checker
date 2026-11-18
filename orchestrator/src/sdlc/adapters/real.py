@@ -24,7 +24,7 @@ from sdlc.adapters.gh import GhCli
 from sdlc.adapters.git import GitCli
 from sdlc.adapters.notifier import DesktopNotifier
 from sdlc.adapters.proc import ProcResult, run_proc
-from sdlc.core.models import Telemetry
+from sdlc.core.models import Settings, Telemetry
 from sdlc.ports import AdapterError, Ports
 
 TOOLS = ("claude", "git", "gh")
@@ -37,12 +37,19 @@ _BILLING = (
 
 
 def real_ports(
-    repo: str | Path, allow_api_key: bool = False, telemetry: Telemetry | None = None
+    repo: str | Path,
+    allow_api_key: bool = False,
+    telemetry: Telemetry | None = None,
+    settings: Settings | None = None,
 ) -> Ports:
+    """`settings` gives the gh adapter the path tiers its merge refusal reads (AD-26)."""
+    tiers = {}
+    if settings is not None:
+        tiers = {"protected_paths": settings.protected_paths, "review_paths": settings.review_paths}
     return Ports(
         claude=ClaudeCli(allow_api_key=allow_api_key, telemetry=telemetry),
         git=GitCli(repo),
-        gh=GhCli(repo),
+        gh=GhCli(repo, **tiers),
         commands=ProjectCommands(),
         fs=LocalFs(),
         clock=SystemClock(),

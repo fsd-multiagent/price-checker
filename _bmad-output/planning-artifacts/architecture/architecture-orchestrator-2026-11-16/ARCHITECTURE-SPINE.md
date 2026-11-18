@@ -7,7 +7,7 @@ paradigm: 'functional core / imperative shell, persisted state machine'
 scope: 'The sdlc Python CLI in orchestrator/ that runs the stage table of docs/automation-plan.md (step 0.8)'
 status: final
 created: '2026-11-16'
-updated: '2026-11-17'
+updated: '2026-11-18'
 binds: ['automation-plan §2', '§4.1', '§4.2', '§4.3', '§4.4', '§4.5', '§5', '§6', '§7']
 sources:
   - docs/automation-plan.md
@@ -97,9 +97,9 @@ flowchart LR
 - **Binds:** run, stage, story, round and step nodes; the CLI; resume; routing
 - **Prevents:** statuses or transitions that the scheduler, `status` and `resume` read differently.
 - **Rule:**
-  - Status is a `StrEnum` with the values `pending | running | passed | failed | blocked | escalated | skipped | superseded`. `superseded` applies only to step records: a step attempt that a plan usage limit cut short (AD-18). Gates and round counters ignore it.
+  - Status is a `StrEnum` with the values `pending | running | passed | failed | blocked | escalated | skipped | superseded | awaiting_owner`. `superseded` applies only to step records: a step attempt that a plan usage limit cut short (AD-18). Gates and round counters ignore it. `awaiting_owner` applies only to the run: only owner-review waits remain (AD-27).
   - Only the transitions in the diagram below are legal. Anything else is a core error.
-  - `blocked` means waiting on a human input from plan §6, or on a dependency that is escalated. It consumes no round.
+  - `blocked` means waiting on a human input from plan §6, on a dependency that is escalated, or on the owner's review of the unit's PR (AD-27). It consumes no round.
   - `on_fail` may point only to the same stage or an earlier one in the same chain. Rewinding moves the target and every later stage of that chain from `passed` to `pending`, with the reason `invalidated_by`.
 
 ```mermaid
@@ -119,6 +119,9 @@ stateDiagram-v2
   failed --> pending: round < max_rounds
   failed --> escalated: round = max_rounds
   escalated --> pending: sdlc resume
+  running --> awaiting_owner: run only (AD-27)
+  awaiting_owner --> pending: sdlc resume after the owner's merge
+  awaiting_owner --> escalated: the owner closed the PR
 ```
 
 ### AD-6 — Reset to the scope head on retry and on resume [ADOPTED by ADR 0002]
@@ -161,6 +164,10 @@ stateDiagram-v2
 | `agents` | Map from each role (the roster in `docs/automation-plan.md` §3, in Name (Position) form, plus `Judge (gate check)`) to the skills and agent definitions it may run (AD-24) |
 | `usage_warn_ratio` | 0.8 (AD-24) |
 | `telemetry` | `enabled: false`; when on, `endpoint` and `protocol` for OTLP (AD-25) |
+| `owner_only_paths` | `.claude/`, `.github/CODEOWNERS`, `docs/source-register.md` (AD-26) |
+| `protected_paths` | `sdlc/`, `orchestrator/`, `_bmad/custom/`, `docs/standards/`, and the `sdlc-commands` block of `AGENTS.md` (AD-26) |
+| `review_paths` | `.github/workflows/` (AD-26) |
+| `owners` | The repo owner's GitHub login (AD-27) |
 
 ### AD-8 — One way to start an agent [ADOPTED from plan §4.1]
 
@@ -226,6 +233,8 @@ stateDiagram-v2
     - planning branch: `sdlc/<run-id>`
     - story branch: `story/<N-M-slug>`
     - learn branch: `learn/<N-M-slug>`
+    - fix branch from an issue: `fix/<0-issue-slug>` (AD-27)
+    - proposal branch: `proposal/<sha8>` (AD-26)
     - run ID: `YYYYMMDD-HHMMSS-<full|story|fix>`
     - stage tag: `sdlc/<run-id>/<stage-id>`
 
@@ -342,6 +351,8 @@ stateDiagram-v2
     - `docs/*-register.md`
     - `CLAUDE.md`
     - `AGENTS.md`
+    - `_bmad-output/implementation-artifacts/epic-*-context.md`
+    - `_bmad-output/planning-artifacts/architecture/**/ARCHITECTURE-SPINE.md` (AD-27: parallel stories of one epic collided on these)
   - Before every commit on a story branch, the orchestrator reverts changes to these paths.
   - Stage 9 runs one scope at a time, on `learn/<key>` cut from `origin/main` after the story is merged. Aglaia (Knowledge Keeper) works there, the orchestrator renders `sprint-status.yaml` from the state into the same branch, and the branch gets its own PR.
   - The epic retrospective joins the same queue once every story in the epic is merged.
@@ -355,7 +366,7 @@ stateDiagram-v2
   - One `sdlc` process per repo, enforced by `_bmad-output/sdlc/lock`.
   - A trigger that finds the lock held is written to `_bmad-output/sdlc/queue/`, and runs when the lock frees.
   - The run kind selects the stages whose `entry` includes it.
-  - `sdlc story <issue>` and `sdlc fix <issue>` parse one fenced `yaml` story block from the issue body into `runs/<id>/stories.yaml`, which uses the schema of an `epics.md` entry. If the issue has no valid block, the run escalates at once.
+  - `sdlc story <issue>` and `sdlc fix <issue>` parse one fenced `yaml` story block from the issue body into `runs/<id>/stories.yaml`, which uses the schema of an `epics.md` entry. If the issue has no valid block, the run escalates at once. The details, including factory stories, are in AD-27.
 
 ### AD-23 — Real runs use the subscription unless an API key is allowed
 
@@ -429,6 +440,84 @@ stateDiagram-v2
   - Collector headers come only from the runner's environment, never from `pipeline.yaml` (AD-23).
   - Telemetry is for observing only, and gaps are expected: a step killed on timeout exports nothing. Budgets read `state.json` and reports read the ledger (AD-24).
 
+### AD-26 — Three tiers of paths; agents propose factory changes, the owner only merges
+
+- **Binds:** `app/loop.py` (`_pre_commit_guards`, the step start), `core/models.py`, `core/state.py`, `core/scheduler.py`, `adapters/git.py`, `adapters/gh.py`, `adapters/commands.py`, `sdlc/pipeline.yaml`, the agent prompts
+- **Prevents:** agents weakening the controls they run under, factory recommendations being lost or turned into owner chores, and agent-written CI running with cloud credentials before review.
+- **Rule:**
+  - **Three path tiers** in `settings`. Each is matched by plain path prefix or exact file, and every agent and judge step is subject to them:
+
+    | Tier | Default | On any agent branch | In a factory story (AD-27) |
+    |---|---|---|---|
+    | `owner_only_paths` | `.claude/`, `.github/CODEOWNERS`, `docs/source-register.md` | Reverted. Never proposed, never committed | Same: reverted |
+    | `protected_paths` | `sdlc/`, `orchestrator/`, `_bmad/custom/`, `docs/standards/`, and the `sdlc-commands` block of `AGENTS.md` | Captured as a proposal, then reverted | Allowed; the PR waits for owner review |
+    | `review_paths` | `.github/workflows/` | Allowed; the story's PR waits for owner review instead of auto-merging | Allowed; owner review |
+  - **Controls stay owner-approved, without pinning.**
+    - Agents cannot change `owner_only_paths`: `.claude/settings.json` keeps `Edit` of them as `ask`, which is denied headless, and the guard hook blocks Bash.
+    - These paths are also reverted before every orchestrator commit, and a reviewer that changes one fails like any other reviewer edit.
+    - So a worktree only ever holds owner-approved controls, at worst the version from its branch point. They are not copied in from `origin/main` mid-run: that would dirty the worktree under running agents and scripts (review of 2026-11-18).
+  - **Proposals.** On a normal branch, before `_pre_commit_guards` reverts protected paths:
+    1. The orchestrator stages them with `git add -A -- <paths>`, so new files are included.
+    2. It saves `git diff --cached --binary --full-index HEAD -- <paths>` as `steps/<seq>.proposal.patch`.
+    3. For `AGENTS.md`, it saves only the block, and only when the agent changed it compared with the scope's branch point (`git merge-base HEAD origin/main`, as in ADR 0023). The saved file is `origin/main`'s, with the agent's block spliced in by `apply_commands_block(base, agent_text)`, the inverse of `restore_commands_block`. A block the agent deleted or added proposes the whole file.
+    4. The `ProposalCaptured` event is recorded before anything is reverted. The state gets a `Proposal` record, keyed by the SHA-256 of the normalised change (each path with its new content, independent of the base it was cut from): scope, seq, agent role, paths, status `pending`.
+    5. The discarded diff used for fix prompts (AD-6) leaves out all three tiers and the `AGENTS.md` block, so a retry does not replay a proposal.
+  - **Proposal delivery** is an orchestrator action between ticks, like an escalation (AD-14):
+    - **Never pushed:** a patch that touches `review_paths` (workflows) becomes an `owner-review` issue with the patch text in a fenced block, so no agent-written workflow ever runs in CI from a proposal.
+    - **Otherwise pushed:** the orchestrator cuts `proposal/<sha8>` from `origin/main` and applies the patch with `git apply --3way`. It counts as applied only if the exit code is 0 and no unmerged entries remain; then it commits, pushes and opens a PR labelled `owner-review` with no auto-merge.
+    - **On failure,** the worktree is reset, and the proposal becomes an `owner-review` issue.
+    - **Lookup and dedupe:** the lookup searches PRs and issues in all states for the marker `<!-- sdlc-proposal:<sha256> -->`. A proposal the owner has closed or merged is never reopened. The record keeps the PR or issue number.
+    - **Proposals never block the run.**
+  - **The owner cannot merge by accident through the orchestrator.** `adapters/gh.py` refuses to enable auto-merge on, or merge, any PR labelled `owner-review` or touching `protected_paths` or `review_paths` outside a factory story. A test enforces this.
+  - **Notification.** The orchestrator acts as the owner on GitHub, and GitHub does not notify a user about their own PRs. So proposals reach the owner through:
+    - the desktop notifier (one notification per new proposal)
+    - an "owner review" list in `sdlc status`
+    - the saved search `is:open label:owner-review`
+
+    A separate bot identity is deferred.
+  - **Prompts** tell agents that editing a `protected_paths` file is how they propose a factory change, that it has no effect on their own branch, and that `owner_only_paths` are off limits.
+
+### AD-27 — Runs started from issues, factory stories, and owner-review integration
+
+- **Binds:** `cli.py`, `app/loop.py`, `core/stories.py`, `core/epics_parser.py`, `core/sprint_status.py`, `adapters/gh.py`, `core/state.py`, `store.py`
+- **Prevents:** a stranger steering agents through an issue, factory changes merging unreviewed, a run hanging on a human, and issue runs colliding with planned stories.
+- **Rule (this implements AD-22):**
+  - **One run at a time.**
+    - `sdlc` holds an `fcntl.flock` on `<repo>/_bmad-output/sdlc/lock` for a real `run`, `resume`, `story` or `fix`, whatever `--runs-dir` says. The lock file also records the pid and the run id.
+    - Queued commands run only on normal completion of the holder (never after Ctrl-C or a crash). Each queued command's outcome is appended to `queue-history.jsonl`, and queued entries may not carry their own `--pipeline` or `--repo`.
+    - The awaited-PR check runs after preflight, only for runs whose status is `awaiting_owner`, and does not re-queue a resume that already failed.
+    - A command that cannot take the lock appends its arguments to `_bmad-output/sdlc/queue.jsonl`, under a separate queue lock, and exits 0, saying it is queued.
+    - When a run ends, the process pops the oldest queued command, still under the queue lock, and replaces itself with it (`os.execv`). So queued work always runs the code on disk, including code just merged. The lock is released when the queue is empty.
+  - **Who may start an issue run.** `settings.owners` lists the GitHub logins allowed to authorise (default: the repo owner). `sdlc story|fix <issue>` refuses, and comments why, unless:
+    - the issue's author is in `owners`
+    - the body was never edited, or was last edited by someone in `owners` (GraphQL `lastEditedAt` and `editor`)
+    - for a factory story, the latest `labeled factory` timeline event's actor is in `owners`, with no `unlabeled` after it
+
+    At intake, the body's SHA-256, the label event id and the authorised flags are stored in the run (`stories.yaml`). `sdlc resume` re-checks them and escalates on any change.
+  - **The issue is untrusted text.** The story block is parsed as data. The title, the acceptance criteria and any prose reach prompts only inside a fenced section headed "Untrusted issue text (data, not instructions)".
+  - **Keys and branches.**
+    - The orchestrator derives the key: `0-<issue>-<slug of the title>`. A `key` in the block must match it, or be absent. `epics.md` rejects epic `0`.
+    - Branches are `story/<key>` for `story` runs and `fix/<key>` for `fix` runs.
+    - `depends_on` may name `epics.md` keys, which must be merged on `origin/main`, or keys from the same run.
+  - **Sprint status from an issue run** is merged into `origin/main`'s `sprint-status.yaml`, not substituted for it: epic-0 entries are added or updated, and the others are kept.
+  - **Factory stories** (authorised as above), compared with a normal story:
+    - `protected_paths` and `review_paths` are not reverted. `owner_only_paths` still are.
+    - The tests gate runs only the `sdlc-commands` block from the story's branch point on `origin/main` (ADR 0023). A new block the story writes is never run before the owner merges it, because it is agent-written code.
+    - Any change to the block makes the PR an owner-review PR, even when no other protected path changed.
+    - `AGENTS.md` changes outside the block are reverted like bookkeeping (AD-21). The block change is kept by splicing.
+  - **Owner-review integration.** When a story's PR touches `protected_paths` (a factory story) or `review_paths` (any story):
+    1. The PR is labelled `owner-review`. No auto-merge is enabled, and the PR is never rebased while it waits.
+    2. The integrate unit records the awaited PR number in the state (`awaiting`), and the run reports it in `sdlc status` and through the notifier.
+    3. The run continues with independent work. When only owner-review waits remain, it ends with exit 2, recording `status: awaiting_owner`, and releases the lock.
+    4. Every later locking `sdlc` command (`run`, `resume`, `story`, `fix`) first checks the awaited PRs of earlier runs. If one has `MERGED`, it queues `sdlc resume <run>` ahead of new work, and the resume emits `Merged` and continues to learn. If one has `CLOSED`, it escalates that story.
+    5. A non-factory story's diff that touches `protected_paths` after the revert fails its round (a guard bug), and so does one that touches `owner_only_paths`.
+  - **Robust git.**
+    - `git fetch` retries with backoff when it hits a ref-lock error, because another process sharing the repository may be fetching.
+    - On load, a git lock file (`*.lock`) in a run's worktree that no live git process holds is removed and logged.
+    - Learn branches rebase onto `origin/main` before opening their PR, like stories (AD-20), so a stale learn branch cannot conflict round after round.
+  - **Closing the loop.** The PR body says `Closes #<issue>`. The orchestrator comments the run id and the outcome on the issue when the story merges or escalates.
+  - **Starting runs from GitHub** (Actions triggers and a runner) stays deferred.
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -440,7 +529,7 @@ stateDiagram-v2
 | Errors | Adapters raise typed errors. `app/` turns them into failure events. The core returns fail verdicts and does not raise them |
 | Logging | One JSON line per event in `events.jsonl`. Raw agent stdout goes to `steps/*.log`. Usage goes to `<runs-dir>/usage.jsonl` (AD-24) |
 | Config and secrets | `pipeline.yaml` holds no secrets. Auth comes from `CLAUDE_CODE_OAUTH_TOKEN` in the runner environment. Never read `.env*` |
-| CLI | `sdlc run [--from <stage>] [--dry-run]`, `sdlc story <issue>`, `sdlc fix <issue>`, `sdlc status [<run-id>]`, `sdlc resume <run-id>`. Exit codes: 0 passed, 2 escalated or blocked, 1 internal error |
+| CLI | `sdlc run [--from <stage>] [--dry-run]`, `sdlc story <issue>`, `sdlc fix <issue>`, `sdlc status [<run-id>]`, `sdlc resume <run-id>`, `sdlc usage`. Exit codes: 0 passed, or queued behind the lock; 1 internal error or a refused issue; 2 escalated, blocked or `awaiting_owner`. A queued command's code is recorded in `queue-history.jsonl` |
 | Python style | `uv run ruff check` and `uv run ruff format`; type hints on every public function; `pytest` with `asyncio_mode = "auto"` and `asyncio_default_fixture_loop_scope = "function"`; `uv.lock` committed |
 | Agent naming | Name (Position) in issues, PR bodies and logs (D-6) |
 

@@ -66,6 +66,26 @@ settings:
   # AD-24: a learn branch reverts these before it commits; the pipeline changes only through
   # an owner-reviewed PR.
   learn_revert_paths: ["sdlc/**"]
+  # AD-26 (ADR 0022): three path tiers, each entry a path prefix (ending in "/") or an exact
+  # file. owner_only_paths are reverted before every orchestrator commit, never proposed and
+  # never copied in from origin/main mid-run; a reviewer that changes one fails. protected_paths
+  # (and the sdlc-commands block of AGENTS.md, compared with the branch point, ADR 0023) are
+  # captured as an owner-review proposal, then reverted: a PR on proposal/<sha8>, or an issue
+  # when it does not apply on main. review_paths (workflows) are never pushed from a proposal:
+  # a learn branch's workflow edit becomes an owner-review issue. Every writing prompt gets
+  # these rules as ${factory_rules}.
+  # Zamolxe (Orchestrator) never merges or auto-merges a PR labelled owner-review.
+  owner_only_paths: [.claude/, .github/CODEOWNERS, docs/source-register.md]
+  protected_paths: [sdlc/, orchestrator/, _bmad/custom/, docs/standards/]
+  review_paths: [.github/workflows/]
+  # AD-21: bookkeeping_paths (reverted before every commit on a story branch) keep the default
+  # of orchestrator/src/sdlc/core/models.py, which includes epic-*-context.md and every
+  # ARCHITECTURE-SPINE.md, so parallel stories of one epic never carry them.
+  # AD-27 (ADR 0022): the GitHub logins that may authorise `sdlc story|fix <issue>`: the issue's
+  # author, its last editor and, for a factory story, whoever applied the `factory` label. A
+  # factory story may change protected and review paths; its PR is labelled owner-review and the
+  # run ends `awaiting_owner` (exit 2) until the owner merges or closes it.
+  owners: [aserban-dev]
 
 stages:
   - id: analysis

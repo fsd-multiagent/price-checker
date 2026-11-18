@@ -1,10 +1,14 @@
-/bmad-code-review Review the diff of story `${story_key}` against `origin/main`, against its acceptance criteria in `${epics_path}` and the project standards.
+/bmad-code-review Review the diff of story `${story_key}` against `origin/main`, against its acceptance criteria in ${story_source} and the project standards.
+
+${issue_text}
 
 Run `${run_id}`, scope `${scope}`, stage `${stage}`, step `${step}`, round ${round}.
 Your working directory is the worktree `${worktree}`. Write only inside it.
 
 Inputs:
 ${inputs}
+
+${factory_rules}
 
 Feedback from the previous round:
 ${feedback}

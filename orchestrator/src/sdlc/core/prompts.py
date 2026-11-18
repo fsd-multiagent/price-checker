@@ -19,7 +19,10 @@ PROMPT_FIELDS = (
     "story_sources",
     "story_touches",
     "epics_path",
+    "story_source",  # AD-27: "`<epics.md>`", or the issue the story comes from
     "feedback",
+    "factory_rules",  # AD-26: the path tiers, rendered from the settings
+    "issue_text",  # AD-27: the fenced untrusted section of an issue story, or a "none" line
 )
 
 

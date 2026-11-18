@@ -1,0 +1,14 @@
+# A stub issue that must be refused (AD-27): closed.
+title: Closed story
+author: aserban-dev
+state: CLOSED
+labels: []
+last_edited_at: null
+editor: null
+timeline: []
+body: |
+  ```yaml
+  depends_on: []
+  touches: [web/src/ean/]
+  sources: []
+  ```

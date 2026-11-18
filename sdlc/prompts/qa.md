@@ -1,10 +1,14 @@
-/bmad-testarch-automate -H Add tests for the acceptance criteria of story `${story_key}` in `${epics_path}`. Test names carry the criterion IDs (T-1).
+/bmad-testarch-automate -H Add tests for the acceptance criteria of story `${story_key}` in ${story_source}. Test names carry the criterion IDs (T-1).
+
+${issue_text}
 
 Run `${run_id}`, scope `${scope}`, stage `${stage}`, step `${step}`, round ${round}.
 Your working directory is the worktree `${worktree}`. Write only inside it.
 
 Inputs:
 ${inputs}
+
+${factory_rules}
 
 Feedback from the previous round:
 ${feedback}

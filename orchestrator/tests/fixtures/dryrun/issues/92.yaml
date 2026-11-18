@@ -1,0 +1,14 @@
+# A stub issue that must be refused (AD-27): labelled factory by a stranger.
+title: Factory by a stranger
+author: aserban-dev
+state: OPEN
+labels: [factory]
+last_edited_at: null
+editor: null
+timeline: [{id: "5", event: labeled, label: factory, actor: mallory}]
+body: |
+  ```yaml
+  depends_on: []
+  touches: [web/src/ean/]
+  sources: []
+  ```

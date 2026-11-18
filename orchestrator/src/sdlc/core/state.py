@@ -10,16 +10,24 @@ from typing import Any
 
 from sdlc.core.gates import last_verdict_block, parse_verdict_text
 from sdlc.core.models import (
+    AwaitedSettled,
     BudgetExhausted,
     CoreError,
     EscalationOpened,
     Event,
     GateEvaluated,
+    IntakeRecorded,
+    IntakeRejected,
     Merged,
     Outcome,
+    OwnerReviewAwaited,
     PathsReverted,
     Pipeline,
     PrOpened,
+    ProposalCaptured,
+    ProposalDelivered,
+    ProposalFailed,
+    ProposalStatus,
     RunFinished,
     RunKind,
     RunResumed,
@@ -54,12 +62,16 @@ S = Status
 TRANSITIONS: dict[Status, frozenset[Status]] = {
     S.PENDING: frozenset({S.RUNNING, S.BLOCKED, S.SKIPPED}),
     S.BLOCKED: frozenset({S.PENDING}),
-    S.RUNNING: frozenset({S.PASSED, S.FAILED, S.BLOCKED, S.ESCALATED, S.SUPERSEDED}),
+    S.RUNNING: frozenset(
+        {S.PASSED, S.FAILED, S.BLOCKED, S.ESCALATED, S.SUPERSEDED, S.AWAITING_OWNER}
+    ),
     S.PASSED: frozenset({S.PENDING}),
     S.FAILED: frozenset({S.PENDING, S.ESCALATED}),
     S.ESCALATED: frozenset({S.PENDING}),
     S.SKIPPED: frozenset(),
     S.SUPERSEDED: frozenset(),
+    # AD-27, the run only: a later command resumes it (merged) or escalates it (closed).
+    S.AWAITING_OWNER: frozenset({S.PENDING, S.ESCALATED}),
 }
 
 
@@ -71,6 +83,8 @@ def _move(node: dict[str, Any], new: Status, what: str) -> None:
     old = Status(node["status"])
     if new is S.SUPERSEDED and "seq" not in node:  # AD-5: step records only
         raise CoreError(f"illegal transition {old} -> {new} for {what}: step records only")
+    if new is S.AWAITING_OWNER and "run_id" not in node:  # AD-27: the run only
+        raise CoreError(f"illegal transition {old} -> {new} for {what}: the run only")
     if not legal(old, new):
         raise CoreError(f"illegal transition {old} -> {new} for {what}")
     node["status"] = new
@@ -193,9 +207,12 @@ def _run_started(p: Pipeline, d: dict[str, Any], e: RunStarted) -> None:
 
 def _run_resumed(p: Pipeline, d: dict[str, Any], e: RunResumed) -> None:
     status = Status(d["status"])
-    if status is S.PASSED:
+    undelivered = any(x["status"] == ProposalStatus.FAILED for x in d["proposals"])
+    if status is S.PASSED and not undelivered:
         raise CoreError("run already passed; nothing to resume")
-    if status in (S.ESCALATED, S.BLOCKED):
+    if status is S.PASSED:  # AD-26: only to deliver the proposals that failed
+        _move(d, S.PENDING, "run")
+    if status in (S.ESCALATED, S.BLOCKED, S.AWAITING_OWNER):
         _move(d, S.PENDING, "run")
     if Status(d["status"]) is S.PENDING:  # also a crash before RunStarted was saved
         _move(d, S.RUNNING, "run")
@@ -207,6 +224,9 @@ def _run_resumed(p: Pipeline, d: dict[str, Any], e: RunResumed) -> None:
     d["limit_exceeded"] = False
     if e.budget_limit is not None:
         d["budget"]["limit"] = e.budget_limit
+    for x in d["proposals"]:  # AD-26: a failed delivery is tried again
+        if x["status"] == ProposalStatus.FAILED:
+            x["status"] = ProposalStatus.PENDING
     for u in d["units"]:
         if u["status"] == S.ESCALATED:
             _move(u, S.PENDING, f"unit {u['scope']}/{u['stage']}")
@@ -563,13 +583,17 @@ def _pr_opened(p: Pipeline, d: dict[str, Any], e: PrOpened) -> None:
 
 
 def _merged(p: Pipeline, d: dict[str, Any], e: Merged) -> None:
-    sc = _scope(d, e.scope)
+    _mark_merged(d, e.scope, e.sha)
+
+
+def _mark_merged(d: dict[str, Any], scope: str, sha: str) -> None:
+    sc = _scope(d, scope)
     if sc["merged_sha"]:
         return
-    sc["merged_sha"] = e.sha
-    if not e.scope.startswith("story:"):
+    sc["merged_sha"] = sha
+    if not scope.startswith("story:"):
         return
-    key = e.scope.split(":", 1)[1]
+    key = scope.split(":", 1)[1]
     _enqueue(d, f"learn:{key}")
     epic = Story.model_validate(next(s for s in d["stories"] if s["key"] == key)).epic
     keys = [s["key"] for s in d["stories"] if s["key"].split("-", 1)[0] == str(epic)]
@@ -636,6 +660,97 @@ def _paths_reverted(p: Pipeline, d: dict[str, Any], e: PathsReverted) -> None:
     """Audit only: the commit put these paths back first (AD-24, ADR 0021)."""
 
 
+def _proposal(d: dict[str, Any], sha256: str) -> dict[str, Any]:
+    for x in d["proposals"]:
+        if x["sha256"] == sha256:
+            return x
+    raise CoreError(f"no proposal {sha256[:12]}")
+
+
+def _proposal_captured(p: Pipeline, d: dict[str, Any], e: ProposalCaptured) -> None:
+    """AD-26: one record per patch; the same patch in a later round or after a resume adds
+    nothing."""
+    if any(x["sha256"] == e.sha256 for x in d["proposals"]):
+        return
+    d["proposals"].append(
+        {
+            "sha256": e.sha256,
+            "scope": e.scope,
+            "seq": e.seq,
+            "agent_role": e.agent_role,
+            "paths": list(e.paths),
+            "patch": e.patch,
+            "review": e.review,
+        }
+    )
+
+
+def _proposal_delivered(p: Pipeline, d: dict[str, Any], e: ProposalDelivered) -> None:
+    x = _proposal(d, e.sha256)
+    x.update(status=ProposalStatus.DELIVERED, kind=e.kind, number=e.number, reason=e.reason)
+
+
+def _proposal_failed(p: Pipeline, d: dict[str, Any], e: ProposalFailed) -> None:
+    x = _proposal(d, e.sha256)
+    if x["status"] == ProposalStatus.DELIVERED:
+        raise CoreError(f"proposal {e.sha256[:12]} is already delivered")
+    x.update(status=ProposalStatus.FAILED, reason=e.reason)
+
+
+def _owner_review_awaited(p: Pipeline, d: dict[str, Any], e: OwnerReviewAwaited) -> None:
+    """AD-27: the unit waits for the owner, blocked; no round is consumed and no later step of
+    the round (CI, merge) runs."""
+    u = _unit(d, e.scope, e.stage)
+    _move(u, S.BLOCKED, f"unit {e.scope}/{e.stage}")
+    u["reason"] = f"awaiting owner review of PR #{e.pr}"
+    if not any(a["scope"] == e.scope and a["stage"] == e.stage for a in d["awaiting"]):
+        d["awaiting"].append(
+            {"scope": e.scope, "stage": e.stage, "pr": e.pr, "since": e.at, "head": e.head}
+        )
+
+
+def _awaited_settled(p: Pipeline, d: dict[str, Any], e: AwaitedSettled) -> None:
+    """AD-27: merged, the unit passes (the `Merged` event that follows queues its learn
+    unit); closed, or merged with another head, the unit escalates. A run that only waited
+    for the owner escalates once nothing is awaited any more."""
+    found = [a for a in d["awaiting"] if a["scope"] == e.scope and a["stage"] == e.stage]
+    if not found:
+        raise CoreError(f"nothing awaited for {e.scope}/{e.stage}")
+    d["awaiting"] = [a for a in d["awaiting"] if a not in found]
+    u = _unit(d, e.scope, e.stage)
+    what = f"unit {e.scope}/{e.stage}"
+    if u["status"] == S.BLOCKED:
+        _move(u, S.PENDING, what)
+    if u["status"] == S.PENDING:
+        _move(u, S.RUNNING, what)
+    if e.merged:
+        if not e.sha:
+            raise CoreError(f"PR #{e.pr} merged without a SHA")
+        _move(u, S.PASSED, what)
+        u["reason"] = f"PR #{e.pr} merged by the owner"
+        return
+    _move(u, S.ESCALATED, what)
+    u["reason"] = e.reason or f"PR #{e.pr} closed by the owner without merging"
+    _escalate_record(d, e.scope, u["reason"])
+    if Status(d["status"]) is S.AWAITING_OWNER and not d["awaiting"]:
+        _move(d, S.ESCALATED, "run")
+        d["exit_code"] = 2
+
+
+def _intake_recorded(p: Pipeline, d: dict[str, Any], e: IntakeRecorded) -> None:
+    d["issue"] = e.intake.model_dump(mode="json")
+
+
+def _intake_rejected(p: Pipeline, d: dict[str, Any], e: IntakeRejected) -> None:
+    """AD-27: sticky: a resume re-checks the issue but never clears this."""
+    if d["intake_rejected"] is None:
+        d["intake_rejected"] = e.reason
+    elif e.reason not in d["intake_rejected"]:
+        d["intake_rejected"] = f"{d['intake_rejected']}; then: {e.reason}"
+    scope = f"story:{d['stories'][0]['key']}" if d["stories"] else "run"
+    _escalate_record(d, scope, f"issue intake: {e.reason}")
+
+
 def _usage_warning(p: Pipeline, d: dict[str, Any], e: UsageWarning) -> None:
     d["usage_warned_limit"] = e.budget_limit
 
@@ -651,9 +766,16 @@ def _run_finished(p: Pipeline, d: dict[str, Any], e: RunFinished) -> None:
     elif (
         d["budget"]["exhausted"]
         or d["limit_exceeded"]
+        or d["intake_rejected"] is not None
         or any(u["status"] == S.ESCALATED for u in d["units"])
     ):
         new = S.ESCALATED
+    elif d["awaiting"] and not any(
+        u["status"] == S.BLOCKED
+        and not any((a["scope"], a["stage"]) == (u["scope"], u["stage"]) for a in d["awaiting"])
+        for u in d["units"]
+    ):
+        new = S.AWAITING_OWNER  # AD-27: only owner-review waits remain
     else:
         new = S.BLOCKED
     _move(d, new, "run")
@@ -684,6 +806,13 @@ _HANDLERS: dict[type, Any] = {
     UsageLimited: _usage_limited,
     UsageWarning: _usage_warning,
     PathsReverted: _paths_reverted,
+    ProposalCaptured: _proposal_captured,
+    ProposalDelivered: _proposal_delivered,
+    ProposalFailed: _proposal_failed,
+    OwnerReviewAwaited: _owner_review_awaited,
+    AwaitedSettled: _awaited_settled,
+    IntakeRecorded: _intake_recorded,
+    IntakeRejected: _intake_rejected,
     BudgetExhausted: _budget_exhausted,
     RunStopped: _run_stopped,
     RunFinished: _run_finished,
