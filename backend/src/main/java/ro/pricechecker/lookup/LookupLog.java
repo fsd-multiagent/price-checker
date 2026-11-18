@@ -5,8 +5,10 @@ import java.time.Instant;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 import ro.pricechecker.ean.EanError;
+import ro.pricechecker.registry.BlockStore;
 import ro.pricechecker.registry.RuntimeSwitch;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -34,6 +36,10 @@ public class LookupLog {
     }
   }
 
+  /** A register domain: the only text a {@code retailer} field may hold. */
+  private static final Pattern RETAILER_ID =
+      Pattern.compile("[a-z0-9-]{1,63}(?:\\.[a-z0-9-]{1,63}){1,4}");
+
   private static final JsonMapper JSON = JsonMapper.builder().build();
 
   private final Clock clock;
@@ -59,6 +65,22 @@ public class LookupLog {
     Map<Field, Object> fields = new EnumMap<>(Field.class);
     fields.put(Field.LEVEL, "ERROR");
     fields.put(Field.EVENT, "runtime_config_rejected");
+    fields.put(Field.OUTCOME, reason.name());
+    write(fields);
+  }
+
+  /**
+   * A new Block (FR-11, AC-11.2, AD-14): {@code WARN}, the retailer id and the cause in {@code
+   * outcome}; never a URL, page content or exception message. A {@code retailer} that is not shaped
+   * like a register domain is dropped, so no free text reaches the line.
+   */
+  public void blocked(String retailer, BlockStore.Reason reason) {
+    Map<Field, Object> fields = new EnumMap<>(Field.class);
+    fields.put(Field.LEVEL, "WARN");
+    fields.put(Field.EVENT, "retailer_blocked");
+    if (retailer != null && RETAILER_ID.matcher(retailer).matches()) {
+      fields.put(Field.RETAILER, retailer);
+    }
     fields.put(Field.OUTCOME, reason.name());
     write(fields);
   }

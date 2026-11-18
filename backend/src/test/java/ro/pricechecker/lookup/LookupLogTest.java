@@ -14,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import ro.pricechecker.ean.EanError;
+import ro.pricechecker.registry.BlockStore;
 import ro.pricechecker.registry.RuntimeSwitch;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -59,5 +60,35 @@ class LookupLogTest {
     assertThat(line.get("level").stringValue()).isEqualTo("ERROR");
     assertThat(line.get("event").stringValue()).isEqualTo("runtime_config_rejected");
     assertThat(line.get("outcome").stringValue()).isEqualTo("UNPARSEABLE");
+  }
+
+  @Test
+  @Tag("AC-2.6.1")
+  void ac_2_6_1_blockedWritesOneWarnLineNamingTheRetailer(CapturedOutput output) {
+    new LookupLog(Clock.fixed(NOW, ZoneOffset.UTC))
+        .blocked("a.example", BlockStore.Reason.HTTP_403);
+
+    List<String> lines = output.getOut().lines().toList();
+    assertThat(lines).hasSize(1);
+    JsonNode line = JsonMapper.builder().build().readTree(lines.get(0));
+    assertThat(new ArrayList<>(line.propertyNames()))
+        .containsExactly("ts", "level", "event", "retailer", "outcome");
+    assertThat(line.get("level").stringValue()).isEqualTo("WARN");
+    assertThat(line.get("event").stringValue()).isEqualTo("retailer_blocked");
+    assertThat(line.get("retailer").stringValue()).isEqualTo("a.example");
+    assertThat(line.get("outcome").stringValue()).isEqualTo("HTTP_403");
+  }
+
+  @Test
+  @Tag("AC-2.6.1")
+  void ac_2_6_1_blockedDropsARetailerThatIsNotADomain(CapturedOutput output) {
+    new LookupLog(Clock.fixed(NOW, ZoneOffset.UTC))
+        .blocked("free text\n{\"x\":1}", BlockStore.Reason.CHALLENGE);
+
+    List<String> lines = output.getOut().lines().toList();
+    assertThat(lines).hasSize(1);
+    JsonNode line = JsonMapper.builder().build().readTree(lines.get(0));
+    assertThat(new ArrayList<>(line.propertyNames()))
+        .containsExactly("ts", "level", "event", "outcome");
   }
 }

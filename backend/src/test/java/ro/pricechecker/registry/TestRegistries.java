@@ -106,4 +106,15 @@ public final class TestRegistries {
       throw new UncheckedIOException(e);
     }
   }
+
+  /** A {@link BlockStore} over a fresh temporary directory (no {@code blocks.json} yet). */
+  public static BlockStore blockStore(RuntimeSwitch runtime, Clock clock) {
+    try {
+      Path dir = Files.createTempDirectory("blocks");
+      dir.toFile().deleteOnExit();
+      return new BlockStore(dir.resolve("blocks.json"), runtime, clock, (retailer, reason) -> {});
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
 }

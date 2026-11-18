@@ -57,8 +57,13 @@ class LookupLogAcceptanceGapsTest {
             .toList();
     assertThat(api).isNotEmpty();
     for (Method m : api) {
-      for (Class<?> p : m.getParameterTypes()) {
-        assertThat(p.isEnum() || p.isPrimitive())
+      Class<?>[] types = m.getParameterTypes();
+      for (int i = 0; i < types.length; i++) {
+        Class<?> p = types[i];
+        // Story 2.6: blocked(retailer, reason) takes the retailer id, which LookupLog checks
+        // against the domain shape and drops otherwise (LookupLogTest covers it).
+        boolean retailerId = m.getName().equals("blocked") && i == 0 && p == String.class;
+        assertThat(p.isEnum() || p.isPrimitive() || retailerId)
             .as("%s takes %s; only enums or primitives may reach a log line", m, p.getName())
             .isTrue();
       }
