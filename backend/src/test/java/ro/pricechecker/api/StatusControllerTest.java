@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -87,14 +88,20 @@ class StatusControllerTest {
   private final RuntimeFile runtimeFile;
   private final RuntimeSwitch runtime;
   private final BlockStore blocks;
+  private final MutableClock clock;
 
   @Autowired
   StatusControllerTest(
-      MockMvc mvc, RuntimeFile runtimeFile, RuntimeSwitch runtime, BlockStore blocks) {
+      MockMvc mvc,
+      RuntimeFile runtimeFile,
+      RuntimeSwitch runtime,
+      BlockStore blocks,
+      MutableClock clock) {
     this.mvc = mvc;
     this.runtimeFile = runtimeFile;
     this.runtime = runtime;
     this.blocks = blocks;
+    this.clock = clock;
   }
 
   private JsonNode retailers() throws Exception {
@@ -226,5 +233,91 @@ class StatusControllerTest {
     assertThat(a.has("notBefore")).isFalse();
     assertThat(b.get("blocked").booleanValue()).isFalse();
     assertThat(b.get("notBefore").stringValue()).isEqualTo("2026-11-18T11:00:00Z");
+  }
+
+  @Test
+  @Tag("AC-2.9.1")
+  void ac_2_9_1_blockedNonApprovedRetailerNeverAppears() throws Exception {
+    runtime.refresh();
+    blocks.record("c.example", BlockStore.Reason.HTTP_403);
+    blocks.recordRetryAfter("c.example", NOW.plusSeconds(60));
+
+    JsonNode retailers = retailers();
+
+    assertThat(retailers.size()).isEqualTo(2);
+    retailers.forEach(
+        retailer -> assertThat(retailer.get("retailerId").stringValue()).isNotEqualTo("c.example"));
+  }
+
+  @Test
+  @Tag("AC-2.9.2")
+  void ac_2_9_2_blockOnAdapterDisabledRetailerIsStillReported() throws Exception {
+    runtime.refresh();
+    blocks.record("b.example", BlockStore.Reason.CHALLENGE);
+
+    JsonNode b = only(retailers(), "b.example");
+
+    assertThat(b.get("enabled").booleanValue()).isFalse();
+    assertThat(b.get("blocked").booleanValue()).isTrue();
+  }
+
+  @Test
+  @Tag("AC-2.9.2")
+  void ac_2_9_2_blockAndFutureNotBeforeAreBothReported() throws Exception {
+    runtime.refresh();
+    blocks.recordRetryAfter("a.example", NOW.plusSeconds(120));
+    blocks.record("a.example", BlockStore.Reason.HTTP_403);
+
+    JsonNode a = only(retailers(), "a.example");
+
+    assertThat(a.get("blocked").booleanValue()).isTrue();
+    assertThat(a.get("notBefore").stringValue()).isEqualTo("2026-11-18T10:17:30Z");
+  }
+
+  @Test
+  @Tag("AC-2.9.2")
+  void ac_2_9_2_clearedBlockIsNoLongerReported() throws Exception {
+    runtime.refresh();
+    blocks.record("a.example", BlockStore.Reason.HTTP_403);
+    assertThat(only(retailers(), "a.example").get("blocked").booleanValue()).isTrue();
+
+    runtimeFile.write(
+        "retailers:\n"
+            + "  a.example: {fetching: allowed, clearGeneration: 1}\n"
+            + "  b.example: {fetching: allowed}\n");
+    clock.advance(Duration.ofSeconds(15));
+
+    JsonNode a = only(retailers(), "a.example");
+
+    assertThat(a.get("blocked").booleanValue()).isEqualTo(blocks.isBlocked("a.example")).isFalse();
+  }
+
+  @Test
+  @Tag("AC-2.9.2")
+  void ac_2_9_2_notBeforeDisappearsOnceTheClockPassesIt() throws Exception {
+    blocks.recordRetryAfter("a.example", NOW.plusSeconds(60));
+    assertThat(only(retailers(), "a.example").has("notBefore")).isTrue();
+
+    clock.advance(Duration.ofSeconds(61));
+
+    assertThat(only(retailers(), "a.example").has("notBefore")).isFalse();
+  }
+
+  @Test
+  @Tag("AC-2.9.2")
+  void ac_2_9_2_laterOfOwnAndRunnerNotBeforeIsReported() throws Exception {
+    runtimeFile.write(
+        "retailers:\n"
+            + "  a.example: {fetching: allowed, notBefore: \"2026-11-18T10:20:00Z\"}\n"
+            + "  b.example: {fetching: allowed, notBefore: \"2026-11-18T10:20:00Z\"}\n");
+    blocks.recordRetryAfter("a.example", Instant.parse("2026-11-18T10:30:00Z"));
+    blocks.recordRetryAfter("b.example", Instant.parse("2026-11-18T10:16:00Z"));
+
+    JsonNode retailers = retailers();
+
+    assertThat(only(retailers, "a.example").get("notBefore").stringValue())
+        .isEqualTo("2026-11-18T10:30:00Z");
+    assertThat(only(retailers, "b.example").get("notBefore").stringValue())
+        .isEqualTo("2026-11-18T10:20:00Z");
   }
 }
