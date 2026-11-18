@@ -757,6 +757,30 @@ class DeployWorkflowTest {
     assertThat(found).isGreaterThanOrEqualTo(1);
   }
 
+  @Test
+  @Tag("AC-3.3.1")
+  @SuppressWarnings("unchecked")
+  void ac_3_3_1_pushWithoutProdFqdnPushesImagesAndSaysTheDeployWasSkipped() throws IOException {
+    // The deploy job runs only when PROD_FQDN is set; otherwise the images job must
+    // say so, so a merge never looks deployed when it was not.
+    assertThat(job("deploy").get("if")).isEqualTo("vars.PROD_FQDN != ''");
+    List<Map<String, Object>> steps = (List<Map<String, Object>>) job("images").get("steps");
+    int lastPush = -1;
+    int notice = -1;
+    for (int i = 0; i < steps.size(); i++) {
+      String run = String.valueOf(steps.get(i).get("run"));
+      if (run.contains("docker push")) {
+        lastPush = i;
+      }
+      if ("vars.PROD_FQDN == ''".equals(steps.get(i).get("if"))) {
+        notice = i;
+        assertThat(run).startsWith("echo \"::notice ").contains("not deployed");
+      }
+    }
+    assertThat(lastPush).as("images job pushes").isNotNegative();
+    assertThat(notice).as("skipped-deploy notice comes after the push").isGreaterThan(lastPush);
+  }
+
   private static void deleteTree(Path dir) throws IOException {
     if (!Files.exists(dir)) {
       return;
