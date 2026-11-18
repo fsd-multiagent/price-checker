@@ -44,6 +44,25 @@ class FixtureHttpTest {
   }
 
   @Test
+  void ac_2_14_2_releaseEndsAHangInProgressBeforeItsTimeout() throws Exception {
+    FixtureHttp longHang =
+        new FixtureHttp(Set.of(NO_PAGE), url -> Optional.empty(), Duration.ofMinutes(10));
+    Thread caller =
+        Thread.ofVirtual()
+            .start(() ->
+                assertThatThrownBy(() -> longHang.get(NO_PAGE)).isInstanceOf(IOException.class));
+    while (longHang.requests("5940000000028") == 0) {
+      Thread.onSpinWait();
+    }
+
+    longHang.close();
+
+    assertThat(caller.join(Duration.ofSeconds(10))).isTrue();
+    assertThatThrownBy(() -> longHang.get(NO_PAGE)).isInstanceOf(IOException.class);
+    assertThat(longHang.requests("5940000000028")).isEqualTo(2);
+  }
+
+  @Test
   void ac_2_14_4_e2eRegistryLoadsAndEveryPageIsKnown() {
     Registry registry = E2eBeans.registry();
     assertThat(registry.approvedDomains()).hasSize(2);

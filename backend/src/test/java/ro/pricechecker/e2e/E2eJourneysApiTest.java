@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.StreamSupport;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,6 +70,12 @@ class E2eJourneysApiTest {
     registry.add("price-checker.blocks-file", () -> DIR.resolve("blocks.json").toString());
   }
 
+  /** Ends any stub hang still holding a pool thread once a test has checked its rows (T-5). */
+  @AfterEach
+  void releaseHangs() {
+    fixtureHttp.release();
+  }
+
   @Test
   @Tag("AC-2.14.1")
   void ac_2_14_1_uj1_trailingWhitespaceEanFindsBothRowsAndMarksTheCheaperLowest() throws Exception {
@@ -104,7 +111,8 @@ class E2eJourneysApiTest {
     assertThat(found.get("status").asString()).isEqualTo("FOUND");
     assertThat(found.get("lowest").asBoolean()).isTrue();
     assertThat(rows).filteredOn(r -> r.get("status").asString().equals("FOUND")).hasSize(1);
-    // The Lookup deadline (1500 ms) ended the row, not the stub's 60 s hang.
+    // The Lookup deadline (1500 ms) ended the row, not the stub's 60 s hang. The bound (30 s) is
+    // deliberately loose so a slow runner cannot fail it; the Playwright test checks the same AC.
     assertThat(took).isLessThan(E2eBeans.HANG.dividedBy(2));
   }
 

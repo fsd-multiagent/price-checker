@@ -23,8 +23,10 @@ class E2eCiWiringTest {
     String ci = Files.readString(ROOT.resolve(".github/workflows/ci.yml"));
     int backendJob = ci.indexOf("\n  backend:\n");
     int nextJob = ci.indexOf("\n  web:\n", backendJob);
-    assertThat(backendJob).isNotNegative();
-    assertThat(nextJob).isGreaterThan(backendJob);
+    String layout =
+        "ci.yml must keep the jobs as two-space-indented keys, `backend:` followed by `web:`";
+    assertThat(backendJob).as(layout).isNotNegative();
+    assertThat(nextJob).as(layout).isGreaterThan(backendJob);
     String job = ci.substring(backendJob, nextJob);
 
     assertThat(job).contains("npm --prefix web/e2e ci").contains("npm --prefix web/e2e test");

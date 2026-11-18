@@ -98,3 +98,16 @@ Real domains appear only as ids in the test register because the real adapters' 
 **Verification:** `backend/gradlew -p backend check` exit 0; `CI=1 npm --prefix web/e2e test` 3 passed; `npm --prefix web run check` exit 0; `uv run pytest -q tests/test_ci_story_1_9.py` 38 passed.
 
 **Residual risks:** the CI steps have not run on GitHub yet (`playwright install --with-deps` on ubuntu); the `ci.yml` change makes the PR owner-review (review path).
+
+### Round 2 (run 20261117-174705-full)
+
+Round 1 failed only because Veronel (Security & Compliance) left no valid verdict (AD-10, AD-18); that is a review-step error, not a code defect. The code-review findings were addressed:
+
+- CR-1 (T-5) and code_lens CR-3: `FixtureHttp` now has `release()` (ends hangs in progress) and `close()` (Spring calls it at context shutdown; ends every hang, later ones fail at once). `E2eJourneysApiTest` releases hangs after each test, so no pool thread stays blocked for 60 s. New `FixtureHttpTest.ac_2_14_2_releaseEndsAHangInProgressBeforeItsTimeout`.
+- CR-2 (D-1): `web/e2e/README.md` now says 60 s (`E2eBeans.HANG`).
+- CR-3 (T-3): README notes that `E2eBeans` must override a `FetchClient` bean once story 2.8 wires one; the single-`RetailerHttp` assertion stays.
+- code_lens CR-1: the wall-clock bound in the UJ-2 API test is kept and commented as deliberately loose.
+- code_lens CR-2: `E2eCiWiringTest` names the expected job layout in its assertion messages.
+- CR-4 (T-1): substring check of `ci.yml` kept, as the reviewer accepted; YAML parsing deferred.
+
+Verification: `backend/gradlew -p backend check` exit 0.
