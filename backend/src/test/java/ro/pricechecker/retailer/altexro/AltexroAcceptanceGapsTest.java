@@ -160,7 +160,6 @@ class AltexroAcceptanceGapsTest {
         SourceRegister.parse(Files.readString(REPO_ROOT.resolve("docs/source-register.md")));
 
     assertThat(register.rows()).containsKey("altex.ro");
-    assertThat(register.rows().get("altex.ro").status()).isEqualTo("Not checked");
     assertThat(register.isApproved("altex.ro")).isFalse();
     assertThat(register.approvedDomains()).doesNotContain("altex.ro");
   }

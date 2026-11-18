@@ -113,7 +113,7 @@ class ConfigCheckTest {
     assertThat(check(List.of(slow), twoEans("a.example"))).isEmpty();
   }
 
-  // AC 1.5.2 as amended by ADR 0024: unparseable Limits fail for an Approved or enabled entry;
+  // AC 1.5.2 as amended by ADR 0026: unparseable Limits fail for an Approved or enabled entry;
   // a disabled, not Approved entry is covered by the ac_4_1_2 tests below.
   @Test
   void ac_1_5_2_unparseableRegisterLimits() {
@@ -150,7 +150,7 @@ class ConfigCheckTest {
         .anySatisfy(v -> assertThat(v).contains("c.example", "concurrency"));
   }
 
-  // ADR 0024: missing values on a disabled entry without register Limits are violations too.
+  // ADR 0026: missing values on a disabled entry without register Limits are violations too.
   @Test
   void ac_4_1_2_disabledRowWithoutLimitsMissingValuesFails() {
     SourceRegister reg = SourceRegister.parse(register(row("c.example", "Proposed", "—")));
@@ -161,7 +161,7 @@ class ConfigCheckTest {
         .anySatisfy(v -> assertThat(v).contains("c.example", "concurrency"));
   }
 
-  // ADR 0024: once register Limits parse, "not looser" applies to disabled, not Approved entries.
+  // ADR 0026: once register Limits parse, "not looser" applies to disabled, not Approved entries.
   @Test
   void ac_4_1_2_disabledNotApprovedRowWithParseableLimitsMustNotBeLooser() {
     SourceRegister reg = SourceRegister.parse(register(row("c.example", "Not checked", LIMITS)));

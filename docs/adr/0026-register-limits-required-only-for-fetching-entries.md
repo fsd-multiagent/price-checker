@@ -1,4 +1,4 @@
-# 0024. Require parseable register Limits only for retailer entries that can fetch
+# 0026. Require parseable register Limits only for retailer entries that can fetch
 
 - **Status:** Proposed
 - **Date:** 2026-11-18

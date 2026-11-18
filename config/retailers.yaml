@@ -5,7 +5,7 @@
 #   - resolution is missing or not one of search, catalog, curated (AD-12: curated for now),
 #   - minIntervalMs or concurrency is looser than the register's Limits column, or the Limits
 #     cannot be parsed for an entry that is enabled or Approved (a disabled, not Approved
-#     entry only needs positive minIntervalMs and concurrency, ADR 0024),
+#     entry only needs positive minIntervalMs and concurrency, ADR 0026),
 #   - deadlineMs is missing or not positive.
 retailers:
   evomag.ro:
