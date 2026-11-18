@@ -124,7 +124,7 @@ AD-8 says a Limits value that cannot be parsed fails the check, but the owner-on
 ### 2026-11-18 — Review pass
 - verdicts: 20 findings — high 0, medium 5, low 11, false 2, maybe-false 2
 - findings:
-  - `[medium]` `[defer]` Blind: adapter ignores the EAN — not in 4.1 ACs; deferred.
+  - `[medium]` `[defer]` Blind: adapter ignores the EAN — not in 4.1 ACs; deferred. (Resolved in round 8: see Round 8.)
   - `[false]` `[reject]` Blind: gate test passes without gate — removing the Approved filter adds a DISABLED Altex row, so the test fails.
   - `[low]` `[reject]` Blind: facts not merged across steps — documented design (first step with a price wins); no AC asks for merging.
   - `[low]` `[defer]` Blind: selector currency only for "lei", no non-RON check — deferred with the EAN item.
@@ -182,7 +182,7 @@ Status: done
 
 - The round 5 blockers `security-outcome` (AD-18) and `security-verdict` (AD-10) came from Veronel (Security & Compliance), whose step ended without a valid verdict. Neither names a defect in the diff, and both code reviews passed. No code change was needed; the security step has to run again.
 - code_lens CR-3 (S-1, exact register Status pin) had already been fixed in round 5: `ac_4_1_2_registerKeepsAltexNotChecked` asserts only that altex.ro is in the register and is not Approved.
-- CR-2 (C-7, gtin compared with the requested EAN) and CR-3 (C-6, `RON` currency text) stay deferred as recorded. CR-4 (D-2): ADR 0026 is still Proposed and needs the owner's acceptance.
+- CR-2 (C-7, gtin compared with the requested EAN; resolved in round 8) and CR-3 (C-6, `RON` currency text) stay deferred as recorded. CR-4 (D-2): ADR 0026 is still Proposed and needs the owner's acceptance.
 - Rebased onto `origin/main` at 6406f067ef29549503dfb6e95c65187302cd9ca5 (#63 story 2-7, #64 learn 2-4) with no conflicts. Main has no new ADR, so 0026 is still free.
 - Verification: `backend/gradlew -p backend check` exit 0.
 
@@ -190,8 +190,8 @@ Status: done
 
 - The round 6 blockers `security-outcome` (AD-18) and `security-verdict` (AD-10) again came from Veronel (Security & Compliance)'s step ending without a valid verdict. Neither names a defect in the diff, and code_review and code_lens both passed. No code change answers them; the security step has to run again.
 - Rebased onto `origin/main` at b624f2a18803692e77197a6f044434fd2b6cffe9 (#65 learn 2-5) with no conflicts. Main has no new ADR, so 0026 is still free.
-- CR-2 (AD-6, new): `AltexroAdapter` maps every `IOException` to `Unavailable(HTTP_ERROR)` instead of returning `fetch.FetchFailure.outcome()`. Deferred to the story that wires `FetchClient` as the `RetailerHttp` bean (2.8), as the reviewer recommends: `CelroAdapter` and `EvomagAdapter` share the pattern, they should change together, and `FetchFailure`'s factories are package-private in `fetch` (outside this story's touches), so no adapter test can build one yet. Altex ships `adapter: disabled`, so no Lookup reaches this path.
-- CR-3 (C-7, gtin compared with the requested EAN) stays deferred. code_lens CR-3 (S-1) was already fixed in round 5. CR-4 (D-2): ADR 0026 is still Proposed; the PR description must name it for the owner's acceptance.
+- CR-2 (AD-6, new; resolved in round 8): `AltexroAdapter` maps every `IOException` to `Unavailable(HTTP_ERROR)` instead of returning `fetch.FetchFailure.outcome()`. Deferred to the story that wires `FetchClient` as the `RetailerHttp` bean (2.8), as the reviewer recommends: `CelroAdapter` and `EvomagAdapter` share the pattern, they should change together, and `FetchFailure`'s factories are package-private in `fetch` (outside this story's touches), so no adapter test can build one yet. Altex ships `adapter: disabled`, so no Lookup reaches this path.
+- CR-3 (C-7, gtin compared with the requested EAN; resolved in round 8) was deferred in this round. code_lens CR-3 (S-1) was already fixed in round 5. CR-4 (D-2): ADR 0026 is still Proposed; the PR description must name it for the owner's acceptance.
 - Verification: `backend/gradlew -p backend check` exit 0.
 
 ### Round 8
@@ -203,3 +203,11 @@ Status: done
 - CR-4 (D-2): ADR 0026 is still Proposed; the PR description must name it for the owner's acceptance.
 - Verification: `backend/gradlew -p backend check` exit 0.
 - QA (Eufrosina, round 8): the C-7 check read only the winning step's gtin, so a JSON-LD naming another product's GTIN followed by a priced meta step still gave `Found` with that price. `fetchAndExtract` now checks the gtin of every step it reads up to the winner and returns `NotFound` on a mismatch. New tests in `AltexroAcceptanceGapsTest`: `ac_4_1_1_otherProductGtinInAnEarlierStepIsNotFoundEvenWhenALaterStepHasThePrice` (failed before the fix), `ac_4_1_1_gtin14WithLeadingZeroOnThePageIsTheSameProduct`, `ac_4_1_1_refusedFetchFailurePassesThroughWithNoExtraction`. `backend/gradlew -p backend check` exit 0.
+
+### Round 9
+
+- Root cause of the `security-outcome` (AD-18) and `security-verdict` (AD-10) blockers, found in the round 8 step log: Veronel (Security & Compliance) did return a `pass` verdict with no findings, but its JSON block had `reviewer`, `verdict`, `summary` and `findings` and no `target`. The orchestrator's `Verdict` model requires `target`, so the block did not parse, and the step ended with "no valid verdict". The diff has no defect behind these blockers. A valid security verdict needs all four keys: `reviewer`, `target`, `verdict`, `findings`.
+- Factory proposal (AD-26): `sdlc/prompts/security-story.md` now names the four required keys and the `target` form. The orchestrator turns this edit into an `owner-review` proposal and reverts it on this branch, so it helps only after the owner merges it.
+- CR-2 (D-2) fixed: the review log and the round 7 notes now mark the EAN/gtin (C-7) and `FetchFailure` (AD-6) items as resolved in round 8.
+- CR-3 / code_lens CR-1 (C-6, `RON` currency text) stay deferred as recorded in the frontmatter. CR-4 (D-2): ADR 0026 is still Proposed; the PR description must name it for the owner's acceptance.
+- No code change this round, so no follow-up review pass ran. `origin/main` is still 398a852, so no rebase was needed.
