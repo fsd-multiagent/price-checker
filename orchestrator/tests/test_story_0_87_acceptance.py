@@ -112,7 +112,30 @@ async def test_ac1_red_tests_after_rebase_fail_the_round_with_output_and_no_pr(t
     assert orch.state.unit(SCOPE, "integrate").status is Status.PASSED
 
 
-# --- AC-2 ------------------------------------------------------------------------------------
+async def test_ac1_red_tests_after_rebase_do_not_update_an_open_pr(tmp_path):
+    """Round 1 opens the PR and CI is red; round 2's red post-rebase tests push nothing."""
+    orch, ports = _orch(tmp_path, {f"{SCOPE}/ci_green/r1": {"exit_code": 1}})
+    real = ports.commands.run
+
+    async def run(name, worktree, timeout_s, key, factory=False):
+        if key.scope == SCOPE and key.step == "tests_rebased" and key.round == 2:
+            return 1, REBASED_ERROR
+        return await real(name, worktree, timeout_s, key, factory=factory)
+
+    ports.commands.run = run
+    assert await orch.start(dry_run=True, fixtures=str(FIXTURES)) == 2
+
+    r2 = {r.step for r in _records(orch, "integrate") if r.round == 2}
+    assert "tests_rebased" in r2 and "open_pr" not in r2 and "ci_green" not in r2
+    branch = "story/1-1-ean-input"
+    pushes = [c for c in ports.git.calls if c[0] == "push" and c[1] == branch]
+    prs = [c for c in ports.gh.calls if c[0] == "ensure_pr" and c[1] == branch]
+    assert len(pushes) == 1 and len(prs) == 1  # only round 1's; the open PR is not updated
+    assert REBASED_ERROR in _summary(orch, 2, "tests_rebased")
+    assert orch.state.unit(SCOPE, "integrate").status is Status.ESCALATED
+
+
+# --- AC-2------------------------------------------------------------------------------------
 
 
 def _log(*lines: str) -> str:
