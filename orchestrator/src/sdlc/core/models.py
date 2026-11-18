@@ -7,7 +7,7 @@ Every model is a frozen pydantic v2 model with tuple fields. A new value is buil
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -101,6 +101,11 @@ class Step(Frozen):
     # AD-24: the role, in Name (Position) form, charged with the step's usage. Required on
     # agent and judge steps; left out of the stage-table digest.
     agent_role: str | None = None
+    # AD-7: optional per-step overrides of the stage's model, effort and max_turns. Left out of
+    # the stage-table digest, like the stage limits, so tuning them does not block a resume.
+    model: str | None = None
+    effort: Effort | None = None
+    max_turns: int | None = None
 
     @property
     def runner(self) -> str | None:
@@ -111,6 +116,14 @@ class Step(Frozen):
         if self.kind is StepKind.JUDGE:
             return "judge"
         return self.skill or self.agent
+
+
+class StepLimits(NamedTuple):
+    """A step's resolved `--model`, `--effort` and `--max-turns` (AD-7)."""
+
+    model: str | None
+    effort: Effort | None
+    max_turns: int | None
 
 
 class Gate(Frozen):
@@ -143,6 +156,15 @@ class Stage(Frozen):
             if s.id == step_id:
                 return s
         raise KeyError(f"stage '{self.id}' has no step '{step_id}'")
+
+    def limits_for(self, step: Step, settings: Settings) -> StepLimits:
+        """AD-7: the step's value, else the stage's, else the settings default (model and
+        effort); max_turns has no settings default."""
+        return StepLimits(
+            model=step.model or self.model or settings.default_model,
+            effort=step.effort or self.effort or settings.default_effort,
+            max_turns=step.max_turns or self.max_turns,
+        )
 
     def phases(self) -> tuple[tuple[Step, ...], ...]:
         """Steps grouped into the order they run in; a group's steps run in parallel."""

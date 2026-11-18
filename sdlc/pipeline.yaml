@@ -8,7 +8,9 @@
 #   effort override default_model / default_effort; unset means the CLI default (AD-7).
 # Step fields: id, kind (agent | judge | script), skill or agent, agent_role (required on agent
 #   and judge steps; a role from settings.agents allowed to run that skill or agent, AD-24),
-#   script, prompt, tools, inputs, writes, outcome_source (AD-18), verdict_source (AD-17).
+#   script, prompt, tools, inputs, writes, outcome_source (AD-18), verdict_source (AD-17),
+#   model, effort, max_turns. A step's model, effort and max_turns override its stage's, which
+#   override the defaults (AD-7); they are left out of the stage-table digest.
 # Settings for subscription runs (ADR 0005): default_model, default_effort, usage_limit_wait_min,
 #   usage_limit_max_wait_h, allow_api_key. A plan usage limit pauses the run until resume_at, and
 #   `sdlc status` shows a "plan usage limit" line while paused. Dry-run scenarios: usage-limit
@@ -108,6 +110,8 @@ stages:
         tools: [Read, Grep, Glob]
         inputs: [docs/initial-spec.md, _bmad-output/planning-artifacts/briefs/]
         verdict_source: result_block
+        model: sonnet # AD-7: read-only reviewer, cheaper model
+        effort: medium
     gate: judge_coverage
 
   - id: requirements
@@ -157,6 +161,8 @@ stages:
         tools: [Read, Grep, Glob]
         inputs: [_bmad-output/planning-artifacts/prds/, docs/source-register.md]
         verdict_source: result_block
+        model: sonnet # AD-7: read-only reviewer, cheaper model
+        effort: medium
     parallel: [[ux, security_prd]]
     gate: review_verdicts
 
@@ -182,6 +188,8 @@ stages:
         tools: [Read, Grep, Glob]
         inputs: [_bmad-output/planning-artifacts/architecture/, docs/adr/]
         verdict_source: result_block
+        model: sonnet # AD-7: read-only reviewer, cheaper model
+        effort: medium
     gate: review_verdicts
 
   - id: breakdown
@@ -279,6 +287,7 @@ stages:
         inputs: [docs/standards/coding.md, docs/standards/testing.md]
         writes: true # only its verdict file under .sdlc/ (AD-16)
         verdict_source: file
+        effort: medium # AD-7: the stage model, lower effort
       - id: code_lens
         kind: agent
         agent: code-reviewer
@@ -287,6 +296,8 @@ stages:
         tools: [Read, Grep, Glob]
         inputs: [docs/standards/coding.md, docs/standards/testing.md]
         verdict_source: result_block
+        model: sonnet # AD-7: read-only reviewer, cheaper model
+        effort: medium
       - id: security
         kind: agent
         agent: security-compliance-reviewer
@@ -295,6 +306,8 @@ stages:
         tools: [Read, Grep, Glob]
         inputs: [docs/standards/security-compliance.md, docs/source-register.md]
         verdict_source: result_block
+        model: sonnet # AD-7: read-only reviewer, cheaper model
+        effort: medium
     parallel: [[code_review, code_lens, security]]
     gate:
       - {kind: tests, steps: [tests]}

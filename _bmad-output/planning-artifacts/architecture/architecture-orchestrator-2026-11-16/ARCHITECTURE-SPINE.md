@@ -145,7 +145,7 @@ stateDiagram-v2
   - A pydantic model validates `pipeline.yaml` at load. Stages refer to step kinds (`agent`, `judge`, `script`) and gate kinds (AD-19) by registry name. An unknown name is a load error.
   - No stage name is hard-coded in Python.
   - Stage fields: `id`, `entry` (the run kinds it belongs to, from `full`, `story` and `fix`), `per_story`, `steps`, `parallel`, `gate`, `on_fail`, `max_rounds`, `timeout_min`, `budget_usd`, optional `model`, optional `effort` (`low | medium | high | xhigh | max`; `ultracode` is excluded on purpose, because it fans out many agents), optional `max_turns`. A stage value overrides the setting `default_model` / `default_effort`; unset means the CLI default (`medium` effort on current models). `sdlc resume` accepts changes to `model`, `effort` and `max_turns`, like the other per-stage limits.
-  - Step fields: `kind`, `skill` or `agent`, `agent_role` (AD-24, required on `agent` and `judge` steps), `prompt`, `tools`, `writes` (boolean), `outcome_source` (AD-18), `verdict_source` (AD-17).
+  - Step fields: `kind`, `skill` or `agent`, `agent_role` (AD-24, required on `agent` and `judge` steps), `prompt`, `tools`, `writes` (boolean), `outcome_source` (AD-18), `verdict_source` (AD-17), optional `model`, `effort` and `max_turns`. A step value overrides the stage value, which overrides `default_model` / `default_effort` (`max_turns`: step, then stage). Step values are validated like stage values, and the error names the stage and the step. They are left out of the stage-table digest, so `sdlc resume` accepts changes to them; `claude -p` and the usage ledger (`model_requested`, `effort`, AD-24) get the resolved values.
   - Defaults are in the table below.
 
 | Setting | Default |

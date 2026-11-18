@@ -313,7 +313,8 @@ def test_ac1_cli_dry_run_exits_0_and_prints_argv(tmp_path, capsys):
     assert code == 0
     assert (
         "$ claude -p --output-format json --max-budget-usd 5.00 --no-session-persistence "
-        "--allowedTools Read,Grep,Glob --tools Read,Grep,Glob --agent code-reviewer < code-lens.md"
+        "--allowedTools Read,Grep,Glob --tools Read,Grep,Glob --agent code-reviewer "
+        "--model sonnet --effort medium < code-lens.md"  # AD-7: step overrides
     ) in out
     assert "status=passed" in out
     assert "--bare" not in out

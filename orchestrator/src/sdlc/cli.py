@@ -479,20 +479,23 @@ def _on_run(args: argparse.Namespace) -> Any:
 LIMITS = frozenset(
     {"title", "max_rounds", "timeout_min", "budget_usd", "model", "effort", "max_turns"}
 )
-STEP_ATTRIBUTION = frozenset({"agent_role"})
+# Per-step attribution (AD-24) and limits (AD-7), also left out of the digest.
+STEP_EXCLUDED = frozenset({"agent_role", "model", "effort", "max_turns"})
 
 
 def stage_table_digest(pipeline: Pipeline) -> str:
     """sha256 of the stage table only: stage ids, order, steps, gates, on_fail, entry, per_story.
 
-    Settings (`run_budget_usd`, `max_parallel`, ...) and per-stage limits are excluded, so the
-    owner can fix that config and resume (plan §4.4); a changed stage table refuses a resume.
+    Settings (`run_budget_usd`, `max_parallel`, ...) and per-stage and per-step limits are
+    excluded, so the owner can fix that config and resume (plan §4.4); a changed stage table
+    refuses a resume.
     """
     table = []
     for s in pipeline.stages:
         stage = {k: v for k, v in s.model_dump(mode="json").items() if k not in LIMITS}
-        # AD-24: agent_role is attribution, not process; adding it must not block a resume.
-        stage["steps"] = [{k: v for k, v in st.items() if k not in STEP_ATTRIBUTION}
+        # AD-24: agent_role is attribution, not process; AD-7: step limits are tuning. Neither
+        # may block a resume.
+        stage["steps"] = [{k: v for k, v in st.items() if k not in STEP_EXCLUDED}
                           for st in stage["steps"]]  # fmt: skip
         table.append(stage)
     blob = json.dumps(table, sort_keys=True, separators=(",", ":"))

@@ -425,9 +425,9 @@ def _usage_record(
     role = r.get("agent_role") or UNKNOWN_ROLE
     try:
         stage = p.stage(r["stage"])
-        role = r.get("agent_role") or stage.step(r["step"]).agent_role or UNKNOWN_ROLE
-        requested = stage.model or p.settings.default_model
-        effort = stage.effort or p.settings.default_effort
+        step = stage.step(r["step"])
+        role = r.get("agent_role") or step.agent_role or UNKNOWN_ROLE
+        requested, effort, _ = stage.limits_for(step, p.settings)
     except KeyError:  # the pipeline no longer has this stage or step
         requested, effort = None, None
     models = result.model_usage if result is not None else ()

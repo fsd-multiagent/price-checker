@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import pytest
-from conftest import pipeline_text
+from conftest import make_dry_run, pipeline_text, run_dry
 
-from sdlc.core.models import OutcomeSource, RunKind
+from sdlc import cli
+from sdlc.core.models import Effort, OutcomeSource, RunKind
 from sdlc.core.pipeline import PipelineError, load_pipeline
 
 MINIMAL = """
@@ -219,3 +220,118 @@ def test_result_status_with_result_block_verdict():
 def test_agent_step_needs_tools():
     with pytest.raises(PipelineError, match="stage 'one' step 'a': an agent step needs a tools"):
         load(steps="      - {id: a, kind: agent, agent_role: T, skill: s, prompt: p}")
+
+
+# --------------------------------------------------------------------------- step limits (AD-7)
+
+STEP_LIMITS = """
+settings: {run_budget_usd: 10, default_model: opus, default_effort: low,
+           agents: {T: [s, x, worker, stub-worker, judge]}}
+stages:
+  - id: one
+    entry: [full]
+    budget_usd: 1
+    effort: high
+    max_turns: 30
+    steps:
+      - {id: a, kind: agent, agent_role: T, skill: s, prompt: p, tools: [Read], writes: true}
+      - {id: b, kind: agent, agent_role: T, agent: x, prompt: p, tools: [Read],
+         verdict_source: result_block, model: sonnet, effort: medium, max_turns: 10}
+    gate: review_verdicts
+"""
+
+
+def test_ac1_step_limits_override_the_stage():
+    p = load_pipeline(STEP_LIMITS)
+    stage, settings = p.stage("one"), p.settings
+    assert stage.limits_for(stage.step("b"), settings) == ("sonnet", Effort.MEDIUM, 10)
+    assert stage.limits_for(stage.step("a"), settings) == ("opus", Effort.HIGH, 30)
+
+
+async def test_ac1_argv_carries_step_then_stage_values(tmp_path):
+    text = pipeline_text().replace(
+        "  - id: analysis\n", "  - id: analysis\n    effort: high\n    max_turns: 20\n", 1
+    )
+    text = text.replace(
+        "        prompt: brief-coverage\n",
+        "        prompt: brief-coverage\n        max_turns: 5\n",
+        1,
+    )
+    dr = make_dry_run(tmp_path, pipeline=load_pipeline(text))
+    assert await run_dry(dr) == 0
+    invocations = dr.ports.claude.invocations  # type: ignore[attr-defined]
+    coverage = next(i for i in invocations if i.key.step == "coverage")
+    assert coverage.argv[-6:] == ("--model", "sonnet", "--effort", "medium", "--max-turns", "5")
+    brief = next(i for i in invocations if i.key.step == "brief")
+    assert brief.argv[-4:] == ("--effort", "high", "--max-turns", "20")
+    assert "--model" not in brief.argv
+
+
+def test_ac2_bad_step_effort_names_stage_and_step():
+    bad = STEP_LIMITS.replace("effort: medium", "effort: ultracode", 1)
+    with pytest.raises(PipelineError, match=r"stage 'one' step 'b': .*effort"):
+        load_pipeline(bad)
+
+
+def test_ac2_step_limits_on_a_script_step_are_a_load_error():
+    bad = STEP_LIMITS.replace(
+        "    gate: review_verdicts",
+        "      - {id: t, kind: script, script: tests, effort: low}\n    gate: review_verdicts",
+        1,
+    )
+    with pytest.raises(PipelineError, match=r"stage 'one' step 't': model, effort"):
+        load_pipeline(bad)
+
+
+def test_ac2_bad_step_max_turns_names_stage_and_step():
+    bad = STEP_LIMITS.replace("max_turns: 10", "max_turns: 0", 1)
+    with pytest.raises(PipelineError, match=r"stage 'one' step 'b': max_turns must be greater"):
+        load_pipeline(bad)
+
+
+def test_ac3_step_tuning_keeps_the_digest():
+    base = STEP_LIMITS.replace(", model: sonnet, effort: medium, max_turns: 10", "", 1)
+    assert cli.stage_table_digest(load_pipeline(STEP_LIMITS)) == cli.stage_table_digest(
+        load_pipeline(base)
+    )
+    # The real pipeline with every step override removed, or with another one added.
+    real = pipeline_text()
+    step_fields = ("        model:", "        effort:", "        max_turns:")
+    untuned = "\n".join(x for x in real.splitlines() if not x.startswith(step_fields))
+    retuned = real.replace(
+        "        prompt: code-lens\n", "        prompt: code-lens\n        max_turns: 7\n"
+    )
+    digest = cli.stage_table_digest(load_pipeline(real))
+    assert cli.stage_table_digest(load_pipeline(untuned)) == digest
+    assert cli.stage_table_digest(load_pipeline(retuned)) == digest
+
+
+def test_ac4_real_pipeline_step_tuning(pipeline):
+    s = pipeline.settings
+    cheap = {
+        ("analysis", "coverage"),
+        ("design", "security_prd"),
+        ("architecture", "security_arch"),
+        ("build", "code_lens"),
+        ("build", "security"),
+    }
+    for stage_id, step_id in cheap:
+        stage = pipeline.stage(stage_id)
+        limits = stage.limits_for(stage.step(step_id), s)
+        assert (limits.model, limits.effort) == ("sonnet", Effort.MEDIUM), (stage_id, step_id)
+    build = pipeline.stage("build")
+    assert build.limits_for(build.step("code_review"), s).effort is Effort.MEDIUM
+    for step_id in ("dev", "qa"):
+        step = build.step(step_id)
+        assert (step.model, step.effort, step.max_turns) == (None, None, None)
+
+
+async def test_ac5_dry_run_shows_step_model_and_effort(tmp_path):
+    dr = make_dry_run(tmp_path)
+    assert await run_dry(dr) == 0
+    invocations = dr.ports.claude.invocations  # type: ignore[attr-defined]
+    for step_id in ("coverage", "security_prd", "security_arch", "code_lens", "security"):
+        inv = next(i for i in invocations if i.key.step == step_id)
+        assert "--model sonnet --effort medium" in " ".join(inv.argv), step_id
+    dev = next(i for i in invocations if i.key.step == "dev")
+    assert "--model" not in dev.argv and "--effort" not in dev.argv

@@ -756,14 +756,15 @@ class Orchestrator:
         env = {"TMPDIR": f"{worktree}/.sdlc/tmp", "SDLC_RUN_ID": self.state.run_id}
         if verdict_path:
             env["SDLC_VERDICT_PATH"] = verdict_path
+        limits = stage.limits_for(step, self.p.settings)
         argv = build_argv(
             budget_usd=cap,
             allowed_tools=step.tools,
             restrict_tools=not step.writes,
             agent=step.agent,
-            model=stage.model or self.p.settings.default_model,
-            effort=stage.effort or self.p.settings.default_effort,
-            max_turns=stage.max_turns,
+            model=limits.model,
+            effort=limits.effort,
+            max_turns=limits.max_turns,
         )
         return Invocation(
             key=key,
