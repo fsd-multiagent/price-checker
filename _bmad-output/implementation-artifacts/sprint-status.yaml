@@ -14,7 +14,7 @@ development_status:
   1-7-web-ean-form: done
   1-8-web-results-table: done
   1-9-ci-backend-web: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
   epic-2: in-progress
   2-1-extract-helpers: done
   2-2-page-stripper: done
