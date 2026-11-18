@@ -29,19 +29,19 @@ development_status:
   2-11-adapter-evomagro: done
   2-12-celro-live-enable: backlog
   2-13-evomagro-live-enable: backlog
-  2-14-e2e-uj1-uj2: in-progress
+  2-14-e2e-uj1-uj2: done
   epic-2-retrospective: optional
   epic-3: in-progress
   3-1-terraform-vm: done
   3-2-containers-compose-caddy: done
   3-3-deploy-workflow: in-progress
   3-4-kill-switch-workflow: backlog
-  3-5-health-profile: review
+  3-5-health-profile: done
   3-6-health-check-workflow: backlog
   epic-3-retrospective: optional
   epic-4: in-progress
-  4-1-adapter-altexro-disabled: in-progress
-  4-2-simulated-layout-change: backlog
+  4-1-adapter-altexro-disabled: review
+  4-2-simulated-layout-change: in-progress
   4-3-demo-ean-list-check: backlog
   epic-4-retrospective: optional
   0-55-tune-model-and-effort-per-step: done

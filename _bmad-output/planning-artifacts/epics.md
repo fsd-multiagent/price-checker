@@ -823,7 +823,7 @@ So that a broken Adapter is caught before the audience sees it (FR-8, UJ-4).
 
 **Acceptance Criteria:**
 
-- **3.5.1** **Given** the `health` profile **When** started **Then** it runs no web server, uses a no-op cache and a fresh `blocks.json`, doubles each rate interval and uses concurrency 1, and contacts only Approved retailers allowed by its `runtime.yaml` (AC-8.5, AD-16).
+- **3.5.1** **Given** the `health` profile **When** started **Then** it runs no web server, uses no cache (story 3.5: `lookup.KnownEanLoad` loads without `ResultCache`) and a fresh `blocks.json`, doubles each rate interval and uses concurrency 1, and contacts only Approved retailers allowed by its `runtime.yaml` (AC-8.5, AD-16).
 - **3.5.2** **Given** stub retailers **When** it runs **Then** it checks every Known EAN is FOUND with price, availability and URL, and robots.txt allows every adapter path (AC-8.2, AC-8.7).
 - **3.5.3** **Given** any failure **When** the run ends **Then** it exits non-zero and writes a report naming retailer, EAN, missing fact and `blocked` flag, plus the page stripped by `PageStripper` (AC-8.3, T-2).
 
