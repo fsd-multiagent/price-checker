@@ -1,14 +1,40 @@
 # cel.ro fixtures
 
-Synthetic, hand-written pages for `CelroAdapterTest` (story 2.10, T-2). They are not recorded
-from cel.ro: the domain is not `Approved` yet, so nothing was fetched. Story 2.12 replaces them
-with recorded pages.
+Pages for the cel.ro adapter tests (T-2). Each page holds facts only (S-7): price, currency,
+availability and EAN. No names, descriptions, images, links or other content.
 
-Each page holds facts only (S-7): price, currency, availability and EAN. No names,
-descriptions, images or other content. The EAN `5941234567899` is made up.
+## Recorded pages (story 2.12)
 
-The cel.ro selectors used in `product-selectors.html` (`#product-price`, `.stoc_produs`,
-`.product-ean`) are an `[ASSUMPTION]` until 2.12 checks them against real pages.
+`recorded-<ean>.html` were fetched from cel.ro on 2026-11-18, one per cel.ro Known EAN in
+`config/known-eans.yaml`, through `FetchClient` (robots.txt checked, rate limit, user agent
+`price-checker/dev (+contact URL)`), then passed through `PageStripper.strip`. The stripped page
+is still the whole site layout (about 85 KB), so only its fact elements were kept, verbatim
+except whitespace: the Product JSON-LD reduced to `@context`, `@type`, `sku`, `mpn` and the
+offer's `@type`, `priceCurrency`, `price` and `availability`; the `.pret` price block; and the
+`.elem.stoc` stock block.
+
+What the recorded pages show:
+
+- JSON-LD `Product` and `Offer` carry price, `RON` and availability. There is no `gtin13` and no
+  EAN anywhere on the page, so `eanOnPage` stays `null` and the row stays `FOUND`.
+- `#product-price` holds only the number; its sibling `.moneda` holds `Lei cu TVA`.
+- `#info_stoc` (the stock element) is empty in the served HTML; cel.ro fills it with a script.
+- No `.product-ean` element exists. The adapter keeps that selector as an `[ASSUMPTION]`.
+- The curated URLs first in `known-eans.yaml` answered `301` to a new slug; the file now holds
+  the targets, because a redirect hop needs a second rate slot and missed the 4 s deadline.
+
+| File | What it covers |
+|------|----------------|
+| `recorded-5099206027282.html` | Recorded: 79 RON, in stock (JSON-LD); selector price `79` + `Lei cu TVA` |
+| `recorded-0740617261219.html` | Recorded: 388 RON, in stock (JSON-LD); selector price `388` + `Lei cu TVA` |
+
+## Synthetic pages (story 2.10)
+
+Hand-written edge cases that real pages cannot show on demand. They use the selectors checked
+against the recorded pages (`#product-price`, `#info_stoc`) and the assumed `.product-ean`. The
+EAN `5941234567899` is made up. `product-jsonld.html` and `layout-changed.html` stay synthetic
+because the cross-retailer tests (`LayoutChangeTest`, `LayoutChangeHealthCheckTest`) expect a
+GTIN in them.
 
 | File | What it covers |
 |------|----------------|

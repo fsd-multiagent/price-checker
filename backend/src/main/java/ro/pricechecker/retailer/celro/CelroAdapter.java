@@ -33,9 +33,13 @@ public class CelroAdapter implements RetailerAdapter {
 
   static final String RETAILER_ID = "cel.ro";
 
-  // [ASSUMPTION] All three selectors are synthetic until story 2.12 records real cel.ro pages.
+  // Checked against recorded cel.ro pages (story 2.12): the price element holds only the number
+  // and its sibling ".moneda" holds the currency word; the stock element is empty in the served
+  // HTML (filled by script), so it rarely gives a fact.
   private static final String PRICE_SELECTOR = "#product-price";
-  private static final String STOCK_SELECTOR = ".stoc_produs";
+  private static final String CURRENCY_SELECTOR = "#product-price ~ .moneda";
+  private static final String STOCK_SELECTOR = "#info_stoc";
+  // [ASSUMPTION] Recorded pages show no EAN element; kept for pages that might label one.
   private static final String EAN_SELECTOR = ".product-ean";
 
   private static final Pattern CURRENCY_WORD =
@@ -106,7 +110,13 @@ public class CelroAdapter implements RetailerAdapter {
     if (priceText == null && stockText == null && eanText == null) {
       return Optional.empty();
     }
-    String currency = priceText != null && CURRENCY_WORD.matcher(priceText).find() ? "RON" : null;
+    String currencyText = textOf(page.selectFirst(CURRENCY_SELECTOR));
+    boolean ron =
+        (priceText != null && CURRENCY_WORD.matcher(priceText).find())
+            || (priceText != null
+                && currencyText != null
+                && CURRENCY_WORD.matcher(currencyText).find());
+    String currency = ron ? "RON" : null;
     return Optional.of(
         new ExtractedFacts(Prices.toMinor(priceText), currency, stockOf(stockText), eanDigits));
   }

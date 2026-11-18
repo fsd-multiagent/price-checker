@@ -142,7 +142,7 @@ class CelroAdapterTest {
   void ac_2_10_1_selectorStepIsSeparateAndNeedsCurrencyWordForRon() {
     assertThat(
             CelroAdapter.fromSelectors(
-                "<div id=\"product-price\">1.299,99</div><div class=\"stoc_produs\">Stoc"
+                "<div id=\"product-price\">1.299,99</div><div id=\"info_stoc\">Stoc"
                     + " epuizat</div>"))
         .hasValueSatisfying(f -> {
           assertThat(f.priceMinor()).isEqualTo(129999L);
