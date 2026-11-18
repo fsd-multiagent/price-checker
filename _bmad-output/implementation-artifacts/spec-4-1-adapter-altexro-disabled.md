@@ -219,3 +219,11 @@ Status: done
 - Fix: `e2e/retailers.yaml` gets an `altex.ro` entry, `adapter: disabled`, with the same values as `config/retailers.yaml`, and `e2e/source-register.md` gets an `altex.ro` row marked `Not checked`. Altex is not Approved there, so a Lookup has no Altex row and the journeys' expected rows (`cel.ro`, `evomag.ro`) do not change. These two test resources are outside the story's touches, but the story's adapter bean makes them necessary.
 - `merge_pr-missing` follows from the CI failure; it needs no change of its own.
 - Verification: `backend/gradlew -p backend check` exit 0, with no failing test.
+
+### Round 11
+
+- Root cause of the `security-outcome` (AD-18) and `security-verdict` (AD-10) blockers, found in the round 10 step log (seq 723): Veronel (Security & Compliance) returned `pass` with all four top-level keys, `target` included, but its one `minor` finding had `severity`, `rule` and `message`, with no `id` and no `summary`. The orchestrator's `Finding` model requires `id` and `summary`, so the block did not parse. The diff has no defect behind these blockers.
+- Factory proposal (AD-26): `sdlc/prompts/security-story.md` now also names the finding fields (`id`, `severity`, `summary` required; `rule`, `file`, `line`, `fix` optional). The orchestrator turns this edit into an `owner-review` proposal and reverts it on this branch.
+- CR-2 (AD-18) fixed: rebased onto `origin/main` 6fe5ee8; no conflicts.
+- CR-1 (T-8): `backend/gradlew -p backend check` exit 0 after the rebase. CR-3 (D-2): ADR 0026 is still Proposed; the PR description must name it for the owner's acceptance. code_lens CR-1 (C-6, `RON` currency text) stays deferred as recorded in the frontmatter.
+- No code change this round, so no follow-up review pass ran.
