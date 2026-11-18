@@ -42,6 +42,14 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
   ```yaml sdlc-commands
   tests:
     - uv run --directory orchestrator pytest -q
+    - backend/gradlew -p backend check
+    - npm --prefix web ci
+    - npm --prefix web run check
+  terraform_plan:
+    - terraform -chdir=infra fmt -check -recursive
+    - terraform -chdir=infra init -backend=false -input=false
+    - terraform -chdir=infra validate
+    - terraform -chdir=infra test
   ```
 
 - Backend (Java 21, Spring Boot), from the repo root: `backend/gradlew -p backend check` runs compile, Spotless and all tests (ADR 0014). Details and pitfalls: `backend/CLAUDE.md`. It is not yet in the `sdlc-commands` block above; adding it needs a reviewed PR to `main` (ADR 0004).

@@ -24,6 +24,7 @@ Run from the repository root. No `cd` is needed (T-8, ADR 0014).
 | `src/main/resources/application.yaml` | App config. Tomcat access log is off (AD-14, C-9) |
 | `src/test/java/ro/pricechecker/arch/` | `ArchitectureRules` + `ArchitectureTest` (AD-1 arrows, known packages, retailer isolation, HTTP client only in `fetch`), `SpineDiagramTest`, `RetailerTextScan` + test |
 | `src/test/java/ro/pricechecker/archfixtures/` | Deliberate violations. Each proves one rule fails. Not production code |
+| `src/test/java/ro/pricechecker/AppConfigTest.java` | Checks that the Tomcat access log is off and the UTC `Clock` bean exists (AC-1.1.4) |
 | `src/test/java/ro/pricechecker/BuildPinningTest.java` | Checks pinned versions, wrapper checksum (S-12), Spotless and `-Xlint:all -Werror` |
 
 ## Conventions
