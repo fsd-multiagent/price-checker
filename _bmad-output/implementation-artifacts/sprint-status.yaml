@@ -23,7 +23,7 @@ development_status:
   2-5-robots-txt: done
   2-6-block-store: done
   2-7-retry-after: done
-  2-8-lookup-execution-cache: in-progress
+  2-8-lookup-execution-cache: review
   2-9-status-endpoint: done
   2-10-adapter-celro: done
   2-11-adapter-evomagro: done
