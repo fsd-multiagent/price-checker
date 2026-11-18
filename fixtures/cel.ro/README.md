@@ -20,3 +20,4 @@ The cel.ro selectors used in `product-selectors.html` (`#product-price`, `.stoc_
 | `product-meta-selectors.html` | Meta price 849.50 RON beats selector price `999,00 lei`; stock and EAN only in selectors |
 | `product-selectors-bad-price.html` | Selectors only: price text `Pret la cerere` (unparseable), out of stock, EAN |
 | `no-product.html` | Plain page with no product facts |
+| `layout-changed.html` | Simulated layout change (story 4.2): JSON-LD offer price key renamed to `pretCurent` and `#product-price` renamed; currency, stock and EAN remain, so the price is missing. Only tests that expect the failure extract from it (`LayoutChangeTest`, `LayoutChangeHealthCheckTest`); the fixture facts-only scan also reads it |

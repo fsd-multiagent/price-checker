@@ -13,5 +13,6 @@ They hold facts only (S-7, T-2): price, currency, availability and GTIN. No prod
 | `product-meta-microdata.html` | Meta tags 300.00 and microdata 400.00: microdata wins (C-6) |
 | `no-product.html` | No product facts at all: `Unavailable(UNPARSEABLE)` |
 | `unparseable-price.html` | Microdata with price text "la cerere", RON, InStock: `priceMinor` null |
+| `layout-changed.html` | Simulated layout change (story 4.2): JSON-LD offer price key and microdata `itemprop="price"` renamed to `pretCurent`; currency, availability and GTIN remain, so the price is missing. Only tests that expect the failure extract from it (`LayoutChangeTest`, `LayoutChangeHealthCheckTest`); the fixture facts-only scan also reads it |
 
 Tests read these files through a fake `RetailerHttp`; nothing contacts the retailer (T-3).

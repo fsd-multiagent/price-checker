@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<title>Synthetic product</title>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "gtin13": "5901234123457",
+  "offers": {
+    "@type": "Offer",
+    "pretCurent": 1299.99,
+    "priceCurrency": "RON",
+    "availability": "https://schema.org/InStock"
+  }
+}
+</script>
+</head>
+<body>
+<main itemscope itemtype="https://schema.org/Product">
+  <meta itemprop="gtin13" content="5901234123457">
+  <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+    <span itemprop="pretCurent" content="1299.99">1.299,99 lei</span>
+    <meta itemprop="priceCurrency" content="RON">
+    <link itemprop="availability" href="https://schema.org/InStock">
+  </div>
+</main>
+</body>
+</html>
