@@ -111,7 +111,8 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
   | 200, product facts found | adapter → `Found` | `FOUND` (no price if price missing, null or non-RON) |
   | 200, page has no recognizable product facts | adapter → `Unavailable(UNPARSEABLE)` | `UNAVAILABLE` |
   | 404 or 410 on the curated URL | fetch → adapter → `NotFound` | `NOT_FOUND` |
-  | timeout, 5xx after retries, refused permit | fetch → `Unavailable` | `UNAVAILABLE` |
+  | timeout, 5xx after retries | fetch → `Unavailable(TIMEOUT \| HTTP_ERROR)` | `UNAVAILABLE` |
+  | a check before sending fails (not Approved, adapter disabled, fetching stopped, off-host URL or redirect, no permit before the deadline); nothing sent | fetch → `Unavailable(REFUSED)` (story 2.4) | `UNAVAILABLE` |
   | 403, challenge page (generic markers in `fetch`), robots.txt disallows the path | fetch → `BlockStore.record` | `UNAVAILABLE` (Block, AC-11.1) |
   | 429 | fetch sets `notBefore`; waits and retries once only if `notBefore` is within the deadline; not a Block (AC-11.4) | as the retry ends, else `UNAVAILABLE` |
   | any request while `notBefore` is in the future | fetch refuses, sends nothing | `UNAVAILABLE` |
