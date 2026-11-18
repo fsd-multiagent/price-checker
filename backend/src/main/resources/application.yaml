@@ -5,3 +5,6 @@ server:
 spring:
   jackson:
     default-property-inclusion: non_null # AD-5: absent fields are omitted, never null
+price-checker:
+  # AD-9: the Kill switch file, written only by the kill-switch workflow; env PRICE_CHECKER_RUNTIME_FILE
+  runtime-file: /opt/price-checker/config/runtime.yaml

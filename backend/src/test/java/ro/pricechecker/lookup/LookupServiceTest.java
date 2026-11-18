@@ -53,7 +53,13 @@ class LookupServiceTest {
                 adapter("b.example", aOutcome),
                 adapter("c.example", aOutcome)),
             registry);
-    return new LookupService(registry, catalog, http, CLOCK);
+    return new LookupService(
+        registry,
+        catalog,
+        http,
+        CLOCK,
+        TestRegistries.runtimeAllowing(CLOCK, "a.example", "b.example", "c.example"),
+        new LookupLog(CLOCK));
   }
 
   private static Ean ean(String value) {
