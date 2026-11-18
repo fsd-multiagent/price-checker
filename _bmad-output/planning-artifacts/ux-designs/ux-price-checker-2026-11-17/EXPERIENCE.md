@@ -35,7 +35,7 @@ One page, one route (`/`). No navigation, no other screens.
 
 **Surface closure:** every PRD shopper need (enter EAN, see per-retailer facts, see cheapest, follow link, see failures) lands on this page. UJ-3's source register and config file, and UJ-4's Health check output, are not app screens: they are the repo file, the config file and the CI/job status (AC-8.3). The app has no admin UI [ASSUMPTION]; the only UJ-3 effect visible in the app is the `Disabled` row and the absence of non-Approved retailers.
 
-**URL state:** after a Lookup the URL becomes `/?ean=<digits>` so the presenter can reload or share it; loading `/?ean=…` fills the input and runs the Lookup if valid [ASSUMPTION].
+**URL state:** after a Lookup the URL becomes `/?ean=<digits>` so the presenter can reload or share it; loading `/?ean=…` fills the input and runs the Lookup if valid; an invalid value only fills the input, with no error until the Shopper submits [ASSUMPTION]. The URL is replaced, not pushed, so Back leaves the page (story 1.7).
 
 ## Voice and Tone
 

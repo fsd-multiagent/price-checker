@@ -197,7 +197,7 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
 | Config | Spring `@ConfigurationProperties` records validated at start; env vars only for secrets and file paths (C-4). |
 | Errors | Adapters return `AdapterOutcome`; only `fetch` and `lookup` turn exceptions into `UNAVAILABLE`; API errors are problem+json. |
 | Tests | Names or tags carry the AC id (T-1): `@Tag("AC-6.3")` in JUnit, `it('AC-1.3 …')` in Vitest and Playwright. Adapter tests read `fixtures/<id>/` only (T-2, T-3). |
-| Web state | Component state only; no state library, no router; `/?ean=` via the History API; loading copy "Checking retailers…". |
+| Web state | Component state only; no state library, no router; `/?ean=` via `history.replaceState` on each valid submit (no `pushState`, no `popstate` handling); opening `/?ean=<valid>` fills the input and runs the Lookup, opening `/?ean=<invalid>` fills the input with no Lookup and no error (story 1.7); loading copy "Checking retailers…". |
 
 ## Stack
 
