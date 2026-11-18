@@ -60,6 +60,15 @@
 - source_spec: none
   summary: Put the CI failure log (failing job and its last lines) into the developer's fix prompt when a story's `ci_green` gate fails, not only "checks not green".
   evidence: Run 20261117-174705-full, story 1-3: CI failed on a Linux-only `npm ci` lock mismatch, and the fix round had to discover the cause itself.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-web-scaffold.md`
+  summary: Add `web/.npmrc` (`save-exact=true`, `engine-strict=true`). Without it npm only warns on a non-24 Node, and a plain install writes `^` ranges (S-12). Owner action; the harness blocks agents from writing `.npmrc`.
+  evidence: Story 1.2 deferred item; `web/.npmrc` is still absent. `src/scaffold.test.ts` still fails on any loose version.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-web-scaffold.md`
+  summary: "`web/src/styles/tokens.test.ts` reads DESIGN.md from outside `web/`, so Vitest fails with ENOENT in a build context that holds only `web/`. Settle when the story 3.2 web Dockerfile exists. Unverified, medium if true."
+  evidence: Story 1.2 deferred item (review triage, maybe-false).
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-web-scaffold.md`
+  summary: npm audit reports high findings in web dev dependencies through picomatch (GHSA-fc5q-39xc-vjpf), with no fixed version. The CI vulnerability scan (story 1.9, AC-N7.3, S-12) must accept or block it.
+  evidence: Story 1.2 deferred item; production dependencies report 0.
 - source_spec: none
   summary: Let a merge (integrate) step use its own slot instead of a build slot from `max_parallel`.
   evidence: Run 20261117-174705-full: built stories waited to merge while three builds held every slot.

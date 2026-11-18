@@ -64,6 +64,8 @@ _bmad-output/
 └── agents/                     # custom subagents                                         [to create, 0.2]
 orchestrator/                   # the custom Orchestrator (Python)                         [0.8]
 sdlc/pipeline.yaml              # the stage table as data                                  [0.8]
+web/                            # React + TypeScript + Vite app; commands in web/CLAUDE.md  [story 1.2]
+└── src/styles/tokens.css       # DESIGN.md tokens as CSS custom properties (only place)
 ```
 
 Every workflow writes its run folder with a `.memlog.md` that records its decisions. Planning workflows resume an unfinished run if they find one.
