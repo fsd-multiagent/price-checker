@@ -25,7 +25,9 @@ import ro.pricechecker.adapter.AdapterOutcome;
 import ro.pricechecker.adapter.Availability;
 import ro.pricechecker.adapter.PageFacts;
 import ro.pricechecker.adapter.RetailerHttp;
+import ro.pricechecker.adapter.UnavailableReason;
 import ro.pricechecker.ean.Ean;
+import ro.pricechecker.fetch.TestFetchFailures;
 import ro.pricechecker.registry.SourceRegister;
 
 /**
@@ -151,6 +153,66 @@ class AltexroAcceptanceGapsTest {
         .isEqualTo(
             new AdapterOutcome.Found(
                 new PageFacts(null, null, Availability.IN_STOCK, PRODUCT_URL, "4006381333931")));
+  }
+
+  @Test
+  @Tag("AC-4.1.1")
+  void ac_4_1_1_refusedFetchFailurePassesThroughWithNoExtraction() {
+    AdapterOutcome outcome =
+        new AltexroAdapter()
+            .fetchAndExtract(
+                EAN,
+                PRODUCT_URL,
+                url -> {
+                  requested.add(url);
+                  throw TestFetchFailures.unavailable(UnavailableReason.REFUSED);
+                });
+
+    assertThat(outcome).isEqualTo(new AdapterOutcome.Unavailable(UnavailableReason.REFUSED));
+    assertThat(requested).containsExactly(PRODUCT_URL);
+  }
+
+  @Test
+  @Tag("AC-4.1.1")
+  void ac_4_1_1_gtin14WithLeadingZeroOnThePageIsTheSameProduct() {
+    String html =
+        """
+        <html><head>
+        <script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"Product","gtin14":"04006381333931",
+         "offers":{"@type":"Offer","price":"1299.99","priceCurrency":"RON",
+         "availability":"https://schema.org/InStock"}}
+        </script>
+        </head><body></body></html>
+        """;
+
+    AdapterOutcome outcome = new AltexroAdapter().fetchAndExtract(EAN, PRODUCT_URL, serving(html));
+
+    assertThat(outcome)
+        .isInstanceOfSatisfying(
+            AdapterOutcome.Found.class, f -> assertThat(f.facts().priceMinor()).isEqualTo(129999L));
+  }
+
+  @Test
+  @Tag("AC-4.1.1")
+  void ac_4_1_1_otherProductGtinInAnEarlierStepIsNotFoundEvenWhenALaterStepHasThePrice() {
+    String html =
+        """
+        <html><head>
+        <script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"Product","gtin13":"5901234123457",
+         "offers":{"@type":"Offer","availability":"https://schema.org/InStock"}}
+        </script>
+        <meta property="product:price:amount" content="1299.99">
+        <meta property="product:price:currency" content="RON">
+        </head><body></body></html>
+        """;
+
+    AdapterOutcome outcome = new AltexroAdapter().fetchAndExtract(EAN, PRODUCT_URL, serving(html));
+
+    assertThat(outcome)
+        .as("a page that names another product's GTIN never reports its price (C-7)")
+        .isEqualTo(new AdapterOutcome.NotFound());
   }
 
   @Test

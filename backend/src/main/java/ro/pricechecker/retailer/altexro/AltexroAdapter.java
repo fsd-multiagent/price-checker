@@ -30,7 +30,8 @@ import ro.pricechecker.fetch.FetchFailure;
  *
  * <p>Extraction order (C-6): JSON-LD, then meta tags, then this adapter's own selectors. The first
  * step that finds a price wins; otherwise the first step that finds any fact; otherwise the page is
- * {@link UnavailableReason#UNPARSEABLE}.
+ * {@link UnavailableReason#UNPARSEABLE}. A step read before the winner, or the winner itself, that
+ * states another product's GTIN makes the page {@code NotFound} (C-7).
  */
 @Component
 public class AltexroAdapter implements RetailerAdapter {
@@ -70,6 +71,9 @@ public class AltexroAdapter implements RetailerAdapter {
       if (found.isEmpty()) {
         continue;
       }
+      if (isOtherProduct(found.get().gtin(), ean)) {
+        return new AdapterOutcome.NotFound();
+      }
       if (found.get().priceMinor() != null) {
         chosen = found.get();
         break;
@@ -80,9 +84,6 @@ public class AltexroAdapter implements RetailerAdapter {
     }
     if (chosen == null) {
       return new AdapterOutcome.Unavailable(UnavailableReason.UNPARSEABLE);
-    }
-    if (isOtherProduct(chosen.gtin(), ean)) {
-      return new AdapterOutcome.NotFound();
     }
     return found(chosen, productUrl);
   }
