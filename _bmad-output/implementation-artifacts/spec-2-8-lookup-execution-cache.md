@@ -101,3 +101,7 @@ The waiting caller uses `future.get(remaining, MILLISECONDS)`, never `orTimeout`
 ## Auto Run Result
 
 Status: done. `LookupService` now applies AD-10 precedence (incl. BlockStore), loads every retailer in parallel on virtual threads through `cache.ResultCache` (Caffeine, TTL `price-checker.cache-ttl`, default 15m), waits per row until `deadlineMs`, normalizes `eanOnPage`/currency, caches only FOUND/NOT_FOUND, and logs one `lookup_row` line per retailer. Verification: `backend/gradlew -p backend check` exit 0 (654 tests). Review patches were not applied because the run budget ran out; findings are in `deferred`. followup_review_recommended: false (no patches applied).
+
+### 2026-11-18 — Round 2 (tests gate fix)
+
+The r1 tests gate failed on `LookupExecutionAcceptanceGapsTest.ac_2_8_2_deadlineCountsFromLookupStartSoALateRowDoesNotAddItsOwnFullWait` (line 166). The `a.example` stub advanced the injected clock by the full 4000 ms deadline before its load completed, so `finish(a)` could compute 0 ms remaining and time out first. The stub now advances 3000 ms, so `b.example` waits 1 s against the 3 s ceiling, which still catches a full extra 4 s wait. Test-only change (T-5). Verification: that test class passed 30 of 30 reruns; `backend/gradlew -p backend check`, `uv run --directory orchestrator pytest -q`, `npm --prefix web ci` and `npm --prefix web run check` all exit 0.

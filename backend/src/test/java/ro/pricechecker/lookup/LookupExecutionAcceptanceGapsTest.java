@@ -137,13 +137,15 @@ class LookupExecutionAcceptanceGapsTest {
   @Test
   @Tag("AC-2.8.2")
   void ac_2_8_2_deadlineCountsFromLookupStartSoALateRowDoesNotAddItsOwnFullWait() throws Exception {
-    // a.example answers at once but its call takes 4 s on the injected clock; b.example hangs.
-    // Both have deadlineMs 4000, so by the time the Lookup waits for b.example its deadline has
-    // passed: it must be UNAVAILABLE at once, not after another 4 s (response within 5 s).
+    // a.example answers at once but its call takes 3 s on the injected clock; b.example hangs.
+    // Both have deadlineMs 4000, so when the Lookup waits for b.example only 1 s of its deadline
+    // is left: it must be UNAVAILABLE after that 1 s, not after another full 4 s (ceiling 3 s).
+    // The advance stays below the deadline so a.example's own wait never reaches 0 between the
+    // clock advance and the load completing (that race made the r1 tests gate flaky).
     CountDownLatch release = new CountDownLatch(1);
     Supplier<AdapterOutcome> slowOnTheClock =
         () -> {
-          clock.advance(Duration.ofMillis(4000));
+          clock.advance(Duration.ofMillis(3000));
           return foundRon(100).get();
         };
     Supplier<AdapterOutcome> hanging =
