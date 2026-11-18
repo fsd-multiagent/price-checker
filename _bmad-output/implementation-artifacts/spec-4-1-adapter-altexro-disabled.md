@@ -177,3 +177,11 @@ Status: done
 - Fixed CR-1 (D-2, AD-18): `origin/main` moved to add2d0b and now has ADR 0024 (CI scanners) and ADR 0025 (model and effort per step). Renamed this story's ADR to `docs/adr/0026-register-limits-required-only-for-fetching-entries.md` and updated its index row, ADR 0009's amendment link, spine AD-8, epics AC 1.5.2, the `config/retailers.yaml` header and the `ConfigCheck`/test comments. Rebased onto add2d0b; the only conflict was the ADR index rows, resolved to 0024, 0025 (main) then 0026 (this story).
 - Fixed SEC-1 / CR-4 (T-2): `AltexroAcceptanceGapsTest` no longer pins the altex.ro register Status to exactly `Not checked`; it still asserts altex.ro is not Approved.
 - Verification: `backend/gradlew -p backend check` exit 0.
+
+### Round 6
+
+- The round 5 blockers `security-outcome` (AD-18) and `security-verdict` (AD-10) came from Veronel (Security & Compliance), whose step ended without a valid verdict. Neither names a defect in the diff, and both code reviews passed. No code change was needed; the security step has to run again.
+- code_lens CR-3 (S-1, exact register Status pin) had already been fixed in round 5: `ac_4_1_2_registerKeepsAltexNotChecked` asserts only that altex.ro is in the register and is not Approved.
+- CR-2 (C-7, gtin compared with the requested EAN) and CR-3 (C-6, `RON` currency text) stay deferred as recorded. CR-4 (D-2): ADR 0026 is still Proposed and needs the owner's acceptance.
+- Rebased onto `origin/main` at 6406f067ef29549503dfb6e95c65187302cd9ca5 (#63 story 2-7, #64 learn 2-4) with no conflicts. Main has no new ADR, so 0026 is still free.
+- Verification: `backend/gradlew -p backend check` exit 0.
