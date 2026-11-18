@@ -442,6 +442,148 @@ class DeployWorkflowTest {
                 .group(1));
   }
 
+  // --- QA additions (Eufrosina (QA), story 3.3 round 1) ---
+
+  private byte[] tarOf(Path src, String... members) throws IOException, InterruptedException {
+    Path tar = tmp.resolve("custom.tar");
+    List<String> cmd = new ArrayList<>(List.of("tar", "-c", "-f", tar.toString()));
+    cmd.addAll(List.of("-C", src.toString()));
+    cmd.addAll(List.of(members));
+    ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
+    pb.environment().put("COPYFILE_DISABLE", "1");
+    Process p = pb.start();
+    p.getInputStream().readAllBytes();
+    assertThat(p.waitFor()).isZero();
+    return Files.readAllBytes(tar);
+  }
+
+  private static byte[] withCredentials(byte[] tar) throws IOException {
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    out.write((USER + "\n" + TOKEN + "\n").getBytes(StandardCharsets.UTF_8));
+    out.write(tar);
+    return out.toByteArray();
+  }
+
+  @Test
+  @Tag("AC-3.3.1")
+  void ac_3_3_1_missingTokenLineExits65BeforeAnyDockerCall() throws Exception {
+    Run run = deploy(Map.of(), (USER + "\n").getBytes(StandardCharsets.UTF_8), SHA, SITE);
+
+    assertThat(run.exit()).isEqualTo(65);
+    assertThat(run.stderr()).contains("registry user and token");
+    assertThat(dockerCalls()).isEmpty();
+    assertThat(listing(appDir)).isEmpty();
+  }
+
+  @Test
+  @Tag("AC-3.3.1")
+  void ac_3_3_1_bundleWithoutCaddyfileStopsBeforeLoginAndKeepsTheRunningFiles() throws Exception {
+    Files.writeString(appDir.resolve("compose.yaml"), "previous compose\n");
+    Files.writeString(appDir.resolve("Caddyfile"), "previous caddy\n");
+    Path src = Files.createDirectories(tmp.resolve("partial-src"));
+    Files.copy(COMPOSE, src.resolve("compose.yaml"));
+
+    Run run = deploy(Map.of(), withCredentials(tarOf(src, "compose.yaml")), SHA, SITE);
+
+    assertThat(run.exit()).isNotZero();
+    assertThat(indexOf(dockerCalls(), "login")).isEqualTo(-1);
+    assertThat(indexOf(dockerCalls(), " up")).isEqualTo(-1);
+    assertThat(Files.readString(appDir.resolve("Caddyfile"))).isEqualTo("previous caddy\n");
+    assertThat(listing(tmp.resolve("tmpdir"))).as("temp files removed").isEmpty();
+  }
+
+  @Test
+  @Tag("AC-3.3.1")
+  void ac_3_3_1_runnerPushLogsOutOfGhcrAndUsesAThrowawayDockerConfig() throws IOException {
+    String push = runs().stream().filter(r -> r.contains("docker push")).findFirst().orElseThrow();
+    List<String> lines = push.lines().map(String::strip).toList();
+    int config = indexOf(lines, "export DOCKER_CONFIG=\"$RUNNER_TEMP/");
+    int trap = indexOf(lines, "trap ");
+    int login = indexOf(lines, "docker login ghcr.io");
+    assertThat(config).isGreaterThanOrEqualTo(0);
+    assertThat(trap).isGreaterThan(config);
+    assertThat(lines.get(trap))
+        .contains("docker logout ghcr.io", "rm -rf \"$DOCKER_CONFIG\"", "EXIT");
+    assertThat(login).isGreaterThan(trap);
+    assertThat(indexOf(lines, "docker push \"$IMAGE_PREFIX-backend:$GITHUB_SHA\""))
+        .isGreaterThan(login);
+    assertThat(indexOf(lines, "docker push \"$IMAGE_PREFIX-web:$GITHUB_SHA\""))
+        .isGreaterThan(login);
+  }
+
+  @Test
+  @Tag("AC-3.3.2")
+  void ac_3_3_2_symlinkedBundleMemberCannotOverwriteAnOperatorFile() throws Exception {
+    byte[] runtime = "retailers:\n  a.example:\n    fetching: stopped\n".getBytes();
+    Path runtimeFile = root.resolve("config").resolve("runtime" + ".yaml");
+    Files.write(runtimeFile, runtime);
+    Path src = Files.createDirectories(tmp.resolve("evil-src"));
+    Files.copy(COMPOSE, src.resolve("compose.yaml"));
+    Files.createSymbolicLink(src.resolve("Caddyfile"), runtimeFile);
+
+    Run run = deploy(Map.of(), withCredentials(tarOf(src, "compose.yaml", "Caddyfile")), SHA, SITE);
+
+    assertThat(run.exit()).isEqualTo(65);
+    assertThat(run.stderr()).contains("no regular file Caddyfile");
+    assertThat(Files.readAllBytes(runtimeFile)).isEqualTo(runtime);
+    assertThat(listing(root.resolve("config"))).containsExactly("runtime.yaml");
+    assertThat(indexOf(dockerCalls(), " up")).isEqualTo(-1);
+  }
+
+  @Test
+  @Tag("AC-3.3.2")
+  void ac_3_3_2_deployNeverCreatesTheConfigDirectoryOrAnyOperatorFile() throws Exception {
+    Files.delete(root.resolve("config"));
+
+    Run run = deploy(Map.of(), goodStdin(), SHA, SITE);
+
+    assertThat(run.exit()).as(run.stderr()).isZero();
+    assertThat(root.resolve("config")).doesNotExist();
+    assertThat(listing(root.resolve("state"))).isEmpty();
+    assertThat(listing(root)).containsExactly("app", "state");
+  }
+
+  @Test
+  @Tag("AC-3.3.2")
+  void ac_3_3_2_installCreatesDirectoriesOnlyAndNeverNamesOperatorFiles() throws IOException {
+    String install = Files.readString(INSTALL_SCRIPT);
+    assertThat(install).doesNotContain("runtime.yaml", "blocks.json", "rm ", "> ", ">>", "touch ");
+    String dirs =
+        install.lines().filter(l -> l.contains("\"$PC_ROOT/config\"")).findFirst().orElseThrow();
+    assertThat(dirs.strip()).startsWith("install -d ").contains("\"$PC_ROOT/state\"");
+  }
+
+  @Test
+  @Tag("AC-3.3.3")
+  void ac_3_3_3_tokenNeverReachesScriptOutputOrStaysOnDisk() throws Exception {
+    for (Map<String, String> env : List.of(Map.<String, String>of(), Map.of("FAKE_FAIL", "pull"))) {
+      Run run = deploy(env, goodStdin(), SHA, SITE);
+      Files.deleteIfExists(tmp.resolve("bundle.tar"));
+      deleteTree(tmp.resolve("bundle-src"));
+
+      String stdout = Files.readString(tmp.resolve("stdout.txt"));
+      assertThat(run.stderr()).as("stderr %s", env).doesNotContain(TOKEN);
+      assertThat(stdout).as("stdout %s", env).doesNotContain(TOKEN);
+      assertThat(listing(tmp.resolve("tmpdir"))).as("temp files removed %s", env).isEmpty();
+      try (Stream<Path> files = Files.walk(root)) {
+        for (Path f : files.filter(Files::isRegularFile).toList()) {
+          assertThat(Files.readString(f)).as("%s", f).doesNotContain(TOKEN);
+        }
+      }
+    }
+  }
+
+  @Test
+  @Tag("AC-3.3.3")
+  void ac_3_3_3_workflowHoldsNoCredentialLiteral() throws IOException {
+    String text = Files.readString(WORKFLOW);
+    assertThat(text)
+        .doesNotContainPattern("gh[pousr]_[A-Za-z0-9]{20,}")
+        .doesNotContain("BEGIN OPENSSH PRIVATE KEY", "BEGIN RSA PRIVATE KEY")
+        .doesNotContainPattern("(?i)password\\s*[:=]\\s*\\S")
+        .doesNotContainPattern("client[-_]secret");
+  }
+
   private static void deleteTree(Path dir) throws IOException {
     if (!Files.exists(dir)) {
       return;
