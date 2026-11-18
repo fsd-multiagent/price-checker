@@ -26,7 +26,7 @@ development_status:
   2-8-lookup-execution-cache: backlog
   2-9-status-endpoint: backlog
   2-10-adapter-celro: done
-  2-11-adapter-evomagro: in-progress
+  2-11-adapter-evomagro: review
   2-12-celro-live-enable: backlog
   2-13-evomagro-live-enable: backlog
   2-14-e2e-uj1-uj2: backlog
