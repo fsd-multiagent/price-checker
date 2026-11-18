@@ -97,7 +97,7 @@ flowchart LR
 - **Binds:** run, stage, story, round and step nodes; the CLI; resume; routing
 - **Prevents:** statuses or transitions that the scheduler, `status` and `resume` read differently.
 - **Rule:**
-  - Status is a `StrEnum` with the values `pending | running | passed | failed | blocked | escalated | skipped | superseded | awaiting_owner`. `superseded` applies only to step records: a step attempt that a plan usage limit cut short (AD-18). Gates and round counters ignore it. `awaiting_owner` applies only to the run: only owner-review waits remain (AD-27).
+  - Status is a `StrEnum` with the values `pending | running | passed | failed | blocked | escalated | skipped | superseded | awaiting_owner | paused`. `superseded` applies only to step records: a step attempt that a plan usage limit cut short (AD-18). Gates and round counters ignore it. `awaiting_owner` applies only to the run: only owner-review waits remain (AD-27). `paused` applies only to the run: the owner paused or stopped it (issue #72); it consumes no round, and `sdlc resume` continues it.
   - Only the transitions in the diagram below are legal. Anything else is a core error.
   - `blocked` means waiting on a human input from plan §6, on a dependency that is escalated, or on the owner's review of the unit's PR (AD-27). It consumes no round.
   - `on_fail` may point only to the same stage or an earlier one in the same chain. Rewinding moves the target and every later stage of that chain from `passed` to `pending`, with the reason `invalidated_by`.
@@ -122,6 +122,8 @@ stateDiagram-v2
   running --> awaiting_owner: run only (AD-27)
   awaiting_owner --> pending: sdlc resume after the owner's merge
   awaiting_owner --> escalated: the owner closed the PR
+  running --> paused: run only, owner pause or stop
+  paused --> pending: sdlc resume
 ```
 
 ### AD-6 — Reset to the scope head on retry and on resume [ADOPTED by ADR 0002]
@@ -365,6 +367,7 @@ stateDiagram-v2
 - **Rule:**
   - One `sdlc` process per repo, enforced by `_bmad-output/sdlc/lock`.
   - A trigger that finds the lock held is written to `_bmad-output/sdlc/queue/`, and runs when the lock frees.
+  - `sdlc pause [<run-id>]` writes `pause` (run id, time) beside the lock; the run reads it on every tick and while waiting, starts no new step, cancels script waits (no cost), lets agent steps finish, records `RunPaused` and ends `paused` (exit 0). `sdlc stop` sends SIGTERM to the pid in the lock: running steps are interrupted as on a crash (AD-6 reset, cap charged, AD-11), then `RunStopped` (`owner stop`) and `RunPaused`. After either, the lock is released and the queue is not drained. A request naming another run is ignored; `sdlc resume` removes a leftover one (issue #72).
   - The run kind selects the stages whose `entry` includes it.
   - `sdlc story <issue>` and `sdlc fix <issue>` parse one fenced `yaml` story block from the issue body into `runs/<id>/stories.yaml`, which uses the schema of an `epics.md` entry. If the issue has no valid block, the run escalates at once. The details, including factory stories, are in AD-27.
 

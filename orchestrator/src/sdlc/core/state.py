@@ -22,6 +22,7 @@ from sdlc.core.models import (
     Outcome,
     OwnerReviewAwaited,
     PathsReverted,
+    PauseRequested,
     Pipeline,
     PrOpened,
     ProposalCaptured,
@@ -30,6 +31,7 @@ from sdlc.core.models import (
     ProposalStatus,
     RunFinished,
     RunKind,
+    RunPaused,
     RunResumed,
     RunStarted,
     RunState,
@@ -63,7 +65,7 @@ TRANSITIONS: dict[Status, frozenset[Status]] = {
     S.PENDING: frozenset({S.RUNNING, S.BLOCKED, S.SKIPPED}),
     S.BLOCKED: frozenset({S.PENDING}),
     S.RUNNING: frozenset(
-        {S.PASSED, S.FAILED, S.BLOCKED, S.ESCALATED, S.SUPERSEDED, S.AWAITING_OWNER}
+        {S.PASSED, S.FAILED, S.BLOCKED, S.ESCALATED, S.SUPERSEDED, S.AWAITING_OWNER, S.PAUSED}
     ),
     S.PASSED: frozenset({S.PENDING}),
     S.FAILED: frozenset({S.PENDING, S.ESCALATED}),
@@ -72,6 +74,8 @@ TRANSITIONS: dict[Status, frozenset[Status]] = {
     S.SUPERSEDED: frozenset(),
     # AD-27, the run only: a later command resumes it (merged) or escalates it (closed).
     S.AWAITING_OWNER: frozenset({S.PENDING, S.ESCALATED}),
+    # Issue #72, the run only: an owner pause or stop; `sdlc resume` continues it.
+    S.PAUSED: frozenset({S.PENDING}),
 }
 
 
@@ -83,7 +87,7 @@ def _move(node: dict[str, Any], new: Status, what: str) -> None:
     old = Status(node["status"])
     if new is S.SUPERSEDED and "seq" not in node:  # AD-5: step records only
         raise CoreError(f"illegal transition {old} -> {new} for {what}: step records only")
-    if new is S.AWAITING_OWNER and "run_id" not in node:  # AD-27: the run only
+    if new in (S.AWAITING_OWNER, S.PAUSED) and "run_id" not in node:  # the run only
         raise CoreError(f"illegal transition {old} -> {new} for {what}: the run only")
     if not legal(old, new):
         raise CoreError(f"illegal transition {old} -> {new} for {what}")
@@ -212,8 +216,12 @@ def _run_resumed(p: Pipeline, d: dict[str, Any], e: RunResumed) -> None:
         raise CoreError("run already passed; nothing to resume")
     if status is S.PASSED:  # AD-26: only to deliver the proposals that failed
         _move(d, S.PENDING, "run")
-    if status in (S.ESCALATED, S.BLOCKED, S.AWAITING_OWNER):
+    if status in (S.ESCALATED, S.BLOCKED, S.AWAITING_OWNER, S.PAUSED):
         _move(d, S.PENDING, "run")
+    # Issue #72: a resume ends the pause (a pause still under way when the process died, too).
+    d["pause_kind"] = None
+    d["pause_requested_at"] = None
+    d["paused_at"] = None
     if Status(d["status"]) is S.PENDING:  # also a crash before RunStarted was saved
         _move(d, S.RUNNING, "run")
     d["exit_code"] = None
@@ -782,6 +790,23 @@ def _run_finished(p: Pipeline, d: dict[str, Any], e: RunFinished) -> None:
     d["exit_code"] = e.exit_code
 
 
+def _pause_requested(p: Pipeline, d: dict[str, Any], e: PauseRequested) -> None:
+    if d["pause_requested_at"] is None:
+        d["pause_kind"] = "pause"
+        d["pause_requested_at"] = e.at
+
+
+def _run_paused(p: Pipeline, d: dict[str, Any], e: RunPaused) -> None:
+    """Issue #72: no round is consumed; the steps that ran are already recorded."""
+    if any(r["status"] == S.RUNNING for r in d["steps"]):
+        raise CoreError("cannot pause the run while a step is still running")
+    _move(d, S.PAUSED, "run")
+    d["pause_kind"] = e.kind
+    d["pause_requested_at"] = d["pause_requested_at"] or e.at
+    d["paused_at"] = e.at
+    d["exit_code"] = 0
+
+
 def _run_stopped(p: Pipeline, d: dict[str, Any], e: RunStopped) -> None:
     """Audit only: a resume picks the run up from the state as it is."""
 
@@ -814,6 +839,8 @@ _HANDLERS: dict[type, Any] = {
     IntakeRecorded: _intake_recorded,
     IntakeRejected: _intake_rejected,
     BudgetExhausted: _budget_exhausted,
+    PauseRequested: _pause_requested,
+    RunPaused: _run_paused,
     RunStopped: _run_stopped,
     RunFinished: _run_finished,
 }
