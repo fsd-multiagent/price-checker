@@ -5,9 +5,10 @@
 #   PRICE_CHECKER_RUNTIME_FILE="$PWD/temp/runtime.yaml" ...
 #
 # Every config/retailers.yaml domain is listed with `fetching: stopped`, so a local Lookup
-# contacts no retailer and every Approved retailer's row is DISABLED. To fetch from a retailer locally, change its
-# line to `fetching: allowed` in your copy, and only for a domain that docs/source-register.md
-# marks Approved; the backend also needs that retailer's adapter enabled in retailers.yaml.
+# contacts no retailer and every Approved retailer's row is DISABLED. To fetch from a retailer
+# locally, change its line to `fetching: allowed` in your copy, and only for a domain that
+# docs/source-register.md marks Approved; the backend also needs that retailer's adapter
+# enabled in retailers.yaml.
 # The backend re-reads the file at most every 15 s. An entry without `fetching` rejects the
 # whole file.
 retailers:

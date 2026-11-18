@@ -5,7 +5,7 @@ React + TypeScript + Vite single-page app (ADR 0013, C-W1 to C-W4). Node 24 LTS 
 ## Commands (from the repo root)
 
 - Install: `npm --prefix web ci`
-- Dev server: `npm --prefix web run dev`. `vite dev` and `vite preview` proxy `/api` to `http://localhost:8080`, or to `VITE_API_PROXY_TARGET` when it is set and not blank (`src/devProxy.ts`, used only by `vite.config.ts`; a build has no proxy and app code must not import it or name the target, `src/devProxy.test.ts`). Full local run with the backend: "Run locally" in the root `README.md`.
+- Dev server: `npm --prefix web run dev`. `vite dev` and `vite preview` proxy `/api` to `http://localhost:8080`, or to `VITE_API_PROXY_TARGET` when it is set and not blank (`src/devProxy.ts`, used only by `vite.config.ts`; a build has no proxy and app code must not import it or name the target, `src/devProxy.test.ts`). `vite.config.ts` imports `./src/devProxy.ts` with its extension (Vite warns about extensionless imports for its future native config loader), and that test imports `vite.config.ts`, so both `tsconfig.app.json` and `tsconfig.node.json` set `allowImportingTsExtensions`; app code still imports without extensions. Full local run with the backend: "Run locally" in the root `README.md`.
 - Build: `npm --prefix web run build` (output in `web/dist/`)
 - All checks: `npm --prefix web run check` (ESLint, Prettier check, `tsc -b`, Vitest)
 - Format: `npm --prefix web run format`
