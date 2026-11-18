@@ -58,10 +58,11 @@ def make_dry_run(
 ) -> DryRun:
     runs_dir = tmp_path / "runs"
     book = FixtureBook.from_scenario(FIXTURES, scenario)
-    ports = fake_ports(book, str(runs_dir))
+    pipeline = pipeline or load_pipeline(pipeline_text())
+    ports = fake_ports(book, str(runs_dir), pipeline.settings)
     lines: list[str] = []
     orch = Orchestrator(
-        pipeline or load_pipeline(pipeline_text()),
+        pipeline,
         ports,
         runs_dir,
         REPO,

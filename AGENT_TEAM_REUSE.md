@@ -92,7 +92,10 @@ Two routes exist:
     - Keep "extra usage" credits off on the account, so a plan limit pauses the run instead of drawing paid credits.
     - Remove any `ANTHROPIC_API_KEY` from the environment, or set `allow_api_key: true` on purpose (ADR 0005).
 11. **Optional live check** (about $0.05 of usage): `cd orchestrator && SDLC_LIVE=1 uv run pytest -q -m live`.
-12. **Start the run** in a separate terminal: `cd orchestrator && uv run sdlc run`. Watch it with `uv run sdlc status`.
+12. **Plan for the gate commands before any story merges.** The `tests` and `terraform_plan` gates run only what the `sdlc-commands` block in `AGENTS.md` lists, and only an owner PR can change that block (ADR 0004, ADR 0021). The product's commands do not exist yet when the run starts, because the stack is chosen in stage 4. So stop after the planning PR (stage 5), add the product's build, test and lint commands to the block through an owner PR, and only then let stories run.
+    - Add a command only once the code it runs is on `main`. For example, the web commands came after the web scaffold merged.
+    - Price Checker learned this the hard way: its first stories merged while the gate ran only the orchestrator's tests (fixed by PRs #12 and #17).
+13. **Start the run** in a separate terminal: `cd orchestrator && uv run sdlc run`. Watch it with `uv run sdlc status`.
 
 ## 4. Your role during a run
 

@@ -10,12 +10,15 @@ from __future__ import annotations
 from sdlc.core.models import (
     Action,
     BlockUnit,
+    DeliverProposal,
     EvaluateGate,
     ExhaustBudget,
     Finish,
     OpenEscalation,
     Pipeline,
+    ProposalStatus,
     ResetScope,
+    RunKind,
     RunState,
     Stage,
     StartStep,
@@ -49,8 +52,12 @@ def round_records(state: RunState, unit: Unit) -> dict[str, StepRecord]:
     return {k: r for k, r in out.items() if not r.interrupted and r.status is not Status.SUPERSEDED}
 
 
-def branch_for(stage: Stage, run_id: str, subject: str | None) -> str:
-    return (stage.branch or "").format(run_id=run_id, key=subject or "")
+def branch_for(stage: Stage, run_id: str, subject: str | None, kind: RunKind = RunKind.FULL) -> str:
+    """The unit's branch. A `fix` run's story branches are `fix/<key>` (AD-12, AD-27)."""
+    branch = (stage.branch or "").format(run_id=run_id, key=subject or "")
+    if kind is RunKind.FIX and stage.family == "story" and branch.startswith("story/"):
+        return "fix/" + branch.removeprefix("story/")
+    return branch
 
 
 class _Tick:
@@ -117,6 +124,11 @@ def decide(pipeline: Pipeline, state: RunState, inputs: TickInputs) -> tuple[Act
     for e in state.escalations:
         if e.issue is None:
             t.actions.append(OpenEscalation(scope=e.scope, reason=e.reason))
+
+    # AD-26: proposals are delivered between ticks and never block the run.
+    for x in state.proposals:
+        if x.status is ProposalStatus.PENDING:
+            t.actions.append(DeliverProposal(sha256=x.sha256))
 
     for u in state.units:
         stage = pipeline.stage(u.stage)
@@ -185,7 +197,11 @@ def _pending(t: _Tick, u: Unit, learn_next: Unit | None) -> None:
                 return
         t.story_slots.add(u.scope)
     t.actions.append(
-        StartUnit(scope=u.scope, stage=u.stage, branch=branch_for(stage, t.s.run_id, u.subject))
+        StartUnit(
+            scope=u.scope,
+            stage=u.stage,
+            branch=branch_for(stage, t.s.run_id, u.subject, t.s.kind),
+        )
     )
 
 

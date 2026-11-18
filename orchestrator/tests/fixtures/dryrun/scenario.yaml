@@ -9,3 +9,6 @@ steps:
   "*/epics":
     writes: {"_bmad-output/planning-artifacts/epics.md": epics.md}
   "*/readiness": {status: PASS}
+  # AD-27: the story of the stub issue 12 (issues/12.yaml) edits a protected path.
+  "story:0-12-tune-the-qa-prompt/dev":
+    writes: {"sdlc/prompts/qa.md": files/qa-tuned.md}

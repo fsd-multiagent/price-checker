@@ -56,3 +56,48 @@ def _retro_stage(pipeline: Pipeline) -> str | None:
         if s.learn_queue is not None and s.learn_queue.value == "epic":
             return s.id
     return None
+
+
+class SprintStatusError(ValueError):
+    """`origin/main`'s `sprint-status.yaml` cannot be merged into (AD-27)."""
+
+
+def _epic_status(values: list[str]) -> str:
+    if values and all(v == "done" for v in values):
+        return "done"
+    if any(v != "backlog" for v in values):
+        return "in-progress"
+    return "backlog"
+
+
+def merge_sprint_status(pipeline: Pipeline, state: RunState, main_text: str | None) -> str:
+    """AD-21, AD-27: the run's entries merged into `origin/main`'s file, never substituted
+    for it: this run's stories, epics and retrospectives are added or updated, every other
+    entry is kept, and an epic's status covers all its stories in the file. With no file on
+    main, the run's own rendering. Raises SprintStatusError when main's file is not a YAML
+    mapping with a `development_status` mapping."""
+    rendered = render_sprint_status(pipeline, state)
+    if main_text is None:
+        return rendered
+    try:
+        doc = yaml.safe_load(main_text)
+    except yaml.YAMLError as exc:
+        raise SprintStatusError(f"{exc.__class__.__name__} in main's sprint-status.yaml") from exc
+    if doc is None:
+        doc = {}
+    if not isinstance(doc, dict) or not isinstance(doc.get("development_status", {}), dict):
+        raise SprintStatusError("main's sprint-status.yaml has no development_status mapping")
+    fresh = yaml.safe_load(rendered)
+    mine: dict[str, str] = fresh["development_status"]
+    dev: dict[str, str] = dict(doc.get("development_status") or {})
+    for s in state.stories:
+        dev[s.key] = mine[s.key]
+    for n in sorted({s.epic for s in state.stories}):
+        dev[f"epic-{n}"] = _epic_status([v for k, v in dev.items() if k.startswith(f"{n}-")])
+        retro = f"epic-{n}-retrospective"
+        if mine.get(retro) == "done" or retro not in dev:
+            dev[retro] = mine.get(retro, "optional")
+    out = {**{k: v for k, v in fresh.items() if k != "development_status"}, **doc}
+    out["development_status"] = dev
+    header = f"# Rendered by Zamolxe (Orchestrator); run {state.run_id} merged into main's file.\n"
+    return header + yaml.safe_dump(out, sort_keys=False)

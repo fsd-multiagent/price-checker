@@ -1,0 +1,14 @@
+# A stub issue that must be refused (AD-27): written by a stranger.
+title: Stranger story
+author: mallory
+state: OPEN
+labels: []
+last_edited_at: null
+editor: null
+timeline: []
+body: |
+  ```yaml
+  depends_on: []
+  touches: [web/src/ean/]
+  sources: []
+  ```

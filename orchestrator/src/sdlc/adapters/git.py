@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 import fnmatch
+import re
 import shutil
+import time
 from pathlib import Path
 
+from sdlc.adapters.commands import branch_point
 from sdlc.adapters.proc import ProcResult, run_proc
-from sdlc.ports import AdapterError, StepKey
+from sdlc.ports import AdapterError, StagedChange, StepKey
 
 PROTECTED = frozenset({"main", "refs/heads/main", "origin/main"})
+PROPOSAL_PREFIX = "proposal/"  # AD-26: orchestrator-owned branches, pushed with --force
+# AD-27: another process sharing the repository holds a ref or index lock.
+_REF_LOCK = re.compile(r"cannot lock ref|unable to create '[^']*\.lock'|\.lock': File exists",
+                       re.IGNORECASE)  # fmt: skip
+FETCH_TRIES = 5
+STALE_LOCK_S = 60.0  # without `lsof`, a lock this old counts as abandoned
 
 
 def refuse_main(branch: str) -> None:
@@ -17,6 +27,18 @@ def refuse_main(branch: str) -> None:
     target = branch.strip().lstrip("+").split(":")[-1].strip().lstrip("+")
     if target in PROTECTED or target.removeprefix("refs/heads/") == "main":
         raise AdapterError("refusing to push to main (AD-12)")
+
+
+async def _held(path: Path) -> bool:
+    """Some process has the file open (`lsof`), or, without `lsof`, it is recent."""
+    try:
+        res = await run_proc(("lsof", "-t", "--", str(path)), cwd=path.parent, timeout_s=30)
+    except AdapterError:  # no lsof
+        try:
+            return time.time() - path.stat().st_mtime < STALE_LOCK_S
+        except OSError:
+            return False
+    return bool(res.stdout.strip())
 
 
 def commit_message(run_id: str, scope: str, step: str, round_: int) -> str:
@@ -30,10 +52,17 @@ class GitCli:
     `<repo-parent>/<repo-name>-worktrees/<branch with "/" replaced by "__">`.
     """
 
-    def __init__(self, repo: str | Path, remote: str = "origin", timeout_s: float = 600.0) -> None:
+    def __init__(
+        self,
+        repo: str | Path,
+        remote: str = "origin",
+        timeout_s: float = 600.0,
+        fetch_backoff_s: float = 1.0,
+    ) -> None:
         self.repo = Path(repo).resolve()
         self.remote = remote
         self.timeout_s = timeout_s
+        self.fetch_backoff_s = fetch_backoff_s
         # Lease values for --force-with-lease: what this adapter last pushed per branch, else the
         # remote SHA seen before the first fetch (a fetch must not refresh the lease).
         self._pushed: dict[str, str] = {}
@@ -65,7 +94,35 @@ class GitCli:
         if not self._fetched:
             self._before_fetch = await self._remote_heads()
             self._fetched = True
-        await self._git(self.repo, "fetch", "--prune", self.remote)
+        for attempt in range(FETCH_TRIES):  # AD-27: a concurrent fetch holds the ref lock
+            res = await self._git(self.repo, "fetch", "--prune", self.remote, check=False)
+            if res.ok:
+                return
+            if not _REF_LOCK.search(res.stdout + res.stderr) or attempt == FETCH_TRIES - 1:
+                what = "timed out" if res.timed_out else f"exit {res.returncode}"
+                raise AdapterError(f"git fetch {what}: {res.tail(500)}")
+            await asyncio.sleep(self.fetch_backoff_s * 2**attempt)
+
+    async def clear_stale_locks(self, worktree: str) -> list[str]:
+        """AD-27: after a crash, `*.lock` files left in the worktree's git dir (`HEAD.lock`,
+        `index.lock`, ref locks) make every later git call fail. Remove those no process holds
+        (`lsof`; without it, those older than STALE_LOCK_S)."""
+        dot_git = Path(worktree) / ".git"
+        try:
+            text = dot_git.read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeDecodeError):
+            return []
+        if not text.startswith("gitdir:"):
+            return []
+        gitdir = Path(text.removeprefix("gitdir:").strip())
+        if not gitdir.is_absolute():
+            gitdir = (Path(worktree) / gitdir).resolve()
+        removed: list[str] = []
+        for lock in sorted(gitdir.rglob("*.lock")):
+            if lock.is_file() and not await _held(lock):
+                lock.unlink(missing_ok=True)
+                removed.append(str(lock))
+        return removed
 
     async def ensure_worktree(self, branch: str, base: str) -> tuple[str, str]:
         path = self.worktree_path(branch)
@@ -115,15 +172,19 @@ class GitCli:
                 return True
         return False
 
-    async def diff(self, worktree: str, since: str) -> str:
-        """Changes since `since` (commits and the work tree), untracked files' content included.
+    async def diff(self, worktree: str, since: str, exclude: tuple[str, ...] = ()) -> str:
+        """Changes since `since` (commits and the work tree), untracked files' content included,
+        leaving out the tier entries in `exclude` (AD-26: the fix prompt never replays a
+        proposal).
 
         Untracked files are marked intent-to-add first; the caller resets the worktree next.
         """
         untracked = await self._untracked(worktree)
         if untracked:
             await self._git(worktree, "add", "--intent-to-add", "--", *untracked)
-        return (await self._git(worktree, "diff", "--binary", since)).stdout
+        specs = [f":(exclude,literal){e}" for e in exclude]
+        args = ["diff", "--binary", since, *(["--", ".", *specs] if specs else [])]
+        return (await self._git(worktree, *args)).stdout
 
     async def reset_hard(self, worktree: str, sha: str) -> None:
         """AD-6: `reset --hard` then `clean -fd`, never `-x`, so ignored `.sdlc/` survives."""
@@ -195,10 +256,17 @@ class GitCli:
         """Paths changed since the last commit: tracked changes and untracked files."""
         return sorted({*await self._tracked_changes(worktree), *await self._untracked(worktree)})
 
-    async def push(self, worktree: str, branch: str) -> None:
+    async def push(self, worktree: str, branch: str, force: bool = False) -> None:
         refuse_main(branch)  # AD-12: before any git call
         refspec = f"HEAD:refs/heads/{branch}"
         refuse_main(refspec)
+        if force:  # AD-26: only proposal branches, which only the orchestrator writes
+            if not branch.startswith(PROPOSAL_PREFIX):
+                raise AdapterError(f"refusing to force-push {branch}: not a proposal branch")
+            sha = await self.head(worktree)
+            await self._git(worktree, "push", "--force", self.remote, refspec)
+            self._pushed[branch] = sha
+            return
         if branch in self._pushed:
             expected = self._pushed[branch]
         elif self._fetched:
@@ -214,3 +282,62 @@ class GitCli:
     async def show(self, ref: str, path: str) -> str | None:
         res = await self._git(self.repo, "show", f"{ref}:{path}", check=False)
         return res.stdout if res.ok else None
+
+    async def staged_diff(self, worktree: str, paths: tuple[str, ...]) -> StagedChange:
+        """AD-26: `git add -A -- <paths>` (new files included), then
+        `git diff --cached --binary --full-index HEAD -- <paths>`, with each path's staged
+        mode and blob (None when deleted)."""
+        if not paths:
+            return StagedChange(patch="")
+        await self._git(worktree, "--literal-pathspecs", "add", "-A", "--", *paths)
+        res = await self._git(
+            worktree, "--literal-pathspecs", "diff", "--cached", "--binary", "--full-index",
+            "HEAD", "--", *paths,
+        )  # fmt: skip
+        staged = (
+            await self._git(worktree, "--literal-pathspecs", "ls-files", "-s", "-z", "--", *paths)
+        ).stdout
+        blobs: dict[str, str] = {}
+        for entry in staged.split("\0"):
+            meta, _, path = entry.partition("\t")
+            if path:
+                mode, blob, _stage = meta.split(" ")
+                blobs[path] = f"{mode} {blob}"
+        entries = tuple((p, blobs.get(p)) for p in sorted(set(paths)))
+        return StagedChange(patch=res.stdout, entries=entries)
+
+    async def branch_point(self, worktree: str) -> str | None:
+        return await branch_point(worktree)
+
+    async def remove_worktree(self, worktree: str, branch: str, remote: bool = False) -> None:
+        """AD-26: proposal worktrees and local branches do not pile up. Only proposal branches."""
+        if not branch.startswith(PROPOSAL_PREFIX):
+            raise AdapterError(f"refusing to remove {branch}: not a proposal branch")
+        refuse_main(branch)
+        await self._git(self.repo, "worktree", "remove", "--force", worktree, check=False)
+        if Path(worktree).exists():
+            shutil.rmtree(worktree)
+        await self._git(self.repo, "worktree", "prune", check=False)
+        await self._git(self.repo, "branch", "-D", branch, check=False)
+        if remote:
+            await self._git(
+                self.repo, "push", self.remote, "--delete", f"refs/heads/{branch}", check=False
+            )
+            self._pushed.pop(branch, None)
+
+    async def branch_paths(self, worktree: str) -> list[str]:
+        """AD-27: the paths the branch changes since its merge base with origin/main."""
+        base = f"{self.remote}/main...HEAD"
+        out = (await self._git(worktree, "diff", "--no-renames", "--name-only", "-z", base)).stdout
+        return sorted({p for p in out.split("\0") if p})
+
+    async def apply_3way(self, worktree: str, patch: str) -> bool:
+        """AD-26: applied only when `git apply --3way` exits 0 and no unmerged entry is left."""
+        res = await run_proc(
+            ("git", "apply", "--3way", "--whitespace=nowarn", "-"),
+            cwd=worktree,
+            stdin=patch,
+            timeout_s=self.timeout_s,
+        )
+        unmerged = (await self._git(worktree, "ls-files", "-u")).stdout.strip()
+        return res.ok and not unmerged

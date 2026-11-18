@@ -4,8 +4,8 @@
   summary: Real adapters for Zamolxe (Orchestrator) — claude (claude -p invocation and JSON parsing, AD-8), git (worktrees, reset, rebase, push refusal to main, AD-6/AD-12) and gh (PRs, auto-merge, checks, escalation issues, AD-13/AD-20).
   evidence: Split from the orchestrator build intent on 2026-11-16; step 0.8 acceptance (`sdlc run --dry-run`) needs only fake adapters (AD-2), and the real adapters are independently shippable behind the ports.
 - source_spec: none
-  summary: Run admission for Zamolxe (Orchestrator) — repo lock file, trigger queue, and issue-started `sdlc story|fix <issue>` runs (AD-22).
-  evidence: Split from the orchestrator build intent on 2026-11-16; only needed once GitHub Actions triggers exist (step 0.9).
+  summary: "Closed: run admission for Zamolxe (Orchestrator) — repo lock file, trigger queue, and issue-started `sdlc story|fix <issue>` runs (AD-22) — is built by spec-orchestrator-issue-runs-factory-stories (AD-27). Starting runs from GitHub Actions stays deferred."
+  evidence: Split from the orchestrator build intent on 2026-11-16; closed 2026-11-18.
 - source_spec: none
   summary: Desktop notifier adapter for escalations (macOS osascript, no-op elsewhere; AD-14).
   evidence: Split from the orchestrator build intent on 2026-11-16; the dry-run uses the fake notifier.
@@ -54,3 +54,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-gate-commands-owner-only.md`
   summary: Non-story agent branches (planning, infra, learn) can still change what a gate command does without touching the `sdlc-commands` block, by editing `orchestrator/` (including the ADR 0021 guard), the test configuration or `.github/workflows/`, and their PRs auto-merge. Revert those paths on non-story branches, or accept the code-owner switch and its escalation cost.
   evidence: Blind Hunter review of the gate guard; ADR 0021, Consequences, "Remaining gap".
+- source_spec: `_bmad-output/implementation-artifacts/spec-orchestrator-issue-runs-factory-stories.md`
+  summary: Verify the GitHub timeline jq filter (labeled and renamed events, actor login) against a real issue in the opt-in live test.
+  evidence: Verification Gap review of AD-27, triage row 20; the stub returns flat items and bypasses the filter.
+- source_spec: none
+  summary: Put the CI failure log (failing job and its last lines) into the developer's fix prompt when a story's `ci_green` gate fails, not only "checks not green".
+  evidence: Run 20261117-174705-full, story 1-3: CI failed on a Linux-only `npm ci` lock mismatch, and the fix round had to discover the cause itself.
+- source_spec: none
+  summary: Let a merge (integrate) step use its own slot instead of a build slot from `max_parallel`.
+  evidence: Run 20261117-174705-full: built stories waited to merge while three builds held every slot.

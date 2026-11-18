@@ -576,7 +576,8 @@ def test_usage_dry_run_isolation(tmp_path, monkeypatch, capsys):
         cli.tempfile, "mkdtemp", lambda prefix="": str(tmp_runs.mkdir() or tmp_runs)
     )
     assert cli.main(["--repo", str(REPO), "run", "--dry-run"]) == 0
-    assert ledger_path(tmp_runs).is_file()
+    # The runs dir is `runs/` in the temporary dir; the lock and queue sit beside it (AD-27).
+    assert ledger_path(tmp_runs / "runs").is_file()
     after = real_ledger.read_bytes() if real_ledger.exists() else None
     assert after == before
 

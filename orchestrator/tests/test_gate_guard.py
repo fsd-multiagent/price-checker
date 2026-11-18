@@ -7,6 +7,7 @@ from pathlib import Path
 from conftest import REPO, make_dry_run, run_dry
 
 from sdlc.adapters.commands import AGENTS_MD, parse_commands, restore_commands_block
+from sdlc.core.proposals import factory_rules
 
 BASE = """# Project
 
@@ -77,7 +78,9 @@ def _weaken_every_worktree(dr) -> None:
 
     def read_text(path: str) -> str | None:
         if path.endswith(f"/{AGENTS_MD}") and path not in fs.files:
-            return WEAKENED
+            # Story branches revert AGENTS.md to their head (AD-21): the fake has no content
+            # to revert to, so a story worktree reads the base file.
+            return BASE if "/story/" in path else WEAKENED
         return real_read(path)
 
     git.show = show  # type: ignore[method-assign]
@@ -93,7 +96,9 @@ async def test_gate_guard_every_non_story_commit_restores_the_block(tmp_path):
     assert await run_dry(dr) == 0
 
     commits = [c for c in dr.ports.git.calls if c[0] == "commit"]
-    committed = {c[1] for c in commits if "/story/" not in c[1]}
+    # AD-26: the block change is proposed once (one patch, one proposal) on its own branch.
+    committed = {c[1] for c in commits if "/story/" not in c[1] and "/proposal/" not in c[1]}
+    assert [x.paths for x in dr.state.proposals] == [(AGENTS_MD,)]
     restores = [line for line in dr.lines if f"restored {AGENTS_MD} (sdlc-commands block)" in line]
     assert committed and restores
     assert not any("on story:" in line for line in restores)
@@ -118,7 +123,10 @@ async def test_gate_guard_origin_without_agents_md_changes_nothing(tmp_path):
     assert not [e for e in dr.events() if e["type"] == "paths_reverted"]
 
 
-def test_gate_guard_prompts_tell_agents_the_block_is_off_limits():
+def test_gate_guard_prompts_tell_agents_the_block_is_off_limits(pipeline):
+    """The rules come from `${factory_rules}` (AD-26), which names the block."""
+    rules = factory_rules(pipeline.settings)
+    assert "`sdlc-commands` block" in rules and "ADR 0021" in rules
     for name in ("knowledge-keeper.md", "infra.md", "architecture.md"):
         text = (Path(REPO) / "sdlc" / "prompts" / name).read_text(encoding="utf-8")
-        assert "`sdlc-commands` block" in text and "ADR 0021" in text, name
+        assert "${factory_rules}" in text, name
