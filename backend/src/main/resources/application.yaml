@@ -2,3 +2,6 @@ server:
   tomcat:
     accesslog:
       enabled: false # AD-14: access logs would hold client IPs
+spring:
+  jackson:
+    default-property-inclusion: non_null # AD-5: absent fields are omitted, never null
