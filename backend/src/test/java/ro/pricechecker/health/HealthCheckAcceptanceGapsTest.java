@@ -41,7 +41,9 @@ import ro.pricechecker.registry.TestRegistries;
  * Story 3.5 gaps found by Eufrosina (QA) after the dev step: only Approved, adapter-enabled
  * retailers are contacted even when {@code runtime.yaml} allows more (AC 3.5.1); unknown
  * availability and a missing URL are missing facts (AC 3.5.2) and fail the run with the stripped
- * page saved (AC 3.5.3). Stub transport and injected clock only (T-3, T-5).
+ * page saved (AC 3.5.3). Round 2: a report with no PASSED check or a rejected runtime.yaml does not
+ * pass, and a runner-blocked retailer fails with {@code blocked} set and nothing sent. Stub
+ * transport and injected clock only (T-3, T-5).
  */
 class HealthCheckAcceptanceGapsTest {
 
@@ -91,15 +93,18 @@ class HealthCheckAcceptanceGapsTest {
   }
 
   private HealthCheck healthCheck(String firstPageBody) throws IOException {
-    Path runtimeFile =
-        Files.writeString(
-            dir.resolve("runtime.yaml"),
-            """
-            retailers:
-              a.example: {fetching: allowed}
-              b.example: {fetching: allowed}
-              c.example: {fetching: allowed}
-            """);
+    return healthCheck(
+        firstPageBody,
+        """
+        retailers:
+          a.example: {fetching: allowed}
+          b.example: {fetching: allowed}
+          c.example: {fetching: allowed}
+        """);
+  }
+
+  private HealthCheck healthCheck(String firstPageBody, String runtimeYaml) throws IOException {
+    Path runtimeFile = Files.writeString(dir.resolve("runtime.yaml"), runtimeYaml);
     reportDir = dir.resolve("report");
     Registry registry = registry();
     RuntimeSwitch runtime = new RuntimeSwitch(runtimeFile, clock);
@@ -210,5 +215,60 @@ class HealthCheckAcceptanceGapsTest {
         .isEqualTo(PageStripper.strip(UNKNOWN_STOCK))
         .doesNotContain("y".repeat(300));
     assertThat(check.report().checks().get(1).outcome()).isEqualTo(CheckResult.Outcome.PASSED);
+  }
+
+  private static CheckResult result(CheckResult.Outcome outcome) {
+    return new CheckResult(
+        "a.example", "5940000000001", outcome, null, "FOUND", List.of(), false, null);
+  }
+
+  @Test
+  @Tag("AC-3.5.2")
+  void ac_3_5_2_reportWithNoChecksDoesNotPass() {
+    assertThat(new HealthReport(null, List.of()).passed()).isFalse();
+  }
+
+  @Test
+  @Tag("AC-3.5.2")
+  void ac_3_5_2_reportWithOnePassAndSkipsPasses() {
+    HealthReport report =
+        new HealthReport(
+            null, List.of(result(CheckResult.Outcome.SKIPPED), result(CheckResult.Outcome.PASSED)));
+
+    assertThat(report.passed()).isTrue();
+  }
+
+  @Test
+  @Tag("AC-3.5.3")
+  void ac_3_5_3_rejectedRuntimeConfigFailsEvenWithPassingChecks() {
+    HealthReport report = new HealthReport("MISSING", List.of(result(CheckResult.Outcome.PASSED)));
+
+    assertThat(report.passed()).isFalse();
+  }
+
+  @Test
+  @Tag("AC-3.5.3")
+  void ac_3_5_3_runnerBlockedRetailerFailsWithBlockedFlagAndSendsNothing() throws IOException {
+    HealthCheck check =
+        healthCheck(
+            "good",
+            """
+            retailers:
+              a.example: {fetching: allowed, runnerBlock: true}
+            """);
+
+    check.run();
+
+    assertThat(sent).isEmpty();
+    assertThat(check.getExitCode()).isEqualTo(1);
+    assertThat(check.report().checks().subList(0, 2))
+        .allSatisfy(c -> {
+          assertThat(c.retailer()).isEqualTo("a.example");
+          assertThat(c.outcome()).isEqualTo(CheckResult.Outcome.FAILED);
+          assertThat(c.reason()).isEqualTo("blocked");
+          assertThat(c.blocked()).isTrue();
+          assertThat(c.missing()).containsExactly("price", "availability", "url");
+          assertThat(c.page()).isNull();
+        });
   }
 }
