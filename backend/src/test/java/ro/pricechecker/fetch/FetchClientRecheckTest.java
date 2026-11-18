@@ -76,7 +76,8 @@ class FetchClientRecheckTest {
             transport,
             clock,
             sleeper,
-            UA)
+            UA,
+            RobotsTest.allowAll(clock))
         .bind("a.example");
   }
 

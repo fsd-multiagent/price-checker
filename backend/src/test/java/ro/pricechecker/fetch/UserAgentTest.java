@@ -60,4 +60,12 @@ class UserAgentTest {
     assertThatThrownBy(() -> UserAgent.build(" ", "https://contact.example/"))
         .isInstanceOf(IllegalStateException.class);
   }
+
+  @Test
+  @Tag("AC-2.5.1")
+  void ac_2_5_1_productTokenIsTheUserAgentPrefix() {
+    UserAgent ua = UserAgent.build("1.0", "https://contact.example/about");
+    assertThat(ua.productToken()).isEqualTo("price-checker");
+    assertThat(ua.value()).startsWith(ua.productToken() + "/");
+  }
 }
