@@ -648,6 +648,44 @@ class DeployWorkflowTest {
         .doesNotContainPattern("client[-_]secret");
   }
 
+  private static String runOf(String stepName) throws IOException {
+    return allSteps().stream()
+        .filter(s -> String.valueOf(s.get("name")).startsWith(stepName))
+        .map(s -> (String) s.get("run"))
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("no step " + stepName));
+  }
+
+  @Test
+  @Tag("AC-3.3.3")
+  void ac_3_3_3_oidcTokenIsCheckedAndMaskedBeforeAzLoginUnderPipefail() throws IOException {
+    String run = runOf("Azure login over OIDC");
+    assertThat(run.strip()).startsWith("set -euo pipefail");
+    int check = run.indexOf("[ -z \"$oidc\" ]");
+    int mask = run.indexOf("::add-mask::$oidc");
+    int login = run.indexOf("az login");
+    assertThat(check).as("empty token check").isGreaterThan(0);
+    assertThat(mask).as("token masked").isGreaterThan(check);
+    assertThat(login).isGreaterThan(mask);
+  }
+
+  @Test
+  @Tag("AC-3.3.1")
+  void ac_3_3_1_sshStepsRunUnderPipefailWithIpFallbackAndVisibleProbeError() throws IOException {
+    String open = runOf("Open the just-in-time SSH rule");
+    assertThat(open.strip()).startsWith("set -euo pipefail");
+    assertThat(open).as("second IP echo service").containsPattern("curl [^\\n]*\\|\\| curl ");
+    assertThat(open).contains("exit 1");
+
+    String deploy = runOf("Deploy over the forced command");
+    assertThat(deploy.strip()).startsWith("set -euo pipefail");
+    int lastAttempt = deploy.indexOf("\"$attempt\" -eq 9");
+    assertThat(lastAttempt).isGreaterThan(0);
+    assertThat(deploy.substring(lastAttempt))
+        .as("ssh stderr shown on the last probe attempt")
+        .contains("cat \"$probe_err\" >&2");
+  }
+
   @Test
   @Tag("AC-3.3.1")
   void ac_3_3_1_everyJobThatOpensAJitSshRuleSharesTheProdSshGroup() throws IOException {
