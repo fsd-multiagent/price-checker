@@ -106,17 +106,21 @@ fi
 
 # A backend that fails its start checks (Registry ConfigCheck, a bad Block file) can
 # look running for a moment and then restart; a restart during the settle time
-# fails the deploy. The proxy has no fixed container name, so compose names it.
-# -a keeps a stopped proxy in the list, so the check below reports it as stopped.
-proxy_id="$("${compose[@]}" ps -a -q proxy)"
-if [ -z "$proxy_id" ] || [ "$(wc -l <<<"$proxy_id")" -ne 1 ]; then
-  echo "deploy: expected one proxy container after start, found: ${proxy_id//$'\n'/ }" >&2
-  "${compose[@]}" ps -a >&2 || true
-  exit 1
-fi
+# fails the deploy. Compose names each service's container, so the check does not
+# depend on container_name values in compose.yaml. -a keeps a stopped container in
+# the list, so the check below reports it as stopped.
+ids=()
+for service in backend web proxy; do
+  id="$("${compose[@]}" ps -a -q "$service")"
+  if [ -z "$id" ] || [ "$(wc -l <<<"$id")" -ne 1 ]; then
+    echo "deploy: expected one $service container after start, found: ${id//$'\n'/ }" >&2
+    "${compose[@]}" ps -a >&2 || true
+    exit 1
+  fi
+  ids+=("$id")
+done
 restarts() {
-  docker inspect --format '{{.State.Running}} {{.RestartCount}}' \
-    price-checker-backend price-checker-web "$proxy_id"
+  docker inspect --format '{{.State.Running}} {{.RestartCount}}' "${ids[@]}"
 }
 before="$(restarts)"
 sleep "${PC_SETTLE_SECONDS:-20}"

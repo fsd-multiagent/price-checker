@@ -118,6 +118,13 @@ deferred:
 - code_review/CR-2 (new files on disk if `up` fails): no change, as the finding says; rollback belongs to the health-check story.
 - Follow-up review layers (on the round-4 diff only): patched `ps` without `-a` misreporting a stopped proxy, several proxy ids breaking `inspect`, no `ps -a` output on that path, the fake ignoring the `ps` arguments, no proxy-only restart test, a thin `noproxy` test and the README wording. Rejected: a fixed `container_name` for the proxy (`deploy/compose.yaml` is outside this story's touches), whitespace-only `PROD_FQDN` (a repository variable set by the owner), checking every deploy variable up front (the job fails at the step that needs it), and restarts during `up --wait` before the baseline (`--wait` already fails a container that does not reach running).
 
+### 2026-11-18 — Round 5 (orchestrator review feedback r4)
+
+- security-outcome / security-verdict (AD-10, AD-18): the security step ended without a verdict. This is a reviewer process error, not a code finding, so there is nothing in the diff to change; the security step should run again this round.
+- code_lens/CR-1 (settle check depends on `container_name`): patched. The script reads the container id of each service (`backend`, `web`, `proxy`) with `compose ps -a -q <service>`, needs exactly one of each, and inspects those ids. The fake answers `ps` for every service and the crash test checks that `inspect` gets the three compose ids.
+- code_review/CR-1 (Gradle not run by the reviewer): `backend/gradlew -p backend check` passed this round.
+- code_review/CR-2 (settle window only 20 s): no change, as the finding says; the health check is a later story.
+
 ## Design Notes
 
 Stdin carries `user\ntoken\n` then the tar; bash `read` on a pipe consumes byte by byte, so `tar -x -f -` gets the rest intact. The actor goes on stdin because `github-actions[bot]` fails `pc-dispatch`'s charset. The bundle travels with each deploy so compose/Caddyfile changes need no owner step; only a change to the `deploy` script itself needs the owner to rerun `install`.
@@ -140,3 +147,4 @@ Status: done
 - Verification: `backend/gradlew -p backend check` passed (DeployWorkflowTest 9/9, 0 skipped); `bash -n` on both scripts passed. No real Actions or VM run.
 - Residual risks: the deferred items, mainly that the Caddyfile is not reloaded on deploy and the deploy is reported green without a health check. Owner setup is required (install script, variables, secret, NSG-scoped OIDC role).
 - Round 4: re-applied the round-3 proxy settle-check fix lost to the budget limit, added the skipped-deploy notice, and patched the follow-up review findings (triage log, Round 4). Patched by verdict: 0 high, 3 medium, 4 low; follow-up review recommended: false. Verification: DeployWorkflowTest 22/22, 0 skipped; `bash -n deploy/scripts/deploy`; `backend/gradlew -p backend check`. Residual risk: the fake docker stands in for compose, so `ps -a -q proxy` on a real host is unverified until the first deploy.
+- Round 5: the security blockers were a reviewer process error with no code finding. Patched code_lens CR-1 (the settle check finds all three containers through compose, not through `container_name`). Verification: `backend/gradlew -p backend check` passed, DeployWorkflowTest included.

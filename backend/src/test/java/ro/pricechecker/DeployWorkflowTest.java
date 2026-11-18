@@ -77,6 +77,8 @@ class DeployWorkflowTest {
                     twoproxies) printf 'proxy-a\\nproxy-b\\n' ;;
                     *) echo proxy-container-id ;;
                   esac ;;
+                *" ps -a -q backend") echo backend-container-id ;;
+                *" ps -a -q web") echo web-container-id ;;
               esac
               exit 0
             fi
@@ -336,9 +338,9 @@ class DeployWorkflowTest {
     assertThat(Files.readString(tmp.resolve("stdout.txt"))).doesNotContain("is running");
     assertThat(listing(tmp.resolve("tmpdir"))).isEmpty();
     assertThat(dockerCalls().stream().filter(c -> c.startsWith("inspect")))
-        .as("the proxy is part of the settle check")
+        .as("the settle check inspects each service's container by its compose id")
         .isNotEmpty()
-        .allMatch(c -> c.endsWith(" proxy-container-id"));
+        .allMatch(c -> c.endsWith(" backend-container-id web-container-id proxy-container-id"));
 
     Files.delete(log);
     Files.deleteIfExists(tmp.resolve("bundle.tar"));
