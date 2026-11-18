@@ -37,7 +37,7 @@ flowchart LR
   lookup --> ean
   lookup --> cache
   lookup --> registry
-  lookup --> adapter["adapter (port: RetailerAdapter, AdapterOutcome, PageFacts, RetailerHttp)"]
+  lookup --> adapter["adapter (port: RetailerAdapter, AdapterOutcome, PageFacts, RetailerHttp, RetailerHttpBinder)"]
   lookup -.->|beans via port| retailerX["retailer.&lt;id&gt;"]
   retailerX --> adapter
   retailerX --> ean
@@ -94,7 +94,7 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
 
 - **Binds:** NFR-3, FR-9, FR-11, AC-2.4, AC-N3.8, C-12, S-1 to S-6
 - **Prevents:** a rule enforced by one adapter and forgotten by another.
-- **Rule:** An adapter receives a `RetailerHttp` bound to its retailer id; it cannot name a host. Before every request (robots.txt and redirects included) the client refuses, sending nothing, unless:
+- **Rule:** An adapter receives a `RetailerHttp` bound to its retailer id; it cannot name a host. `lookup` gets that client per row through the port `adapter.RetailerHttpBinder` (`bind(retailerId)`), which the root `FetchClientConfig` provides as `fetchClient::bind`, so `lookup` never depends on `fetch` (issue #102). Before every request (robots.txt and redirects included) the client refuses, sending nothing, unless:
   1. the retailer is Approved in the bundled register and its adapter is enabled in `retailers.yaml` (AD-8);
   2. fetching is `allowed` in `runtime.yaml` and `BlockStore` reports no active Block (AD-9);
   3. the URL is `https` on the retailer's register domain or `www.` of it (redirects to any other host refused);
