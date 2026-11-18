@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
+import ro.pricechecker.ean.Ean;
 import ro.pricechecker.ean.EanError;
 import ro.pricechecker.registry.BlockStore;
 import ro.pricechecker.registry.RuntimeSwitch;
@@ -82,6 +83,23 @@ public class LookupLog {
       fields.put(Field.RETAILER, retailer);
     }
     fields.put(Field.OUTCOME, reason.name());
+    write(fields);
+  }
+
+  /**
+   * One retailer row of a Lookup (AC-3.6, AC-N3.7): the validated EAN, the retailer id, the row
+   * status in {@code outcome} and how long the row took. Nothing else.
+   */
+  public void row(String retailer, Ean ean, RowStatus status, long durationMs) {
+    Map<Field, Object> fields = new EnumMap<>(Field.class);
+    fields.put(Field.LEVEL, "INFO");
+    fields.put(Field.EVENT, "lookup_row");
+    fields.put(Field.EAN, ean.value());
+    if (retailer != null && RETAILER_ID.matcher(retailer).matches()) {
+      fields.put(Field.RETAILER, retailer);
+    }
+    fields.put(Field.OUTCOME, status.name());
+    fields.put(Field.DURATION_MS, Math.max(0, durationMs));
     write(fields);
   }
 

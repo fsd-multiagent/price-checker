@@ -23,6 +23,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.jsoup:jsoup:1.24.1")
     implementation("com.github.crawler-commons:crawler-commons:1.6")
+    // AD architecture: the Lookup cache is a Caffeine async cache; version from the Boot BOM (S-12).
+    implementation("com.github.ben-manes.caffeine:caffeine")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")

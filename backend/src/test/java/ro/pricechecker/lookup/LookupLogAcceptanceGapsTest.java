@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import ro.pricechecker.ean.Ean;
 import ro.pricechecker.ean.EanError;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -62,8 +63,14 @@ class LookupLogAcceptanceGapsTest {
         Class<?> p = types[i];
         // Story 2.6: blocked(retailer, reason) takes the retailer id, which LookupLog checks
         // against the domain shape and drops otherwise (LookupLogTest covers it).
-        boolean retailerId = m.getName().equals("blocked") && i == 0 && p == String.class;
-        assertThat(p.isEnum() || p.isPrimitive() || retailerId)
+        // Story 2.8: row(retailer, ean, status, durationMs) also takes a retailer id, and an Ean,
+        // which only exists once validated (digits only), so it holds no free text either.
+        boolean retailerId =
+            (m.getName().equals("blocked") || m.getName().equals("row"))
+                && i == 0
+                && p == String.class;
+        boolean validatedEan = p == Ean.class;
+        assertThat(p.isEnum() || p.isPrimitive() || retailerId || validatedEan)
             .as("%s takes %s; only enums or primitives may reach a log line", m, p.getName())
             .isTrue();
       }

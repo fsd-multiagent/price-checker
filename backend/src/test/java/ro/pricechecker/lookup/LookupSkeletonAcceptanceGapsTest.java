@@ -6,6 +6,7 @@ import static org.assertj.core.groups.Tuple.tuple;
 import java.lang.reflect.RecordComponent;
 import java.net.URI;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -23,6 +24,7 @@ import ro.pricechecker.adapter.PageFacts;
 import ro.pricechecker.adapter.RetailerAdapter;
 import ro.pricechecker.adapter.RetailerHttp;
 import ro.pricechecker.adapter.UnavailableReason;
+import ro.pricechecker.cache.ResultCache;
 import ro.pricechecker.ean.Ean;
 import ro.pricechecker.registry.Registry;
 import ro.pricechecker.registry.TestRegistries;
@@ -129,6 +131,8 @@ class LookupSkeletonAcceptanceGapsTest {
             CLOCK,
             TestRegistries.runtimeAllowing(
                 CLOCK, "a.example", "b.example", "c.example", "d.example", "e.example"),
+            TestRegistries.blockStore(TestRegistries.runtimeAllowing(CLOCK), CLOCK),
+            new ResultCache<>(Duration.ofMinutes(15), CLOCK),
             new LookupLog(CLOCK))
         .lookup(Ean.parse(EAN));
   }

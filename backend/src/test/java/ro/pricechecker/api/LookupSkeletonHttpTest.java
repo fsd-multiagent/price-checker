@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.net.URI;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -21,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import ro.pricechecker.adapter.AdapterOutcome;
 import ro.pricechecker.adapter.RetailerAdapter;
 import ro.pricechecker.adapter.RetailerHttp;
+import ro.pricechecker.cache.ResultCache;
 import ro.pricechecker.ean.Ean;
 import ro.pricechecker.lookup.AdapterCatalog;
 import ro.pricechecker.lookup.LookupLog;
@@ -57,6 +59,8 @@ class LookupSkeletonHttpTest {
           Optional.of(http),
           clock,
           TestRegistries.runtimeAllowing(clock, "a.example", "b.example", "c.example"),
+          TestRegistries.blockStore(TestRegistries.runtimeAllowing(clock), clock),
+          new ResultCache<>(Duration.ofMinutes(15), clock),
           log);
     }
 

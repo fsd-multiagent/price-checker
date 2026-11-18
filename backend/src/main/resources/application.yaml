@@ -12,3 +12,5 @@ price-checker:
   blocks-file: /opt/price-checker/state/blocks.json
   # AD-6, S-6: contact URL in the one fixed user agent; env PRICE_CHECKER_CONTACT_URL. Blank stops startup.
   contact-url: https://github.com/fsd-multiagent/price-checker
+  # FR-6, AD-10: how long a FOUND or NOT_FOUND verdict is reused (e.g. 15m, 30s); env PRICE_CHECKER_CACHE_TTL
+  cache-ttl: 15m
