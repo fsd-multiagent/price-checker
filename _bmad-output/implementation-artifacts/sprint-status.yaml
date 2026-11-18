@@ -1,4 +1,4 @@
-# Rendered by Zamolxe (Orchestrator); run 20261117-174705-full merged into main's file.
+# Rendered by Zamolxe (Orchestrator); run 20261118-081042-story merged into main's file.
 generated: '2026-11-17T17:47:05Z'
 project: price-checker
 tracking_system: file-system
@@ -44,3 +44,6 @@ development_status:
   4-2-simulated-layout-change: backlog
   4-3-demo-ean-list-check: backlog
   epic-4-retrospective: optional
+  0-55-tune-model-and-effort-per-step: done
+  epic-0: done
+  epic-0-retrospective: optional
