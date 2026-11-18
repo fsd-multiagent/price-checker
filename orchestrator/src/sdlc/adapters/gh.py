@@ -19,6 +19,7 @@ OWNER_REVIEW_COLOR = "D93F0B"
 OWNER_REVIEW_DESCRIPTION = "Factory change proposed by an agent; only the owner merges (AD-26)"
 _PASS = frozenset({"pass", "skipping"})
 _FAIL = frozenset({"fail", "cancel"})
+_RUN_FAILED = frozenset({"failure", "timed_out", "startup_failure"})
 _NO_SHA_POLLS = 3  # polls to wait for the merge commit SHA after the PR reports MERGED
 _DEFAULTS = Settings(run_budget_usd=1)
 # AD-27: one query, so the text, the state and its last editor are read together.
@@ -138,6 +139,29 @@ class GhCli:
             if time.monotonic() + self.poll_s > deadline:
                 return False
             await asyncio.sleep(self.poll_s)
+
+    async def failed_ci_log(self, pr: int, key: StepKey | None = None) -> str:
+        """Issue #87: `gh run view --log-failed` of every failed run on the PR head SHA.
+
+        Only runs whose `headSha` is the PR's head are read; any failing call raises, and the
+        caller treats that as "no excerpt"."""
+        view = await self._json("pr", "view", str(pr), "--json", "headRefOid")
+        sha = str(view.get("headRefOid") or "") if isinstance(view, dict) else ""
+        if not sha:
+            raise AdapterError(f"no head SHA for PR #{pr}")
+        runs = await self._json(
+            "run", "list", "--commit", sha, "--limit", "20",
+            "--json", "databaseId,headSha,conclusion",
+        )  # fmt: skip
+        logs: list[str] = []
+        for run in runs if isinstance(runs, list) else []:
+            if not isinstance(run, dict) or run.get("headSha") != sha:
+                continue
+            if str(run.get("conclusion", "")).lower() not in _RUN_FAILED:
+                continue
+            res = await self._gh("run", "view", str(run["databaseId"]), "--log-failed")
+            logs.append(res.stdout)
+        return "\n".join(logs)
 
     async def _view(self, pr: int) -> dict[str, Any] | None:
         """`gh pr view`, or None when the call fails (a transient error is polled again)."""

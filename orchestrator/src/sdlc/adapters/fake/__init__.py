@@ -361,6 +361,8 @@ class FakeGh:
         self.pr_bodies: dict[int, str] = {}
         self.calls: list[tuple[Any, ...]] = []
         self.prs: dict[str, int] = {}
+        self.ci_logs: dict[int, str] = {}  # PR -> failed CI log (issue #87)
+        self.ci_log_error = False
         self.issues: list[dict[str, Any]] = []
         self.labels: dict[int, set[str]] = {}  # PR or issue number -> labels
         self.label_names: set[str] = set()
@@ -384,6 +386,19 @@ class FakeGh:
     async def checks_green(self, pr: int, timeout_min: int, key: StepKey | None = None) -> bool:
         self.calls.append(("checks_green", pr))
         return _script_ok(self.book, key)
+
+    async def failed_ci_log(self, pr: int, key: StepKey | None = None) -> str:
+        """The `ci_log` text of the step's script entry, else `ci_logs[pr]`; an entry
+        `ci_log_error: true` (or `ci_log_error` set here) makes the fetch raise."""
+        self.calls.append(("failed_ci_log", pr))
+        entry = (
+            self.book.lookup(key.scope, key.step, key.round, "script")
+            if self.book is not None and key is not None
+            else {}
+        )
+        if self.ci_log_error or entry.get("ci_log_error"):
+            raise AdapterError(f"gh run view failed for PR #{pr}")
+        return str(entry.get("ci_log") or self.ci_logs.get(pr, ""))
 
     async def merge(
         self,

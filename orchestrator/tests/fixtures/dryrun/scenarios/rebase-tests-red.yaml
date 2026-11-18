@@ -1,0 +1,4 @@
+# The tests gate is red on story 1-1 after the rebase in every round: integrate fails before
+# open_pr, rewinds build once (AD-15), then escalates (issue #87).
+steps:
+  "story:1-1-ean-input/tests_rebased": {exit_code: 1}
