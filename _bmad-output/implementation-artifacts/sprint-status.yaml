@@ -23,20 +23,20 @@ development_status:
   2-5-robots-txt: done
   2-6-block-store: done
   2-7-retry-after: done
-  2-8-lookup-execution-cache: review
+  2-8-lookup-execution-cache: done
   2-9-status-endpoint: done
   2-10-adapter-celro: done
   2-11-adapter-evomagro: done
   2-12-celro-live-enable: backlog
   2-13-evomagro-live-enable: backlog
-  2-14-e2e-uj1-uj2: backlog
+  2-14-e2e-uj1-uj2: in-progress
   epic-2-retrospective: optional
   epic-3: in-progress
   3-1-terraform-vm: done
-  3-2-containers-compose-caddy: backlog
+  3-2-containers-compose-caddy: in-progress
   3-3-deploy-workflow: backlog
   3-4-kill-switch-workflow: backlog
-  3-5-health-profile: backlog
+  3-5-health-profile: in-progress
   3-6-health-check-workflow: backlog
   epic-3-retrospective: optional
   epic-4: backlog
