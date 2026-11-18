@@ -17,7 +17,7 @@ development_status:
   epic-1-retrospective: optional
   epic-2: in-progress
   2-1-extract-helpers: done
-  2-2-page-stripper: in-progress
+  2-2-page-stripper: done
   2-3-runtime-kill-switch: done
   2-4-fetch-client: in-progress
   2-5-robots-txt: backlog
@@ -26,7 +26,7 @@ development_status:
   2-8-lookup-execution-cache: backlog
   2-9-status-endpoint: backlog
   2-10-adapter-celro: done
-  2-11-adapter-evomagro: review
+  2-11-adapter-evomagro: in-progress
   2-12-celro-live-enable: backlog
   2-13-evomagro-live-enable: backlog
   2-14-e2e-uj1-uj2: backlog

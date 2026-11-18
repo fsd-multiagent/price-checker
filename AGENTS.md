@@ -22,6 +22,7 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
 - Guardrails: `.claude/settings.json`, `.claude/hooks/guard.py` (rules G1–G5 in `docs/automation-plan.md` §5)
 - Registers: `docs/source-register.md`, `docs/compliance-register.md`
 - Web app: `web/` (React + TypeScript + Vite; commands and conventions in `web/CLAUDE.md`; design tokens only in `web/src/styles/tokens.css`)
+- Retailer config: `config/retailers.yaml` and `config/known-eans.yaml` (ADR 0009, ADR 0010). The backend build bundles them and `docs/source-register.md` into the jar under `registry/`; `ro.pricechecker.registry.Registry` loads them at start and refuses to start when `ConfigCheck` reports a violation. The rules are in the file headers.
 - Infrastructure: `infra/` (Terraform for the `prod` VM; commands and pitfalls in `infra/CLAUDE.md`, owner bootstrap and apply in `infra/README.md`); PR plan workflow `.github/workflows/terraform-plan.yml`
 
 ## Running and verifying
@@ -77,5 +78,7 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
 ## Known pitfalls
 
 - The guard reads every Bash command as text, heredoc bodies included. Inline code (`python3 -c`, `node -e`) that mentions a retailer domain, or a heredoc whose text contains a blocked command such as `terraform apply`, is denied even though nothing would run. Write the content with the Write tool, or put code in a script file and run that.
+- When the owner approves a retailer in `docs/source-register.md`, the backend tests and startup fail until `config/retailers.yaml` has an entry for it and `config/known-eans.yaml` has at least two distinct valid EANs for it. Approval takes effect only after a rebuild and deploy, because the register is bundled into the jar.
+- Backend main code must not contain retailer domain or selector-like string literals (for example a literal ending in `.yaml`); `backend/src/test/java/ro/pricechecker/arch/RetailerTextScan.java` fails the build. Tests use `*.example` domains.
 
 <!-- /bmad:context -->
