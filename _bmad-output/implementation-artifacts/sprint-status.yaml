@@ -1,4 +1,4 @@
-# Rendered by Zamolxe (Orchestrator); run 20261117-174705-full merged into main's file.
+# Rendered by Zamolxe (Orchestrator); run 20261118-215658-story merged into main's file.
 generated: '2026-11-17T17:47:05Z'
 project: price-checker
 tracking_system: file-system
@@ -49,3 +49,4 @@ development_status:
   epic-0-retrospective: optional
   0-72-sdlc-pause-stop-resume: done
   0-90-local-demo-vite-dev-proxy-for-api-and-a: done
+  0-102-wire-the-shared-fetch-client-into: done
