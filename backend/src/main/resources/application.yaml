@@ -8,3 +8,5 @@ spring:
 price-checker:
   # AD-9: the Kill switch file, written only by the kill-switch workflow; env PRICE_CHECKER_RUNTIME_FILE
   runtime-file: /opt/price-checker/config/runtime.yaml
+  # AD-6, S-6: contact URL in the one fixed user agent; env PRICE_CHECKER_CONTACT_URL. Blank stops startup.
+  contact-url: https://github.com/fsd-multiagent/price-checker

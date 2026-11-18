@@ -5,5 +5,7 @@ public enum UnavailableReason {
   TIMEOUT,
   HTTP_ERROR,
   BLOCKED,
-  UNPARSEABLE
+  UNPARSEABLE,
+  /** The fetch client refused before sending anything (AD-6). */
+  REFUSED
 }
