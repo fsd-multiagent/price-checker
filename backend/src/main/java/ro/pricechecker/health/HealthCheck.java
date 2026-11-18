@@ -1,7 +1,6 @@
 package ro.pricechecker.health;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -110,6 +109,7 @@ public final class HealthCheck implements CommandLineRunner, ExitCodeGenerator {
       return blockedFailure(id, ean);
     }
     if (pausedNow(id)) {
+      // A pause is not a stop: a Lookup now would send nothing and show the row UNAVAILABLE.
       return skipped(id, ean, "notBefore", RowStatus.UNAVAILABLE);
     }
     AtomicReference<String> lastPage = new AtomicReference<>();
@@ -177,17 +177,21 @@ public final class HealthCheck implements CommandLineRunner, ExitCodeGenerator {
     return missing;
   }
 
-  /** Saves the stripped page (S-7, T-2) and returns its path relative to the report directory. */
+  /**
+   * Saves the stripped page (S-7, T-2) and returns its path relative to the report directory, or
+   * {@code null} when it cannot be written, so the check stays FAILED and the report is still
+   * written.
+   */
   private String savePage(String id, String ean, String body) {
     String relative = PAGES + "/" + id + "/" + ean + '.' + "html";
     Path file = reportDir.resolve(relative);
     try {
       Files.createDirectories(file.getParent());
       Files.writeString(file, PageStripper.strip(body), StandardCharsets.UTF_8);
+      return relative;
     } catch (IOException e) {
-      throw new UncheckedIOException("cannot save health page", e);
+      return null;
     }
-    return relative;
   }
 
   /** The finished report, or {@code null} before {@link #run} completed. */

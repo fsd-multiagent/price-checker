@@ -18,8 +18,7 @@ import ro.pricechecker.registry.RuntimeSwitch;
  * checked here at startup, so a missing contact URL or a forbidden word stops the application (AC
  * 2.4.5). Pacing comes from {@code price-checker.fetch.interval-factor} (default 1) and {@code
  * price-checker.fetch.max-concurrency} (default unlimited); the {@code health} profile sets 2 and 1
- * (AC 3.5.1). Lives here so {@code fetch} reads no property. Not yet wired into {@code
- * LookupService} (story 2.8), so nothing is fetched yet.
+ * (AC 3.5.1). Lives here so {@code fetch} reads no property.
  */
 @Configuration(proxyBeanMethods = false)
 public class FetchClientConfig {

@@ -73,8 +73,8 @@ class LookupLogAcceptanceGapsTest {
                 && i == 0
                 && p == String.class;
         boolean validatedEan = p == Ean.class;
-        // Any enum constant, written by name only (healthCheck's outcome, story 3.5).
-        boolean anyEnum = p == Enum.class;
+        // healthCheck's outcome is any enum constant, written by name only (story 3.5).
+        boolean anyEnum = m.getName().equals("healthCheck") && i == 2 && p == Enum.class;
         assertThat(p.isEnum() || p.isPrimitive() || retailerId || validatedEan || anyEnum)
             .as("%s takes %s; only enums or primitives may reach a log line", m, p.getName())
             .isTrue();

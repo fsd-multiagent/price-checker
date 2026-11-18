@@ -4,11 +4,13 @@ type: 'feature'
 created: '2026-11-18'
 status: 'in-review'
 baseline_revision: 'c2c066f83ede02247b8dbe618d437189b50dbf5a'
-review_loop_iteration: 0
+review_loop_iteration: 1
 followup_review_recommended: false
 context: []
 warnings: ['oversized']
-deferred: []
+deferred:
+  - 'Under the health profile the Lookup cache and web beans are still created but unused; HealthCheck bypasses the cache through KnownEanLoad instead of a no-op ResultCache (round-1 review CR-5).'
+  - 'KnownEanLoad.log and LookupLog.healthCheck take an untyped Enum<?> outcome; the guard test admits it only for healthCheck argument 2 (round-1 review CR-3).'
 ---
 
 <intent-contract>
@@ -81,3 +83,12 @@ Report (`<report-dir>/report.json`): `{"passed":bool,"runtimeConfig":null|"MISSI
 Status: in-review (implementation done; `backend/gradlew -p backend check` passes; every I/O matrix row has a passing `ac_3_5_*` test).
 Step-04 self-review was not run in this dev step because of the run's USD budget; the stage-7 review by Filofteia (Code Reviewer) and Veronel (Security & Compliance) covers it.
 Points for the reviewers: the change goes beyond `health/` (a `FetchClient.Pace` overload, `lookup.KnownEanLoad`/`PageSource`, a `LookupLog.healthCheck` event, and a widened `LookupLogAcceptanceGapsTest` that admits an `Enum<?>` outcome); under the profile the web beans are still created but unused; default `health/` paths are relative to the working directory, so story 3.6 should set them.
+
+Round 2 (fixes for the round-1 review):
+- CR-1 (AC-3.5.2): `HealthReport.passed()` now also needs at least one PASSED check; a run where every check is SKIPPED, or there is none, fails with exit 1 (`ac_3_5_2_everyCheckSkippedFailsTheRun`).
+- CR-2 (AC-3.5.3, C-8): a page that cannot be saved no longer aborts the run; the check stays FAILED without `page` and `report.json` is still written (`ac_3_5_3_pageThatCannotBeSavedStillWritesTheReport`).
+- CR-3 / lens CR-3 (T-1): `LookupLogAcceptanceGapsTest` admits `Enum` only as `healthCheck`'s third argument.
+- CR-4 (D-1): stale "not yet wired" sentence dropped from `FetchClientConfig`.
+- Lens CR-2: comment says why a `notBefore` skip shows `UNAVAILABLE`.
+- CR-5: recorded as a deferral.
+- The `security` blockers reported that Veronel (Security & Compliance) left no valid verdict in round 1; no code finding came with them, so nothing to fix in code.

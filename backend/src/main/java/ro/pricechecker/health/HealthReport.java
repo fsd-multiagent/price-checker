@@ -13,7 +13,9 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The Health check report (story 3.5): {@code report.json} in the report directory. It passes only
- * when {@code runtime.yaml} was read and no check failed; skipped checks do not fail it.
+ * when {@code runtime.yaml} was read, no check failed and at least one check passed: skipped checks
+ * do not fail it, but a run where every check was skipped (or there was none) verified no Known EAN
+ * and fails.
  */
 public record HealthReport(String runtimeConfig, List<CheckResult> checks) {
 
@@ -28,7 +30,8 @@ public record HealthReport(String runtimeConfig, List<CheckResult> checks) {
 
   public boolean passed() {
     return runtimeConfig == null
-        && checks.stream().noneMatch(c -> c.outcome() == CheckResult.Outcome.FAILED);
+        && checks.stream().noneMatch(c -> c.outcome() == CheckResult.Outcome.FAILED)
+        && checks.stream().anyMatch(c -> c.outcome() == CheckResult.Outcome.PASSED);
   }
 
   /** Writes {@code report.json} into {@code dir}, creating it when needed. */

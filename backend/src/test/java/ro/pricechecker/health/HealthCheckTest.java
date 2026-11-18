@@ -307,6 +307,37 @@ class HealthCheckTest {
   }
 
   @Test
+  @Tag("AC-3.5.2")
+  void ac_3_5_2_everyCheckSkippedFailsTheRun() throws IOException {
+    HealthCheck check = healthCheck("retailers:\n  a.example: {fetching: stopped}\n");
+
+    check.run();
+
+    assertThat(check.report().checks())
+        .allSatisfy(c -> assertThat(c.outcome()).isEqualTo(CheckResult.Outcome.SKIPPED));
+    assertThat(check.getExitCode()).isEqualTo(1);
+    assertThat(report().get("passed").asBoolean()).isFalse();
+    assertThat(sent).isEmpty();
+  }
+
+  @Test
+  @Tag("AC-3.5.3")
+  void ac_3_5_3_pageThatCannotBeSavedStillWritesTheReport() throws IOException {
+    pages.put("https://a.example/p/1", new Transport.Response(200, Optional.empty(), NO_PRICE));
+    HealthCheck check = healthCheck(allowing("a.example", "b.example"));
+    Files.createDirectories(reportDir);
+    Files.writeString(reportDir.resolve(HealthCheck.PAGES), "not a directory");
+
+    check.run();
+
+    assertThat(check.getExitCode()).isEqualTo(1);
+    JsonNode failed = report().get("checks").get(0);
+    assertThat(failed.get("outcome").asString()).isEqualTo("FAILED");
+    assertThat(failed.get("missing").get(0).asString()).isEqualTo("price");
+    assertThat(failed.has("page")).isFalse();
+  }
+
+  @Test
   @Tag("AC-3.5.3")
   void ac_3_5_3_exitCodeIsOneBeforeTheRunFinished() throws IOException {
     assertThat(healthCheck(allowing("a.example")).getExitCode()).isEqualTo(1);
