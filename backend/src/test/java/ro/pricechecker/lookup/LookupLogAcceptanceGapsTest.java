@@ -65,12 +65,17 @@ class LookupLogAcceptanceGapsTest {
         // against the domain shape and drops otherwise (LookupLogTest covers it).
         // Story 2.8: row(retailer, ean, status, durationMs) also takes a retailer id, and an Ean,
         // which only exists once validated (digits only), so it holds no free text either.
+        // Story 3.5: healthCheck(retailer, ean, outcome) likewise; its outcome is an enum.
         boolean retailerId =
-            (m.getName().equals("blocked") || m.getName().equals("row"))
+            (m.getName().equals("blocked")
+                    || m.getName().equals("row")
+                    || m.getName().equals("healthCheck"))
                 && i == 0
                 && p == String.class;
         boolean validatedEan = p == Ean.class;
-        assertThat(p.isEnum() || p.isPrimitive() || retailerId || validatedEan)
+        // Any enum constant, written by name only (healthCheck's outcome, story 3.5).
+        boolean anyEnum = p == Enum.class;
+        assertThat(p.isEnum() || p.isPrimitive() || retailerId || validatedEan || anyEnum)
             .as("%s takes %s; only enums or primitives may reach a log line", m, p.getName())
             .isTrue();
       }

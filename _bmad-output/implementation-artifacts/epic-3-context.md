@@ -4,7 +4,7 @@
 
 ## Goal
 
-Run the site over HTTPS on a single Azure VM, deploy it automatically on merge to `main` through GitHub Actions only, and let an operator stop a retailer, clear a Block, and see a daily Health check fail visibly, all without logging in to the VM. Infra stories are owned by Pacala (DevOps); `terraform apply` is an owner action, never run by an agent.
+Run the site over HTTPS on one Azure VM, deploy it from `main` through GitHub Actions only, and let an operator stop or allow a retailer, clear a Block, and see a daily Health check fail visibly, all without logging in to the VM. The Health check catches a broken Adapter (layout change) or a Block before the audience sees it. Infra stories are owned by Pacala (DevOps); `terraform apply` is an owner action, never run by an agent.
 
 ## Stories
 
@@ -17,28 +17,26 @@ Run the site over HTTPS on a single Azure VM, deploy it automatically on merge t
 
 ## Requirements & Constraints
 
-- Production is reproducible: VM, network and DNS defined in Terraform, with a plan in CI; changed only by reviewed code.
-- HTTPS only; port 80 redirects; no committed secrets (CI secret scan); pinned base images and dependencies.
-- Privacy: no client IPs, user agents or request URIs in any log. Tomcat access log off, Caddy without access log and its own logs dropping remote IP, headers and URI, no NSG flow logs, no network diagnostics on the VM that could hold client IPs.
-- Operator controls a retailer (allow / stop / clear-block) without SSH; changes take effect within 60 s.
-- A Block stops all traffic to that retailer until an operator clears it; a 429 is not a Block (honor Retry-After).
-- Daily Health check (and manual run) fails visibly outside the VM, naming retailer, EAN and missing fact; blocked retailers fail without fetching.
-- Exactly one backend instance in production; one `prod` environment only.
+- Production is reproducible: VM, network and DNS in Terraform with a plan in CI; changed only by reviewed code. One `prod` environment, exactly one backend instance.
+- HTTPS only (port 80 redirects); no secrets in the repo or logs; base images pinned by digest or exact tag.
+- Privacy: no client IP, user agent, headers or request URI in any log (no Caddy access log, no NSG flow logs or network diagnostics).
+- Operator controls each retailer (allow / stop / clear-block) without SSH; production picks the change up within one poll.
+- A Block (403, challenge page, robots.txt disallowing an adapter path) stops all traffic to that retailer until an operator clears it, and makes the next Health check fail for it. A 429 is a pause (`notBefore`), never a Block.
+- Health check runs daily and by hand; it looks up every Known EAN (at least two per Approved retailer) and requires each to be `FOUND` with a valid price, availability and product URL. Any failure ends the run non-zero and names retailer, EAN and the missing fact, visible without the VM.
+- The Health check obeys the same rules as a Lookup: Approved and enabled retailers only, rate and concurrency limits, the honest user agent, robots.txt.
 
 ## Technical Decisions
 
-- One Azure Linux VM in an EU region. Docker Compose services: `proxy` (Caddy 2, automatic HTTPS, `/api/*` to backend:8080, else web:8080), `web` (static SPA), one `backend`. Same origin, no CORS.
-- Images built by GitHub Actions, pushed to GHCR tagged with the git SHA, pulled on the VM with the short-lived `GITHUB_TOKEN`, then logged out.
-- Only GitHub Actions reaches the VM by SSH: `deploy` (on merge to `main`) and `kill-switch` (workflow_dispatch: retailer + allow/stop/clear-block; workflow_call from health-check only: runner-block with reason, runner-retry-after with time).
-- SSH restriction (key-only sshd, deploy user limited to deploy/kill-switch commands, NSG rule for GitHub-hosted runners via just-in-time OIDC or a recorded accepted risk) is Pacala's decision, recorded in a new ADR from `docs/adr/0000-template.md` and indexed in `docs/adr/README.md` (D-2).
-- Config files with one writer each: VM `runtime.yaml` (kill-switch workflow only; backend polls every 15 s; per-retailer `fetching`, `notBefore`, `clearGeneration`, `runnerBlock`) and VM `blocks.json` (BlockStore only), both on VM volumes. The deploy script never writes them. The kill-switch script holds `flock`, edits only that retailer's field via temp file and `mv`, keeps other fields, re-reads to verify; `clear-block` increments `clearGeneration` and removes `runnerBlock`.
-- Health check: `health-check.yml` on a GitHub runner (cron 04:00 Europe/Bucharest + manual) reads production `/api/status` with `curl`, writes a runner `runtime.yaml`, runs the backend built from `main` in `health` profile (no web server, no-op cache, fresh `blocks.json`, rate intervals doubled, concurrency 1), writes a report plus `PageStripper`-stripped pages. A separate hand-off job (`needs`, `if: always()`, the only one with the deploy secret) reads the runner `blocks.json` and calls `kill-switch`; `adapter-broken` issues are opened per failing retailer (label `blocked` for a Block).
-- Gate commands for backend and web enter AGENTS.md `sdlc-commands` only via a stage 9 PR; no story here edits that block.
+- VM runs Docker Compose: `proxy` (Caddy 2, automatic HTTPS, `/api/*` to `backend:8080`, else `web:8080`), `web` (static SPA), one `backend`. Same origin, no CORS. `runtime.yaml` and `blocks.json` live on VM volumes.
+- Images are built by GitHub Actions, pushed to GHCR tagged with the git SHA, pulled on the VM with the short-lived `GITHUB_TOKEN`, then logged out. Only GitHub Actions reaches the VM by SSH (`deploy`, `kill-switch`); the SSH restriction is recorded in an ADR (D-2).
+- One writer per file: `runtime.yaml` only by the kill-switch script (holds `flock`, edits only its retailer's field via temp file and `mv`, keeps every other field, re-reads to verify); `blocks.json` only by `BlockStore`. Deploy never writes either. `clear-block` increments `clearGeneration` and removes `runnerBlock`; `runner-block` / `runner-retry-after` (called only by the health-check workflow) set `runnerBlock` / `notBefore`.
+- Health profile (backend, package `health`): may depend only on `lookup`, `registry` and `fetch` (ArchUnit arrows). Under profile `health` it runs no web server, uses a no-op cache, a fresh `blocks.json`, the same lookup core, register and fetch client, each retailer's rate interval doubled and concurrency 1. It contacts only Approved retailers allowed by the runner's `runtime.yaml` (with copied `notBefore`, so a production Retry-After is waited out and reported as skipped, not failed). It checks robots.txt for every adapter path, writes a report (retailer, EAN, missing fact, `blocked` flag) plus each page passed through `fetch.PageStripper` (T-2), and exits non-zero on any failure. Known EANs come from `config/known-eans.yaml` through `registry`.
+- Health-check workflow: cron 04:00 Europe/Bucharest plus manual; reads production `/api/status` with `curl` (fails if unreachable); fails without fetching any retailer that is `blocked` or has an open `adapter-broken` issue labelled `blocked`; writes the runner `runtime.yaml` for the others. A separate hand-off job (`needs`, `if: always()`, the only holder of the deploy secret) reads the runner's `blocks.json` (not the report) and calls `kill-switch`; then one `adapter-broken` issue per failing retailer is opened or updated (`blocked` label for a Block). A missing or unparseable report or `blocks.json` also fails and opens an issue.
+- Tests never contact real retailers: stub servers and `*.example` domains (T-3); no retailer domain or selector literals in backend main code.
 - Standards to cite: I-1 to I-9, S-8, S-10, S-12, T-2, T-3, D-2.
 
 ## Cross-Story Dependencies
 
-- 3.1 has no dependencies; 3.3 needs 3.1, 3.2 and Epic 1 story 1.9 (CI); 3.2 needs 1.8 and 2.8.
-- 3.4 needs 2.7 (Retry-After/BlockStore) and 3.3.
-- 3.5 needs 2.2 (PageStripper) and 2.8; 3.6 needs 2.9 (status endpoint), 3.4 and 3.5.
-- Epic 4 story 4.2 depends on 3.5.
+- 3.1 has none; 3.2 needs 1.8 and 2.8; 3.3 needs 1.9, 3.1 and 3.2; 3.4 needs 2.7 and 3.3.
+- 3.5 needs 2.2 (PageStripper) and 2.8 (lookup execution and cache); it builds on the existing `FetchClient`, `RobotsCache`, `BlockStore`, `RuntimeSwitch` and `Registry`.
+- 3.6 needs 2.9 (`/api/status`), 3.4 and 3.5. Epic 4 story 4.2 (simulated layout change caught by the Health check) depends on 3.5.

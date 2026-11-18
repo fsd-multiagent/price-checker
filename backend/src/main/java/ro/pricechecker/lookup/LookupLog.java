@@ -103,6 +103,24 @@ public class LookupLog {
     write(fields);
   }
 
+  /**
+   * One Health check result (FR-8, story 3.5): the retailer id, the validated Known EAN and the
+   * result name in {@code outcome}. Never a URL or page content.
+   */
+  public void healthCheck(String retailer, Ean ean, Enum<?> outcome) {
+    Map<Field, Object> fields = new EnumMap<>(Field.class);
+    fields.put(Field.LEVEL, "INFO");
+    fields.put(Field.EVENT, "health_check");
+    if (ean != null) {
+      fields.put(Field.EAN, ean.value());
+    }
+    if (retailer != null && RETAILER_ID.matcher(retailer).matches()) {
+      fields.put(Field.RETAILER, retailer);
+    }
+    fields.put(Field.OUTCOME, outcome.name());
+    write(fields);
+  }
+
   private void write(Map<Field, Object> fields) {
     Map<String, Object> line = new LinkedHashMap<>();
     line.put(Field.TS.key, Instant.now(clock).toString());

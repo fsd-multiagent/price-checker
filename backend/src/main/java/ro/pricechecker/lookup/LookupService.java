@@ -161,7 +161,14 @@ public class LookupService {
     } catch (RuntimeException e) {
       return null;
     }
-    Instant fetchedAt = clock.instant();
+    return normalize(outcome, ean, productUrl, clock.instant());
+  }
+
+  /**
+   * The AD-10 normalization shared by a Lookup and a Known EAN load (story 3.5): {@code null} for
+   * anything unavailable.
+   */
+  static Verdict normalize(AdapterOutcome outcome, Ean ean, URI productUrl, Instant fetchedAt) {
     return switch (outcome) {
       case AdapterOutcome.Found found -> found(ean, productUrl, found.facts(), fetchedAt);
       case AdapterOutcome.NotFound n -> Verdict.notFound(fetchedAt);

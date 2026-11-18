@@ -69,6 +69,24 @@ public final class FetchClient {
   private final RobotsCache robots;
   private final Map<String, RetailerConfig> configs = new HashMap<>();
   private final Map<String, RetailerLimiter> limiters = new HashMap<>();
+  private final Pace pace;
+
+  /**
+   * How much slower than {@code retailers.yaml} this client runs (AC 3.5.1): every retailer's
+   * request interval is multiplied by {@code intervalFactor} and its concurrency capped at {@code
+   * maxConcurrency}. Pacing can only slow a retailer down, never speed it up.
+   */
+  public record Pace(int intervalFactor, int maxConcurrency) {
+
+    /** The {@code retailers.yaml} limits unchanged (the web profile). */
+    public static final Pace NORMAL = new Pace(1, Integer.MAX_VALUE);
+
+    public Pace {
+      if (intervalFactor < 1 || maxConcurrency < 1) {
+        throw new IllegalArgumentException("pace factor and max concurrency must be at least 1");
+      }
+    }
+  }
 
   public FetchClient(
       Registry registry,
@@ -78,6 +96,19 @@ public final class FetchClient {
       Clock clock,
       Sleeper sleeper,
       UserAgent userAgent) {
+    this(registry, runtimeSwitch, blocks, transport, clock, sleeper, userAgent, Pace.NORMAL);
+  }
+
+  /** With the given pacing (the {@code health} profile, AC 3.5.1). */
+  public FetchClient(
+      Registry registry,
+      RuntimeSwitch runtimeSwitch,
+      BlockStore blocks,
+      Transport transport,
+      Clock clock,
+      Sleeper sleeper,
+      UserAgent userAgent,
+      Pace pace) {
     this(
         registry,
         runtimeSwitch,
@@ -86,7 +117,8 @@ public final class FetchClient {
         clock,
         sleeper,
         userAgent,
-        new RobotsCache(clock));
+        new RobotsCache(clock),
+        pace);
   }
 
   /** With a given robots.txt cache, so tests can seed it. */
@@ -99,6 +131,21 @@ public final class FetchClient {
       Sleeper sleeper,
       UserAgent userAgent,
       RobotsCache robots) {
+    this(
+        registry, runtimeSwitch, blocks, transport, clock, sleeper, userAgent, robots, Pace.NORMAL);
+  }
+
+  /** With a given robots.txt cache and pacing, so tests can seed both. */
+  FetchClient(
+      Registry registry,
+      RuntimeSwitch runtimeSwitch,
+      BlockStore blocks,
+      Transport transport,
+      Clock clock,
+      Sleeper sleeper,
+      UserAgent userAgent,
+      RobotsCache robots,
+      Pace pace) {
     this.registry = registry;
     this.runtimeSwitch = runtimeSwitch;
     this.blocks = blocks;
@@ -108,13 +155,22 @@ public final class FetchClient {
     this.userAgent = userAgent.value();
     this.productToken = userAgent.productToken();
     this.robots = robots;
+    this.pace = pace;
     for (RetailerConfig config : registry.retailers()) {
       configs.put(config.domain(), config);
       limiters.put(
           config.domain(),
           new RetailerLimiter(
-              Duration.ofMillis(config.minIntervalMs()), config.concurrency(), clock, sleeper));
+              Duration.ofMillis(config.minIntervalMs()).multipliedBy(pace.intervalFactor()),
+              Math.min(config.concurrency(), pace.maxConcurrency()),
+              clock,
+              sleeper));
     }
+  }
+
+  /** The pacing this client applies on top of {@code retailers.yaml}. */
+  public Pace pace() {
+    return pace;
   }
 
   /**
