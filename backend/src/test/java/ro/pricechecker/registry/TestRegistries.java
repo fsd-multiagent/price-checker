@@ -125,6 +125,43 @@ public final class TestRegistries {
   }
 
   /**
+   * a.example (Approved, enabled), b.example (Approved, adapter disabled), c.example (Proposed,
+   * adapter disabled); each with two Known EANs, c.example included (story 3.5).
+   */
+  public static Registry approvedEnabledDisabledProposed() {
+    String limits = "100 requests / 1 s, concurrency 4";
+    String reg =
+        register(
+            row("a.example", "Approved 2026-11-20", limits),
+            row("b.example", "Approved 2026-11-20", limits),
+            row("c.example", "Proposed", limits));
+    String values = "resolution: curated, minIntervalMs: 10, concurrency: 1, deadlineMs: 4000}";
+    String retailers =
+        "retailers:\n"
+            + "  a.example: {adapter: enabled, "
+            + values
+            + "\n  b.example: {adapter: disabled, "
+            + values
+            + "\n  c.example: {adapter: disabled, "
+            + values
+            + "\n";
+    String eans =
+        """
+        knownEans:
+          a.example:
+            - {ean: "4006381333931", url: "https://a.example/p/1"}
+            - {ean: "96385074", url: "https://a.example/p/2"}
+          b.example:
+            - {ean: "4006381333931", url: "https://b.example/p/1"}
+            - {ean: "96385074", url: "https://b.example/p/2"}
+          c.example:
+            - {ean: "4006381333931", url: "https://c.example/p/1"}
+            - {ean: "96385074", url: "https://c.example/p/2"}
+        """;
+    return of(reg, retailers, eans);
+  }
+
+  /**
    * A {@link RuntimeSwitch} over a temporary {@code runtime.yaml} with {@code fetching: allowed}
    * for each given domain (and nothing else).
    */

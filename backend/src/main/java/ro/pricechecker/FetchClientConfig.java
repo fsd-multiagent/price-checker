@@ -16,8 +16,9 @@ import ro.pricechecker.registry.RuntimeSwitch;
  * Wires the shared fetch client (AD-6): the contact URL comes from {@code
  * price-checker.contact-url} (env {@code PRICE_CHECKER_CONTACT_URL}); the user agent is built and
  * checked here at startup, so a missing contact URL or a forbidden word stops the application (AC
- * 2.4.5). Lives here so {@code fetch} reads no property. Not yet wired into {@code LookupService}
- * (story 2.8), so nothing is fetched yet.
+ * 2.4.5). Pacing comes from {@code price-checker.fetch.interval-factor} (default 1) and {@code
+ * price-checker.fetch.max-concurrency} (default unlimited); the {@code health} profile sets 2 and 1
+ * (AC 3.5.1). Lives here so {@code fetch} reads no property.
  */
 @Configuration(proxyBeanMethods = false)
 public class FetchClientConfig {
@@ -37,8 +38,18 @@ public class FetchClientConfig {
       RuntimeSwitch runtimeSwitch,
       BlockStore blockStore,
       Clock clock,
-      UserAgent userAgent) {
+      UserAgent userAgent,
+      @Value("${price-checker.fetch.interval-factor:1}") int intervalFactor,
+      @Value("${price-checker.fetch.max-concurrency:" + Integer.MAX_VALUE + "}")
+          int maxConcurrency) {
     return new FetchClient(
-        registry, runtimeSwitch, blockStore, new JdkTransport(), clock, Sleeper.SYSTEM, userAgent);
+        registry,
+        runtimeSwitch,
+        blockStore,
+        new JdkTransport(),
+        clock,
+        Sleeper.SYSTEM,
+        userAgent,
+        new FetchClient.Pace(intervalFactor, maxConcurrency));
   }
 }

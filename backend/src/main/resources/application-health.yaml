@@ -1,0 +1,16 @@
+# Story 3.5 (FR-8): the one-shot Health check, run on a GitHub runner (story 3.6). No web server;
+# paths are relative to the working directory of the runner.
+spring:
+  main:
+    web-application-type: none
+price-checker:
+  # Copied from production by the workflow; missing or unparseable fails the run.
+  runtime-file: health/runtime.yaml
+  # Must not exist at start (fresh); only BlockStore creates it.
+  blocks-file: health/blocks.json
+  health:
+    report-dir: health/report
+  fetch:
+    # AC 3.5.1: twice the retailers.yaml interval, one request at a time per retailer.
+    interval-factor: 2
+    max-concurrency: 1
