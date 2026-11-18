@@ -106,6 +106,8 @@ deferred:
 
 - 2026-11-18 (round 2): review blocker CR-1 (D-2) — the ConfigCheck narrowing changed ADR 0009 / AD-8 / AC 1.5.2 without an ADR. Added ADR 0024 (Proposed, amends ADR 0009), indexed it, marked ADR 0009 amended, and aligned AD-8 and AC 1.5.2 wording; code, test and config comments cite ADR 0024. Behaviour unchanged.
 
+- 2026-11-18 (round 5): review blocker CR-1 (D-2) — main added its own ADR 0024 (CI scanners) and ADR 0025, so this story's ADR is renumbered to 0026 and every reference this story adds now cites ADR 0026. Earlier entries keep the old number as history.
+
 ## Review Triage Log
 
 ## Design Notes
@@ -152,7 +154,7 @@ Status: done
 - **Review:** 0 patches, 10 deferred (6 frontmatter items after grouping), 10 rejected with reasons above.
 - **Follow-up review recommended:** false (no patches applied).
 - **Verification:** `backend/gradlew -p backend check` exit 0 (Spotless, compile -Werror, all tests, ArchUnit). altex.ro never contacted; `docs/source-register.md` untouched.
-- **Residual risk:** ADR 0024 is Proposed; Loredan (Architect) or the owner must accept it.
+- **Residual risk:** ADR 0026 (numbered 0024 before round 5) is Proposed; Loredan (Architect) or the owner must accept it.
 
 ### Round 2
 
@@ -168,4 +170,10 @@ Status: done
 ### Round 4
 
 - Fixed CR-1 (D-4, AD-18): rebased onto `origin/main` at d7db3f8 (#39, learn:1-5). The only conflict was the AD-8 **Rule:** line in `ARCHITECTURE-SPINE.md`: kept main's new sentence on `registry.ConfigCheck` and `known-eans.yaml`, and re-applied this story's ADR 0024 qualifier ("for an entry that is `adapter: enabled` or Approved (ADR 0024)").
+- Verification: `backend/gradlew -p backend check` exit 0.
+
+### Round 5
+
+- Fixed CR-1 (D-2, AD-18): `origin/main` moved to add2d0b and now has ADR 0024 (CI scanners) and ADR 0025 (model and effort per step). Renamed this story's ADR to `docs/adr/0026-register-limits-required-only-for-fetching-entries.md` and updated its index row, ADR 0009's amendment link, spine AD-8, epics AC 1.5.2, the `config/retailers.yaml` header and the `ConfigCheck`/test comments. Rebased onto add2d0b; the only conflict was the ADR index rows, resolved to 0024, 0025 (main) then 0026 (this story).
+- Fixed SEC-1 / CR-4 (T-2): `AltexroAcceptanceGapsTest` no longer pins the altex.ro register Status to exactly `Not checked`; it still asserts altex.ro is not Approved.
 - Verification: `backend/gradlew -p backend check` exit 0.
