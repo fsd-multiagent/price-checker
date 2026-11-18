@@ -150,6 +150,27 @@ class ConfigCheckTest {
         .anySatisfy(v -> assertThat(v).contains("c.example", "concurrency"));
   }
 
+  // ADR 0024: missing values on a disabled entry without register Limits are violations too.
+  @Test
+  void ac_4_1_2_disabledRowWithoutLimitsMissingValuesFails() {
+    SourceRegister reg = SourceRegister.parse(register(row("c.example", "Proposed", "—")));
+    RetailerConfig missing =
+        new RetailerConfig("c.example", "disabled", "curated", null, null, 4000);
+    assertThat(ConfigCheck.violations(reg, List.of(missing), List.of()))
+        .anySatisfy(v -> assertThat(v).contains("c.example", "minIntervalMs"))
+        .anySatisfy(v -> assertThat(v).contains("c.example", "concurrency"));
+  }
+
+  // ADR 0024: once register Limits parse, "not looser" applies to disabled, not Approved entries.
+  @Test
+  void ac_4_1_2_disabledNotApprovedRowWithParseableLimitsMustNotBeLooser() {
+    SourceRegister reg = SourceRegister.parse(register(row("c.example", "Not checked", LIMITS)));
+    RetailerConfig fast = new RetailerConfig("c.example", "disabled", "curated", 1000, 2, 4000);
+    assertThat(ConfigCheck.violations(reg, List.of(fast), List.of()))
+        .anySatisfy(v -> assertThat(v).contains("c.example", "minIntervalMs", "looser"))
+        .anySatisfy(v -> assertThat(v).contains("c.example", "concurrency", "looser"));
+  }
+
   @Test
   void ac_1_5_2_domainNotInRegister() {
     assertThat(
