@@ -9,7 +9,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -19,6 +23,7 @@ import ro.pricechecker.adapter.Availability;
 import ro.pricechecker.adapter.PageFacts;
 import ro.pricechecker.adapter.RetailerHttp;
 import ro.pricechecker.ean.Ean;
+import ro.pricechecker.fetch.PageStripper;
 import ro.pricechecker.registry.KnownEan;
 import ro.pricechecker.registry.Registry;
 
@@ -73,6 +78,50 @@ class CelroRecordedPagesTest {
           assertThat(f.availability().name()).isEqualTo("UNKNOWN");
           assertThat(f.gtin()).isNull();
         });
+  }
+
+  @ParameterizedTest
+  @CsvSource({"5099206027282", "0740617261219"})
+  @Tag("AC-2.12.1")
+  void ac_2_12_1_recordedPageIsAlreadyStrippedAndHoldsFactsOnly(String ean) throws IOException {
+    String html = recorded(ean);
+    Document doc = Jsoup.parse(html);
+
+    // S-7, T-2: no images, media or scripts other than Product JSON-LD; no long text.
+    assertThat(doc.select("img, picture, video, audio, iframe, svg, link, style")).isEmpty();
+    assertThat(doc.select("script"))
+        .allSatisfy(s -> {
+          assertThat(s.attr("type")).isEqualTo("application/ld" + '+' + "json");
+          assertThat(s.data()).contains("\"Product\"");
+        });
+    assertThat(doc.getAllElements())
+        .allSatisfy(e ->
+            e.textNodes().forEach(t -> assertThat(t.text().length()).isLessThanOrEqualTo(200)));
+
+    // Stripping again changes no fact the adapter reads.
+    URI url = URI.create("https://www.cel.ro/recorded-" + ean + "/");
+    assertThat(adapter.fetchAndExtract(Ean.parse(ean), url, u -> PageStripper.strip(html)))
+        .isEqualTo(adapter.fetchAndExtract(Ean.parse(ean), url, u -> html));
+  }
+
+  @Test
+  @Tag("AC-2.12.1")
+  void ac_2_12_1_everyRecordedPageBelongsToACelroKnownEan() throws IOException {
+    Set<String> knownCelro =
+        new Registry()
+            .knownEans().stream()
+                .filter(k -> k.domain().equals(CelroAdapter.RETAILER_ID))
+                .map(KnownEan::ean)
+                .collect(Collectors.toSet());
+    try (Stream<Path> files = Files.list(FIXTURES)) {
+      Set<String> recordedEans =
+          files
+              .map(p -> p.getFileName().toString())
+              .filter(n -> n.startsWith("recorded-") && n.endsWith(".html"))
+              .map(n -> n.substring("recorded-".length(), n.length() - ".html".length()))
+              .collect(Collectors.toSet());
+      assertThat(recordedEans).isEqualTo(knownCelro);
+    }
   }
 
   @Test
