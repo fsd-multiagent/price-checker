@@ -165,13 +165,13 @@ Arrows are the only allowed dependencies between packages (AD-1); the dotted arr
 
 - **Binds:** FR-1, AC-1.1 to 1.6, S-11, T-7
 - **Prevents:** client and server accepting different inputs.
-- **Rule:** Trim leading/trailing whitespace, then: empty → `EAN_EMPTY`; any non-digit → `EAN_NON_DIGIT`; length not 8 or 13 → `EAN_LENGTH`; bad GS1 check digit → `EAN_CHECK_DIGIT`. `ean.Ean` and `web/src/ean.ts` implement it and both test suites run `api/ean-cases.json`. The server validates before any other work; `lookup` accepts only `Ean`.
+- **Rule:** Trim leading/trailing whitespace (the ECMAScript `String.prototype.trim()` set: Unicode `Zs`, TAB, LF, VT, FF, CR, U+2028, U+2029, U+FEFF; not Java `strip()`; story 1.4), then: empty → `EAN_EMPTY`; any character other than ASCII `0-9` → `EAN_NON_DIGIT`; length not 8 or 13 → `EAN_LENGTH`; bad GS1 check digit → `EAN_CHECK_DIGIT`. `ean.Ean` and `web/src/ean.ts` implement it and both test suites run `api/ean-cases.json`. The server validates before any other work; `lookup` accepts only `Ean`.
 
 ### AD-14 — Logs hold an allowlist of fields (ADR 0017)
 
 - **Binds:** NFR-5, AC-N3.7, AC-N5.2, AC-11.2, C-9, S-7, S-9
 - **Prevents:** IPs, client user agents, raw user input or page content reaching a log.
-- **Rule:** Application events go through `LookupLog` only: JSON lines on stdout with `ts`, `level`, `event`, `ean` (a validated `Ean` only), `retailer`, `outcome` (enum), `durationMs`. A rejected input logs `event=ean_rejected` and the `code`, never the input. Exceptions log their type, not their message. Tomcat access logs off; Caddy has no access log and its own logs drop `remote_ip`, headers and URI. Blocks log at `WARN`. Platform logs that could hold client IPs stay off: no NSG flow logs, and no network diagnostics on the VM (Pacala (DevOps), stage 6).
+- **Rule:** Application events go through `LookupLog` only: JSON lines on stdout with `ts`, `level`, `event`, `ean` (a validated `Ean` only), `retailer`, `outcome` (enum), `durationMs`. A rejected input logs `event=ean_rejected` with the `EAN_*` code as its `outcome` (no extra key), never the input. Exceptions log their type, not their message. Tomcat access logs off; Caddy has no access log and its own logs drop `remote_ip`, headers and URI. Blocks log at `WARN`. Platform logs that could hold client IPs stay off: no NSG flow logs, and no network diagnostics on the VM (Pacala (DevOps), stage 6).
 
 ### AD-15 — Deployment and operations (ADR 0015) [ADOPTED spec §10, I-1 to I-9]
 
