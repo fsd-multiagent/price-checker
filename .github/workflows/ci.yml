@@ -1,7 +1,8 @@
 # CI for every pull request and every push to main (plan step 0.9, stage 8 "CI green", story 1.9).
 # The job name `ci` is the check to make required on main: it aggregates every other
 # job and fails when any of them fails, is cancelled or is skipped (AC 1.9.1).
-# Jobs: orchestrator (guard and orchestrator tests), backend and web (ADR 0014 commands, T-8),
+# Jobs: orchestrator (guard and orchestrator tests), backend and web (ADR 0014 commands, T-8;
+# backend also runs the story 2.14 Playwright e2e suite against stubbed retailers),
 # secret-scan (gitleaks over the event's commit range, S-10, AC-N7.2) and
 # vulnerability-scan (Trivy, runtime dependencies, HIGH and CRITICAL, S-12, AC-N7.3).
 # Actions are pinned to commit SHAs and scanner binaries to version plus SHA-256 (S-12).
@@ -66,7 +67,7 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -81,6 +82,30 @@ jobs:
 
       - name: Backend check (Spotless, compile, tests, ArchUnit; ADR 0014)
         run: backend/gradlew -p backend check
+
+      # Story 2.14 (T-3, T-4): UJ-1 and UJ-2 through browser, web app and backend. Runs in this
+      # job because it needs the same Java 21; retailer HTTP is the FixtureHttp stub, so no
+      # retailer is contacted.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            web/e2e/package-lock.json
+
+      - name: Install web and e2e packages
+        run: |
+          npm --prefix web ci
+          npm --prefix web/e2e ci
+
+      - name: Install Chromium
+        run: npm --prefix web/e2e exec -- playwright install --with-deps chromium
+
+      - name: End-to-end tests (Playwright, story 2.14)
+        env:
+          CI: "true"
+        run: npm --prefix web/e2e test
 
   web:
     runs-on: ubuntu-latest
