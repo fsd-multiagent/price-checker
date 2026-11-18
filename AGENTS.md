@@ -21,6 +21,7 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
 - Custom agents: `.claude/agents/`; BMAD agent overrides: `_bmad/custom/*.toml`
 - Guardrails: `.claude/settings.json`, `.claude/hooks/guard.py` (rules G1–G5 in `docs/automation-plan.md` §5)
 - Registers: `docs/source-register.md`, `docs/compliance-register.md`
+- Web app: `web/` (React + TypeScript + Vite; commands and conventions in `web/CLAUDE.md`; design tokens only in `web/src/styles/tokens.css`)
 - Infrastructure: `infra/` (Terraform for the `prod` VM; commands and pitfalls in `infra/CLAUDE.md`, owner bootstrap and apply in `infra/README.md`); PR plan workflow `.github/workflows/terraform-plan.yml`
 
 ## Running and verifying
