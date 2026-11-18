@@ -14,3 +14,4 @@
 - **I-8** Every resource is tagged `project=price-checker` and `env=<env>`. Azure Budgets has a cost alert set at the owner's ceiling.
 - **I-9** Kill switches and retailer config live in a mounted config file that the backend reloads, so they can be changed without a deploy (`security-compliance.md` S-8).
 - **I-10** The health check runs on a schedule as a GitHub Actions cron job. When it fails, it opens an `adapter-broken` issue with the failing fixture attached.
+- **I-11** `infra/` defines no NSG flow logs, Network Watcher, diagnostic settings, Log Analytics workspace, data collection rule, VM extension or VM boot diagnostics, because they would record client IPs (AD-14, ADR 0017, S-9). The AD-14 grep step in `.github/workflows/terraform-plan.yml` and the `ac_3_1_2_*` run in `infra/tests/plan.tftest.hcl` enforce it.
