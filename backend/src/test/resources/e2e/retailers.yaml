@@ -1,4 +1,5 @@
 # End-to-end test retailers (story 2.14). Ids match the real adapters; HTTP is the FixtureHttp stub.
+# AdapterCatalog needs one entry per adapter bean, so altex.ro (story 4.1) is here, disabled.
 retailers:
   cel.ro:
     adapter: enabled
@@ -12,3 +13,9 @@ retailers:
     minIntervalMs: 10
     concurrency: 4
     deadlineMs: 1500
+  altex.ro:
+    adapter: disabled
+    resolution: curated
+    minIntervalMs: 2000
+    concurrency: 1
+    deadlineMs: 4000

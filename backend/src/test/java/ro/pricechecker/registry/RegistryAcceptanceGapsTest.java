@@ -69,7 +69,7 @@ class RegistryAcceptanceGapsTest {
     List<RetailerConfig> retailers =
         RegistryYaml.parseRetailers(Registry.readResource(Registry.RETAILERS_RESOURCE));
 
-    assertThat(retailers).hasSize(2);
+    assertThat(retailers).hasSize(3);
     assertThat(retailers)
         .allSatisfy(r -> {
           assertThat(register.rows()).as(r.domain()).containsKey(r.domain());
@@ -77,6 +77,13 @@ class RegistryAcceptanceGapsTest {
           assertThat(r.enabled()).as(r.domain()).isFalse();
           assertThat(r.resolution()).as(r.domain()).isEqualTo("curated");
           assertThat(r.deadlineMs()).as(r.domain()).isEqualTo(4000);
+          // A disabled, not Approved entry may have unparseable register Limits (ADR 0026).
+          if (register.limits(r.domain()).isEmpty()) {
+            assertThat(register.isApproved(r.domain())).as(r.domain()).isFalse();
+            assertThat(r.minIntervalMs()).as(r.domain()).isPositive();
+            assertThat(r.concurrency()).as(r.domain()).isPositive();
+            return;
+          }
           RegisterLimits limits = register.limits(r.domain()).orElseThrow();
           assertThat(r.minIntervalMs().longValue())
               .as(r.domain())

@@ -81,7 +81,19 @@ public final class ConfigCheck {
     }
     Optional<RegisterLimits> limits = register.limits(d);
     if (limits.isEmpty()) {
-      violations.add(d + ": register Limits cannot be parsed");
+      // ADR 0026 (amends ADR 0009): Limits only constrain fetching, so an entry that is disabled
+      // and not Approved may have unparseable register Limits (e.g. "—"), but its own values
+      // must still be positive.
+      if (r.enabled() || approved.contains(d)) {
+        violations.add(d + ": register Limits cannot be parsed");
+        return;
+      }
+      if (r.minIntervalMs() == null || r.minIntervalMs() <= 0) {
+        violations.add(d + ": minIntervalMs must be a positive integer");
+      }
+      if (r.concurrency() == null || r.concurrency() < 1) {
+        violations.add(d + ": concurrency must be a positive integer");
+      }
       return;
     }
     RegisterLimits l = limits.get();
