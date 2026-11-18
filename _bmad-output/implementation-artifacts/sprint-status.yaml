@@ -1,4 +1,4 @@
-# Rendered by Zamolxe (Orchestrator); run 20261118-184115-story merged into main's file.
+# Rendered by Zamolxe (Orchestrator); run 20261117-174705-full merged into main's file.
 generated: '2026-11-17T17:47:05Z'
 project: price-checker
 tracking_system: file-system
@@ -34,13 +34,13 @@ development_status:
   epic-3: in-progress
   3-1-terraform-vm: done
   3-2-containers-compose-caddy: done
-  3-3-deploy-workflow: in-progress
+  3-3-deploy-workflow: review
   3-4-kill-switch-workflow: backlog
   3-5-health-profile: done
   3-6-health-check-workflow: backlog
   epic-3-retrospective: optional
   epic-4: in-progress
-  4-1-adapter-altexro-disabled: in-progress
+  4-1-adapter-altexro-disabled: done
   4-2-simulated-layout-change: done
   4-3-demo-ean-list-check: backlog
   epic-4-retrospective: optional
