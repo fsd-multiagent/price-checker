@@ -36,3 +36,4 @@
 | [0021](0021-gate-commands-change-only-by-owner-pr.md) | Restore the gate-command block on every agent branch, so gate commands change only through an owner PR | Accepted | 2026-11-18 |
 | [0022](0022-factory-changes-by-proposal-and-issue.md) | Agents propose factory changes and build them from owner issues; the owner only reviews and merges | Accepted | 2026-11-18 |
 | [0023](0023-gate-block-compared-at-branch-point.md) | Compare the gate block with the story's branch point on main, not with today's main | Accepted | 2026-11-18 |
+| [0024](0024-ci-secret-and-vulnerability-scanners.md) | Scan each event's commit range with gitleaks and runtime dependencies with Trivy, both pinned binaries with a canary | Proposed | 2026-11-18 |

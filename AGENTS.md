@@ -23,6 +23,7 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
 - Registers: `docs/source-register.md`, `docs/compliance-register.md`
 - Web app: `web/` (React + TypeScript + Vite; commands and conventions in `web/CLAUDE.md`; design tokens only in `web/src/styles/tokens.css`)
 - Retailer config: `config/retailers.yaml` and `config/known-eans.yaml` (ADR 0009, ADR 0010). The backend build bundles them and `docs/source-register.md` into the jar under `registry/`; `ro.pricechecker.registry.Registry` loads them at start and refuses to start when `ConfigCheck` reports a violation. The rules are in the file headers.
+- CI: `.github/workflows/ci.yml` runs jobs `orchestrator`, `backend`, `web` (`check` and `build`), `secret-scan` (gitleaks over the PR's or push's commit range) and `vulnerability-scan` (Trivy, runtime dependencies in lockfiles and the backend boot jar, HIGH and CRITICAL fail). The aggregate job `ci` is the one required check and fails when any job fails or is skipped (ADR 0024).
 - Infrastructure: `infra/` (Terraform for the `prod` VM; commands and pitfalls in `infra/CLAUDE.md`, owner bootstrap and apply in `infra/README.md`); PR plan workflow `.github/workflows/terraform-plan.yml`
 
 ## Running and verifying
@@ -79,6 +80,7 @@ A learning project for an automated multi-agent SDLC built on BMAD; the app (ent
 
 - The guard reads every Bash command as text, heredoc bodies included. Inline code (`python3 -c`, `node -e`) that mentions a retailer domain, or a heredoc whose text contains a blocked command such as `terraform apply`, is denied even though nothing would run. Write the content with the Write tool, or put code in a script file and run that.
 - When the owner approves a retailer in `docs/source-register.md`, the backend tests and startup fail until `config/retailers.yaml` has an entry for it and `config/known-eans.yaml` has at least two distinct valid EANs for it. Approval takes effect only after a rebuild and deploy, because the register is bundled into the jar.
+- CI `secret-scan` checks every commit in the PR, so a secret-like string (for example an AWS-style key in a test fixture) fails it even if a later commit removes it. There is no allowlist; build such strings at runtime from parts, as the canary in `.github/workflows/ci.yml` does.
 - Backend main code must not contain retailer domain or selector-like string literals (for example a literal ending in `.yaml`); `backend/src/test/java/ro/pricechecker/arch/RetailerTextScan.java` fails the build. Tests use `*.example` domains.
 
 <!-- /bmad:context -->

@@ -35,7 +35,7 @@ tests:
 
 - These commands enter the `sdlc-commands` block in `AGENTS.md` only through a reviewed PR to `main` (ADR 0004); this stage does not change the block. Until then the `tests` gate runs only the orchestrator tests.
 - The scaffold story adds the Gradle wrapper, `web/package.json` scripts and the CI workflow.
-- Which scanners to use (for example gitleaks, OSV-Scanner) is Pacala's (DevOps) call at stage 6; the thresholds are fixed here.
+- Which scanners to use (for example gitleaks, OSV-Scanner) is Pacala's (DevOps) call at stage 6; the thresholds are fixed here. Resolved by [ADR 0024](0024-ci-secret-and-vulnerability-scanners.md) (gitleaks and Trivy, story 1.9).
 
 ## Implementation note (story 1.1)
 

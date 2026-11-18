@@ -298,13 +298,13 @@ sequenceDiagram
 | NFR-4 accessibility | `web` | EXPERIENCE.md, ADR 0013 |
 | NFR-5 privacy | logging, proxy | AD-14 |
 | NFR-6 demo reliability | `config/known-eans.yaml`, `web/e2e` | AD-12, ADR 0013 |
-| NFR-7 transport and supply chain | `deploy`, `infra`, CI | AD-15, ADR 0014 |
+| NFR-7 transport and supply chain | `deploy`, `infra`, CI | AD-15, ADR 0014, ADR 0024 |
 
 ## Deferred
 
 - **Exact versions** — the scaffold story pins exact library versions and container base images (Temurin, Node, Caddy) by digest or exact tag after a web check, including a Spring Boot 4 + OpenAPI Generator compatibility spike; stage 7 checks it (S-12).
 - **Azure region, VM size, DNS label** — Pacala (DevOps), within I-3 and I-8; bound: EU region and a DNS name Caddy can get a certificate for.
-- **Secret and vulnerability scanners** — Pacala (DevOps) at stage 6; thresholds fixed in ADR 0014 (high and critical fail).
+- **Secret and vulnerability scanners** — decided in story 1.9: gitleaks and Trivy in `.github/workflows/ci.yml` (ADR 0024); thresholds fixed in ADR 0014 (high and critical fail).
 - **Search or catalog resolution** — needs a register row first (AD-12).
 - **Product name in rows** — waits for the owner on S-7 (PRD §9 Q5).
 - **UI component library** — none; DESIGN.md tokens as plain CSS.
