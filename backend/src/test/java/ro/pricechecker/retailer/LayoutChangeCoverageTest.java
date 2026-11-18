@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -18,9 +20,15 @@ import org.springframework.core.type.filter.AssignableTypeFilter;
 import ro.pricechecker.adapter.RetailerAdapter;
 
 /**
- * Guards for story 4.2: every real Adapter has an altered fixture and is exercised by {@link
- * LayoutChangeTest} (AC 4.2.1), and only the failure-expecting tests name the altered fixture, so
- * normal CI stays green (AC 4.2.3). Reads only the repository, never the network (T-3).
+ * Guards for story 4.2: every enabled-capable Adapter has an altered fixture and is exercised by
+ * {@link LayoutChangeTest} (AC 4.2.1), and only the failure-expecting tests name the altered
+ * fixture, so normal CI stays green (AC 4.2.3). Reads only the repository, never the network (T-3).
+ *
+ * <p>An Adapter is enabled-capable when its retailer's register Status is {@code Proposed} or
+ * {@code Approved …}: it passed the checks, so the owner can approve it and the Adapter can then be
+ * enabled. A {@code Not checked}, {@code Rejected} or {@code Retired} retailer's Adapter cannot be
+ * enabled (the register check refuses it, AC 4.1.3), so a disabled Adapter such as story 4.1's
+ * Altex needs no altered fixture until its retailer becomes Proposed.
  */
 class LayoutChangeCoverageTest {
 
@@ -28,6 +36,7 @@ class LayoutChangeCoverageTest {
   private static final String ALTERED = "layout" + '-' + "changed.html";
 
   private static final Path TEST_SOURCES = Path.of("src", "test", "java");
+  private static final Path REGISTER = Path.of("..", "docs", "source-register.md");
 
   /** The tests that read the altered fixture; each asserts the failure it causes. */
   private static final Set<String> FAILURE_EXPECTING_TESTS =
@@ -54,26 +63,53 @@ class LayoutChangeCoverageTest {
     return ids;
   }
 
+  /** Register Status of each retailer domain, read from the register's table rows. */
+  private static Map<String, String> registerStatus() throws IOException {
+    Map<String, String> status = new HashMap<>();
+    for (String line : Files.readAllLines(REGISTER)) {
+      String[] cells = line.split("\\|");
+      if (line.startsWith("|") && cells.length > 3 && cells[2].trim().startsWith("`")) {
+        status.put(cells[2].trim().replace("`", ""), cells[3].trim());
+      }
+    }
+    return status;
+  }
+
+  /** Real Adapters whose retailer is Proposed or Approved in the register. */
+  private static Set<String> enabledCapableAdapterIds() throws IOException {
+    Map<String, String> status = registerStatus();
+    return realAdapterIds().stream()
+        .filter(id -> {
+          String s = status.getOrDefault(id, "");
+          return s.equals("Proposed") || s.startsWith("Approved");
+        })
+        .collect(Collectors.toCollection(TreeSet::new));
+  }
+
   @Test
   @Tag("AC-4.2.1")
-  void ac_4_2_1_everyRealAdapterHasAnAlteredFixture() {
-    Set<String> ids = realAdapterIds();
+  void ac_4_2_1_enabledCapableAdaptersAreNotEmpty() throws IOException {
+    assertThat(enabledCapableAdapterIds()).contains("cel.ro", "evomag.ro");
+  }
 
-    assertThat(ids).isNotEmpty();
-    assertThat(ids)
+  @Test
+  @Tag("AC-4.2.1")
+  void ac_4_2_1_everyEnabledCapableAdapterHasAnAlteredFixture() throws IOException {
+    assertThat(enabledCapableAdapterIds())
         .allSatisfy(
             id -> assertThat(Path.of("..", "fixtures", id, ALTERED)).as(id).isRegularFile());
   }
 
   @Test
   @Tag("AC-4.2.1")
-  void ac_4_2_1_layoutChangeTestCoversEveryRealAdapter() {
+  void ac_4_2_1_layoutChangeTestCoversEveryEnabledCapableAdapter() throws IOException {
     Set<String> covered =
         LayoutChangeTest.adapters()
             .map(a -> ((RetailerAdapter) a.get()[0]).retailerId())
             .collect(Collectors.toCollection(TreeSet::new));
 
-    assertThat(covered).isEqualTo(realAdapterIds());
+    assertThat(covered).containsAll(enabledCapableAdapterIds());
+    assertThat(realAdapterIds()).containsAll(covered);
   }
 
   @Test

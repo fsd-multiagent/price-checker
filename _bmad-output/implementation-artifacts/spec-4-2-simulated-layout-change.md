@@ -58,11 +58,18 @@ deferred: []
 **Acceptance Criteria:**
 - Given each Adapter's `layout-changed.html`, when the fact check runs on its outcome, then it fails with a message naming the retailer and `price` (4.2.1).
 - Given the Health check over a stub serving an altered page, when it runs, then exit code is 1 and `report.json` names the retailer, EAN and `price` (4.2.2).
-- Given `backend/gradlew -p backend check`, when it runs, then it is green and only failure-expecting tests read `layout-changed.html` (4.2.3).
+- Given `backend/gradlew -p backend check`, when it runs, then it is green and only failure-expecting tests extract facts from `layout-changed.html` (4.2.3). Directory scans that only check fixture hygiene (T-2, S-7) may read it too.
 
 ## Spec Change Log
 
 ## Review Triage Log
+
+- r1 security (AD-18, AD-10): Veronel (Security & Compliance) left no valid verdict. The step failed, not the code, so the diff needs no change for it. The r2 security step should run again.
+- r1 code review CR-1 (major, AC-4.2.1): fixed. `LayoutChangeCoverageTest` now requires an altered fixture and a `LayoutChangeTest` row only for enabled-capable Adapters, meaning the retailer is `Proposed` or `Approved` in the source register. Story 4.1's Altex is `Not checked` and cannot be enabled (AC 4.1.3), so 4.1 and 4.2 can merge in either order. When Altex becomes Proposed, that change must add an Altex `layout-changed.html` and a `LayoutChangeTest` row.
+- r1 code review CR-2 and code lens CR-1 (minor, AC-4.2.3): kept as is, with the reading made explicit in the AC below. "Used" means facts are extracted from the page. The directory scans in `CelroAdapterCoverageTest` and `EvomagAcceptanceGapsTest` only check page hygiene (T-2, S-7), and the altered page should pass those checks too.
+- r1 code review CR-3 (minor, T-5): fixed. The altered-page Health check test is a `@ParameterizedTest` per retailer with its own `@TempDir` and clock. The mutable `reportDir` field is gone.
+- r1 code review CR-4 (minor): fixed. The test register row says `Approved 2026-11-01`.
+- r1 code lens CR-2 (minor, C-10): kept. Checking currency, availability and EAN as well shows that the altered page lost only the price.
 
 ## Design Notes
 
@@ -75,6 +82,6 @@ deferred: []
 
 ## Auto Run Result
 
-Status: in-review (implementation done; `backend/gradlew -p backend check` passes; `LayoutChangeTest` ran 4 cases and `LayoutChangeHealthCheckTest` ran 2, all passing; each I/O matrix row has a passing test).
+Status: in-review (implementation done; `backend/gradlew -p backend check` passes; `LayoutChangeTest` ran 4 cases and `LayoutChangeHealthCheckTest` ran 3 (the normal run plus one altered run per retailer), and `LayoutChangeCoverageTest` ran 4, all passing. Round 2 fixed the r1 review findings (see Review Triage Log); each I/O matrix row has a passing test).
 Step-04 self-review was not run in this dev step because of the run's USD budget. The stage-7 review by Filofteia (Code Reviewer) and Veronel (Security & Compliance) covers it.
 Points for the reviewers: "the adapter test fails" is shown by a test that asserts the failure message (`<retailer>: missing price`), so CI stays green (AC 4.2.3 [ASSUMPTION]). The Health check runs as the real `HealthCheck` class with the real Adapters over a stub transport and an in-memory register where both retailers are Approved, not as a booted `health` profile. The existing facts-only fixture scans (`CelroAdapterCoverageTest`, `EvomagAcceptanceGapsTest`) also read `layout-changed.html`; they pass, and they extract nothing from it.

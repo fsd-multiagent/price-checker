@@ -13,6 +13,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import ro.pricechecker.fetch.FetchClient;
 import ro.pricechecker.fetch.Transport;
 import ro.pricechecker.fetch.UserAgent;
@@ -50,7 +52,6 @@ class LayoutChangeHealthCheckTest {
   @TempDir Path dir;
 
   private final MutableClock clock = new MutableClock(NOW);
-  private Path reportDir;
 
   private static String fixture(String retailerId, String name) {
     try {
@@ -63,7 +64,7 @@ class LayoutChangeHealthCheckTest {
   private static String registerRow(String domain) {
     return "| Shop | `"
         + domain
-        + "` | Approved 2026-11-20 | 100 requests / 1 s, concurrency 4 | n |";
+        + "` | Approved 2026-11-01 | 100 requests / 1 s, concurrency 4 | n |";
   }
 
   /** cel.ro and evomag.ro, both Approved and enabled; two Known EANs each (fixture GTIN first). */
@@ -110,7 +111,6 @@ class LayoutChangeHealthCheckTest {
     Files.writeString(
         runtimeFile,
         "retailers:\n  cel.ro: {fetching: allowed}\n  evomag.ro: {fetching: allowed}\n");
-    reportDir = dir.resolve("report");
     Registry registry = registry();
     RuntimeSwitch runtime = new RuntimeSwitch(runtimeFile, clock);
     LookupLog log = new LookupLog(clock);
@@ -151,13 +151,13 @@ class LayoutChangeHealthCheckTest {
         new KnownEanLoad(catalog, clock, new LookupLog(clock)),
         log,
         clock,
-        reportDir);
+        dir.resolve("report"));
   }
 
   private JsonNode report() throws IOException {
     return JsonMapper.builder()
         .build()
-        .readTree(Files.readString(reportDir.resolve("report.json")));
+        .readTree(Files.readString(dir.resolve("report").resolve("report.json")));
   }
 
   @Test
@@ -177,41 +177,42 @@ class LayoutChangeHealthCheckTest {
     assertThat(report().get("passed").asBoolean()).isTrue();
   }
 
-  @Test
+  /** One case per retailer, so each gets its own {@code @TempDir} and clock (T-5). */
+  @ParameterizedTest
+  @ValueSource(strings = {"cel.ro", "evomag.ro"})
   @Tag("AC-4.2.2")
   @Tag("AC-4.2.3")
-  void ac_4_2_2_layoutChangedPageFailsNamingRetailerEanAndPrice() throws IOException {
-    for (String retailer : List.of("cel.ro", "evomag.ro")) {
-      HealthCheck check = healthCheck(retailer);
-      String ean = FIXTURE_EAN.get(retailer);
+  void ac_4_2_2_layoutChangedPageFailsNamingRetailerEanAndPrice(String retailer)
+      throws IOException {
+    HealthCheck check = healthCheck(retailer);
+    String ean = FIXTURE_EAN.get(retailer);
 
-      check.run();
+    check.run();
 
-      assertThat(check.getExitCode()).as(retailer).isEqualTo(1);
-      JsonNode report = report();
-      assertThat(report.get("passed").asBoolean()).as(retailer).isFalse();
-      JsonNode checks = report.get("checks");
-      assertThat(checks).hasSize(4);
-      for (JsonNode c : checks) {
-        boolean altered =
-            c.get("retailer").asString().equals(retailer) && c.get("ean").asString().equals(ean);
-        if (altered) {
-          assertThat(c.get("outcome").asString()).as(retailer).isEqualTo("FAILED");
-          assertThat(c.get("status").asString()).as(retailer).isEqualTo("FOUND");
-          assertThat(c.get("missing")).as(retailer).hasSize(1);
-          assertThat(c.get("missing").get(0).asString()).isEqualTo("price");
-          assertThat(c.get("blocked").asBoolean()).isFalse();
-        } else {
-          assertThat(c.get("outcome").asString()).as(c.toString()).isEqualTo("PASSED");
-        }
+    assertThat(check.getExitCode()).isEqualTo(1);
+    JsonNode report = report();
+    assertThat(report.get("passed").asBoolean()).isFalse();
+    JsonNode checks = report.get("checks");
+    assertThat(checks).hasSize(4);
+    for (JsonNode c : checks) {
+      boolean altered =
+          c.get("retailer").asString().equals(retailer) && c.get("ean").asString().equals(ean);
+      if (altered) {
+        assertThat(c.get("outcome").asString()).isEqualTo("FAILED");
+        assertThat(c.get("status").asString()).isEqualTo("FOUND");
+        assertThat(c.get("missing")).hasSize(1);
+        assertThat(c.get("missing").get(0).asString()).isEqualTo("price");
+        assertThat(c.get("blocked").asBoolean()).isFalse();
+      } else {
+        assertThat(c.get("outcome").asString()).as(c.toString()).isEqualTo("PASSED");
       }
-      assertThat(checks)
-          .filteredOn(c -> c.get("outcome").asString().equals("FAILED"))
-          .singleElement()
-          .satisfies(c -> {
-            assertThat(c.get("retailer").asString()).isEqualTo(retailer);
-            assertThat(c.get("ean").asString()).isEqualTo(ean);
-          });
     }
+    assertThat(checks)
+        .filteredOn(c -> c.get("outcome").asString().equals("FAILED"))
+        .singleElement()
+        .satisfies(c -> {
+          assertThat(c.get("retailer").asString()).isEqualTo(retailer);
+          assertThat(c.get("ean").asString()).isEqualTo(ean);
+        });
   }
 }
