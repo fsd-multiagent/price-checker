@@ -24,7 +24,8 @@ Option A. The client is generated from `api/openapi.yaml` with OpenAPI Generator
 
 ## Consequences
 
-- `package.json` scripts: `check` runs lint, typecheck and unit tests; `e2e` runs Playwright. Versions are pinned (S-12) and recorded at the scaffold story.
+- `package.json` scripts: `check` runs lint, typecheck and unit tests. Versions are pinned (S-12) and recorded at the scaffold story.
+- Playwright is its own npm package in `web/e2e/` with its own pinned `package.json` and lockfile; run it with `npm --prefix web/e2e test` (story 2.14). `web/package.json` has no `e2e` script.
 - No cookies, no third-party scripts (AC-N5.1, AC-N5.4).
 
 ## Compliance
