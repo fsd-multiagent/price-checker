@@ -17,6 +17,7 @@ import ro.pricechecker.adapter.RetailerHttp;
 import ro.pricechecker.adapter.UnavailableReason;
 import ro.pricechecker.ean.Ean;
 import ro.pricechecker.extract.ExtractedFacts;
+import ro.pricechecker.fetch.TestFetchFailures;
 
 /** AC 4.1.1: the Altex Adapter against synthetic fixtures and a fake {@link RetailerHttp} (T-3). */
 @Tag("AC-4.1.1")
@@ -103,6 +104,43 @@ class AltexroAdapterTest {
     assertThat(adapter.fetchAndExtract(EAN, PRODUCT_URL, failing))
         .isEqualTo(new AdapterOutcome.Unavailable(UnavailableReason.HTTP_ERROR));
     assertThat(requested).containsExactly(PRODUCT_URL);
+  }
+
+  @Test
+  void ac_4_1_1_fetchFailureOutcomeIsReturned() {
+    assertThat(
+            adapter.fetchAndExtract(
+                EAN,
+                PRODUCT_URL,
+                url -> {
+                  throw TestFetchFailures.notFound();
+                }))
+        .isEqualTo(new AdapterOutcome.NotFound());
+    assertThat(
+            adapter.fetchAndExtract(
+                EAN,
+                PRODUCT_URL,
+                url -> {
+                  throw TestFetchFailures.unavailable(UnavailableReason.BLOCKED);
+                }))
+        .isEqualTo(new AdapterOutcome.Unavailable(UnavailableReason.BLOCKED));
+  }
+
+  @Test
+  void ac_4_1_1_otherProductGtinIsNotFound() {
+    Ean other = Ean.parse("5901234123457");
+    assertThat(adapter.fetchAndExtract(other, PRODUCT_URL, serving("product-jsonld.html")))
+        .isEqualTo(new AdapterOutcome.NotFound());
+    assertThat(adapter.fetchAndExtract(other, PRODUCT_URL, serving("product-selectors.html")))
+        .isEqualTo(new AdapterOutcome.NotFound());
+  }
+
+  @Test
+  void ac_4_1_1_gtinCheckIgnoresLeadingZerosAndMissingGtin() {
+    assertThat(AltexroAdapter.isOtherProduct("04006381333931", EAN)).isFalse();
+    assertThat(AltexroAdapter.isOtherProduct(null, EAN)).isFalse();
+    assertThat(AltexroAdapter.isOtherProduct("n/a", EAN)).isFalse();
+    assertThat(AltexroAdapter.isOtherProduct("5901234123457", EAN)).isTrue();
   }
 
   @Test

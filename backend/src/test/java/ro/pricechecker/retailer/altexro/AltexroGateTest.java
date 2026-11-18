@@ -8,6 +8,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import ro.pricechecker.adapter.AdapterOutcome;
 import ro.pricechecker.adapter.RetailerAdapter;
 import ro.pricechecker.adapter.RetailerHttp;
+import ro.pricechecker.cache.ResultCache;
 import ro.pricechecker.ean.Ean;
 import ro.pricechecker.lookup.AdapterCatalog;
 import ro.pricechecker.lookup.LookupLog;
@@ -95,6 +97,8 @@ class AltexroGateTest {
             TestRegistries.runtimeAllowing(
                 CLOCK,
                 registry.retailers().stream().map(RetailerConfig::domain).toArray(String[]::new)),
+            TestRegistries.blockStore(TestRegistries.runtimeAllowing(CLOCK), CLOCK),
+            new ResultCache<>(Duration.ofMinutes(15), CLOCK),
             new LookupLog(CLOCK));
 
     LookupResult result = service.lookup(Ean.parse("4006381333931"));

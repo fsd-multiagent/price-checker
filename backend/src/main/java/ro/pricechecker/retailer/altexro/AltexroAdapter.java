@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -21,6 +22,7 @@ import ro.pricechecker.extract.ExtractedFacts;
 import ro.pricechecker.extract.MetaTags;
 import ro.pricechecker.extract.Prices;
 import ro.pricechecker.extract.StructuredData;
+import ro.pricechecker.fetch.FetchFailure;
 
 /**
  * Altex Adapter (AD-7). Ships disabled until the owner approves the domain in the register (S-1);
@@ -39,6 +41,8 @@ public class AltexroAdapter implements RetailerAdapter {
   static final String STOCK_SELECTOR = ".Status-stock";
   static final String EAN_SELECTOR = ".Product-ean";
 
+  private static final Pattern NON_DIGIT = Pattern.compile("\\D");
+
   private static final List<Function<String, Optional<ExtractedFacts>>> STEPS =
       List.of(
           AltexroAdapter::fromStructuredData,
@@ -55,25 +59,56 @@ public class AltexroAdapter implements RetailerAdapter {
     String html;
     try {
       html = http.get(productUrl);
+    } catch (FetchFailure f) {
+      return f.outcome();
     } catch (IOException e) {
       return new AdapterOutcome.Unavailable(UnavailableReason.HTTP_ERROR);
     }
-    ExtractedFacts withFacts = null;
+    ExtractedFacts chosen = null;
     for (Function<String, Optional<ExtractedFacts>> step : STEPS) {
       Optional<ExtractedFacts> found = step.apply(html).filter(AltexroAdapter::hasAnyFact);
       if (found.isEmpty()) {
         continue;
       }
       if (found.get().priceMinor() != null) {
-        return found(found.get(), productUrl);
+        chosen = found.get();
+        break;
       }
-      if (withFacts == null) {
-        withFacts = found.get();
+      if (chosen == null) {
+        chosen = found.get();
       }
     }
-    return withFacts == null
-        ? new AdapterOutcome.Unavailable(UnavailableReason.UNPARSEABLE)
-        : found(withFacts, productUrl);
+    if (chosen == null) {
+      return new AdapterOutcome.Unavailable(UnavailableReason.UNPARSEABLE);
+    }
+    if (isOtherProduct(chosen.gtin(), ean)) {
+      return new AdapterOutcome.NotFound();
+    }
+    return found(chosen, productUrl);
+  }
+
+  /**
+   * True when the page states a GTIN that is not the requested EAN, so its price belongs to another
+   * product and is never reported for this one (C-7). Leading zeros are ignored (GTIN-14 vs
+   * EAN-13).
+   */
+  static boolean isOtherProduct(String gtin, Ean ean) {
+    if (gtin == null) {
+      return false;
+    }
+    String digits = NON_DIGIT.matcher(gtin).replaceAll("");
+    if (digits.isEmpty()) {
+      return false;
+    }
+    return !stripLeadingZeros(digits).equals(stripLeadingZeros(ean.value()));
+  }
+
+  private static String stripLeadingZeros(String digits) {
+    int i = 0;
+    while (i < digits.length() - 1 && digits.charAt(i) == '0') {
+      i++;
+    }
+    return digits.substring(i);
   }
 
   /** Step 1: the page's JSON-LD {@code Product}. */

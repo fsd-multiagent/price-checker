@@ -18,9 +18,9 @@ deferred:
       backend/src/main/java/ro/pricechecker/retailer/altexro/AltexroAdapter.java:101
     severity: medium
   - summary: >-
-      Adapter ignores the requested EAN and does not check currency is RON; a wrong curated URL or EUR page would be Found.
+      Adapter does not check currency is RON; a EUR page would be Found.
     evidence: |-
-      fetchAndExtract never compares gtin with ean.value(); not required by 4.1 ACs.
+      fetchAndExtract compares gtin with ean.value() since round 8, but never checks the currency; not required by 4.1 ACs.
     location: >-
       backend/src/main/java/ro/pricechecker/retailer/altexro/AltexroAdapter.java:85
     severity: medium
@@ -43,13 +43,6 @@ deferred:
     evidence: |-
       Docs sync belongs to Aglaia (Knowledge Keeper) at stage 9.
     severity: low
-  - summary: >-
-      Adapter maps every IOException to Unavailable(HTTP_ERROR) instead of returning FetchFailure.outcome(), so a 404 would not be NotFound (AD-6).
-    evidence: |-
-      Same pattern in CelroAdapter and EvomagAdapter; fix all three when FetchClient is wired as RetailerHttp (story 2.8), with a 404 test each.
-    location: >-
-      backend/src/main/java/ro/pricechecker/retailer/altexro/AltexroAdapter.java:58
-    severity: medium
 ---
 
 <intent-contract>
@@ -199,4 +192,13 @@ Status: done
 - Rebased onto `origin/main` at b624f2a18803692e77197a6f044434fd2b6cffe9 (#65 learn 2-5) with no conflicts. Main has no new ADR, so 0026 is still free.
 - CR-2 (AD-6, new): `AltexroAdapter` maps every `IOException` to `Unavailable(HTTP_ERROR)` instead of returning `fetch.FetchFailure.outcome()`. Deferred to the story that wires `FetchClient` as the `RetailerHttp` bean (2.8), as the reviewer recommends: `CelroAdapter` and `EvomagAdapter` share the pattern, they should change together, and `FetchFailure`'s factories are package-private in `fetch` (outside this story's touches), so no adapter test can build one yet. Altex ships `adapter: disabled`, so no Lookup reaches this path.
 - CR-3 (C-7, gtin compared with the requested EAN) stays deferred. code_lens CR-3 (S-1) was already fixed in round 5. CR-4 (D-2): ADR 0026 is still Proposed; the PR description must name it for the owner's acceptance.
+- Verification: `backend/gradlew -p backend check` exit 0.
+
+### Round 8
+
+- The round 7 blockers `security-outcome` (AD-18) and `security-verdict` (AD-10) came for the third time from Veronel (Security & Compliance)'s step ending without a valid verdict; code_review and code_lens both passed. They name no defect, so this round removes the two open major findings the security step could also raise and rebases.
+- Rebased onto `origin/main` at 398a852 (#67 to #73, including story 2.8, which wires `FetchClient` and adds a `BlockStore` and `ResultCache` to `LookupService`). `AltexroGateTest` now passes both to the new constructor, as the upstream tests do. Main has no new ADR, so 0026 is still free.
+- CR-2 (AD-6) fixed: `AltexroAdapter` returns `FetchFailure.outcome()` (so a 404 is `NotFound`, robots `BLOCKED` stays `BLOCKED`) and maps any other `IOException` to `HTTP_ERROR`. Test helper `fetch.TestFetchFailures` builds failures for adapter tests; `ac_4_1_1_fetchFailureOutcomeIsReturned` covers it. `CelroAdapter` and `EvomagAdapter` keep the old pattern; they are outside this story's touches.
+- CR-3 (C-7) fixed: when the chosen step's gtin is present and differs from the requested EAN (leading zeros ignored), the adapter returns `NotFound` and never reports the other product's price. Covered by `ac_4_1_1_otherProductGtinIsNotFound` and `ac_4_1_1_gtinCheckIgnoresLeadingZerosAndMissingGtin`.
+- CR-4 (D-2): ADR 0026 is still Proposed; the PR description must name it for the owner's acceptance.
 - Verification: `backend/gradlew -p backend check` exit 0.
